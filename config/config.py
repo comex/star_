@@ -1,9 +1,14 @@
 import json, struct, re, subprocess, time, shelve, hashlib, cPickle, os, sys, plistlib, optparse
+import pyximport; pyximport.install()
+import confighelper
+
+os.chdir(os.path.dirname(sys.argv[0]))
 
 data = eval('{%s}' % open('configdata.py').read())
 
 cache = shelve.open('config1.cache')
 
+## Mach-O
 def lookup(sects, off, soff):
     for vmaddr, sectstart, sectend in sects:
         if off >= sectstart and off < sectend:
@@ -120,32 +125,99 @@ def get_sects(binary):
     fp.close()
     return sects, stuff
 
-def do_binary(cfg, name):
-    d = cfg.get(name)
-    if d is None: return
-    binary = d['@binary']
-    cachekey = hashlib.sha1(cPickle.dumps((d, os.path.getmtime(binary)), cPickle.HIGHEST_PROTOCOL)).digest()
-    if cache.has_key(cachekey):
-        cached = cache[cachekey]
-        d.update(cached)
-        return
-    
+def do_binary_uncached_macho(d, binary):
     syms = get_syms(binary)
     sects, stuff = get_sects(binary)
 
     tocache = {}
     for k, v in d.iteritems():
         if k == '@binary' or not isinstance(v, basestring): continue
-        val = do_binary_kv(syms, sects, stuff, k, v)
-        d[k] = tocache[k] = val
+        tocache[k] = do_binary_kv(syms, sects, stuff, k, v)
+    return tocache
+
+## dyld shared cache stupid object format
+# more efficient.
+
+def do_binary_uncached_dyldcache(d, binary):
+    mydict = {}
+    soffs = {}
+    for k, v in d.iteritems():
+        if not isinstance(k, basestring) or k.startswith('@'): continue
+        soff = None
+        sstr = ''
+        bits = v.split(' ')
+        assert bits[0] == '@'
+        bits.pop(0)
+        n = 0
+        for bit in bits:
+            if bit == '+':
+                soff = n + 1
+            elif bit == '-':
+                soff = n
+            else:
+                sstr += chr(int(bit, 16))
+            n += 1
+        mydict[k] = sstr
+        if soff is None:
+            raise ValueError('No offset in %s' % (v,))
+        soffs[k] = soff
+    
+    searched = confighelper.search_for_things(binary, mydict)
+    print searched
+
+    mappings = []
+    f = open(binary, 'rb')
+    f.read(16) # magic
+    mappingOffset, mappingCount = struct.unpack('II', f.read(8))
+    f.seek(mappingOffset)
+    for i in xrange(mappingCount):
+        sfm_address, sfm_size, sfm_file_offset, sfm_max_prot, sfm_init_prot = struct.unpack('QQQII', f.read(32))
+        mappings.append((sfm_address, sfm_size, sfm_file_offset))
+
+    warned = False
+
+    result = {}
+    for k, offset in searched.iteritems():
+        if offset is None:
+            print >> sys.stderr, 'ERROR: Could not find %s' % (d[k],)
+            warned = True
+            continue
+        file_offset = offset + soff
+        for sfm_address, sfm_size, sfm_file_offset in mappings:
+            if file_offset >= sfm_file_offset and file_offset < (sfm_file_offset + sfm_size):
+                result[k] = sfm_address + file_offset - sfm_file_offset
+                break
+        else:
+            raise ValueError('Could not turn offset %x into an address' % (file_offset,))
+    if warned: raise ValueError
+    
+    return result
+
+###
+
+def do_binary(d):
+    for i in ['@syms', '@binary']:
+        if d.has_key(i):
+            d[i] = os.path.realpath(d[i])
+    binary = d['@binary']
+    cachekey = hashlib.sha1(cPickle.dumps((d, os.path.getmtime(binary)), cPickle.HIGHEST_PROTOCOL)).digest()
+    if cache.has_key(cachekey):
+        d.update(cache[cachekey])
+        return
+  
+    if binary.endswith('.cache'):
+        tocache = do_binary_uncached_dyldcache(d, binary)
+    else:
+        tocache = do_binary_uncached_macho(d, binary)
+    d.update(tocache)
     cache[cachekey] = tocache
 
-def dolt(d):
+def dict_to_cflags(d):
     cflags = ''
     for k, v in d.iteritems():
         if not isinstance(k, basestring) or k.startswith('@'): continue
         if isinstance(v, dict):
-            cflags += dolt(v)
+            cflags += dict_to_cflags(v)
             continue
         elif isinstance(v, (int, long)):
             v = hex(v)
@@ -182,15 +254,14 @@ def pretty_print(d):
 
 def go(platform):
     d = get_data(platform)
-    do_binary(d, 'kern')
-    do_binary(d, 'launchd')
+    for k, v in d.iteritems():
+        if k.startswith('#'):
+            do_binary(v)
     if verbose:
         pretty_print(d)
     open('config.json', 'w').write(json.dumps(d)+'\n')
-    cflags = dolt(d) + '\n'
+    cflags = dict_to_cflags(d) + '\n'
     open('config.cflags', 'w').write(cflags)
-    # Write a trivial map for testing
-    plistlib.writePlist({platform: 'igor/one.dylib'}, 'map.plist')
 
 parser = optparse.OptionParser()
 parser.add_option('-v', '--verbose', action='store_true', dest='verbose', default=False)
