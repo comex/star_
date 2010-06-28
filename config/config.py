@@ -1,3 +1,4 @@
+#!/opt/local/bin/python2.6
 import json, struct, re, subprocess, time, shelve, hashlib, cPickle, os, sys, plistlib, optparse
 import pyximport; pyximport.install()
 import confighelper
