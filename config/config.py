@@ -1,5 +1,5 @@
 #!/opt/local/bin/python2.6
-import json, struct, re, subprocess, time, shelve, hashlib, cPickle, os, sys, plistlib, optparse
+import json, struct, re, subprocess, time, shelve, hashlib, cPickle, os, sys, plistlib, optparse, mmap
 import pyximport; pyximport.install()
 import confighelper
 
@@ -100,11 +100,11 @@ def get_syms(binary):
 
 def get_sects(binary):
     fp = open(binary, 'rb')
+    stuff = mmap.mmap(fp.fileno(), os.path.getsize(binary), prot=mmap.PROT_READ)
     magic, cputype, cpusubtype, \
     filetype, filetype, ncmds, sizeofcmds, \
     flags = struct.unpack('IHHIIIII', fp.read(0x1c))
     sects = []
-    stuff = ''
     while True:
         xoff = fp.tell()
         if xoff >= sizeofcmds: break
@@ -116,12 +116,7 @@ def get_sects(binary):
             #print name
             fp.seek(xoff + 24)
             vmaddr, vmsize, foff, fsiz = struct.unpack('IIII', fp.read(16))
-            q = fp.tell()
-            fp.seek(foff)
-            k = len(stuff)
-            stuff += fp.read(fsiz)
-            sects.append((vmaddr, k, len(stuff)))
-            fp.seek(q)
+            sects.append((vmaddr, foff, foff + fsiz))
         fp.seek(xoff + clen)
     fp.close()
     return sects, stuff

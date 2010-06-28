@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
             struct section *sec = (void *) (input + offset + sizeof(*sc));
             while(nsects--) {
                 if(sec->size) {
-                    int fd2 = open(argv[2], O_WRONLY | O_CREAT, 0644);
+                    int fd2 = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0644);
                     assert(fd2 > 0);
                     write(fd2, input + sec->offset, sec->size);
                     close(fd2);
