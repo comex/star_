@@ -9,6 +9,8 @@ cdef extern from "stdlib.h":
     void free(void *ptr)
 import os
 
+# In the file 'filename', search for instances of the binary strings in the values of patterns (which is a dict).
+
 def search_for_things(filename, patterns):
     cdef int fd = os.open(filename, 0)
     cdef size_t size = os.lseek(fd, 0, 2)

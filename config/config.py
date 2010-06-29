@@ -252,6 +252,7 @@ def go(platform):
     d = get_data(platform)
     for k, v in d.iteritems():
         if k.startswith('#'):
+            print >> sys.stderr, 'doing', k
             do_binary(v)
     if verbose:
         pretty_print(d)

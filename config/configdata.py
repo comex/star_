@@ -1,9 +1,18 @@
 '.base': {
     '#kern': {
-        'patch4_to':    0x47702001,
         'vnode_patch':  '@ - 08 00 10 00', # must be 1st result
-        'ovbcopy': '+_ovbcopy',
+        'ovbcopy':      '+_ovbcopy',
         'scratch':      '!',
+
+        'patch2_to':    0,
+        'patch4':       '-_PE_i_can_has_debugger',
+        'patch4_to':    0x47702001,
+        'patch5_to':    1,
+        'patch6_to':    1,
+
+        # for pmap.c
+        'kernel_pmap':  '-_kernel_pmap',
+        'mem_size':     '-_mem_size',
     },
 },
 '.armv7_3.2+': {
@@ -30,11 +39,20 @@
         'k12': '@ + a0 47 90 bd',
     },
     '#kern': {
-        'bcopydude': '@ - 1a 60 b0 bd',
+        'storedude': '+ 43 6a 00 20 13 60 70 47',
+
         'patch1':       '% 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93',
         'patch1_to':    0x46c00f02,
-        'patch3':       '61 1c 13 22 .. 4b 98 47 00 .. %',
+        'patch3':       '61 1c 13 22 .. 4b 98 47 00 .. -',
         'patch3_to':    0x1c201c20,
+        
+        # It would be better to patch setup_kmem itself but this is easier.
+        'patchkmem0':   '1b 68 00 2b - .. .. .. .. .. .. 04 f1 08 05',
+        'patchkmem0_to': 0xc046c046,
+        # Note: the 1a 68 in tense3 is only because it was already patched
+        # It is actually 1b 68, but I'm going to be lazy here
+        'patchkmem1':   '.. 68 00 2b - .. .. a3 68 2a 4a',
+        'patchkmem1_to': 0x68a3c046,
     },
 },
 
@@ -54,12 +72,10 @@
     '#kern': {
         '@binary': '/Users/comex/share/ipadkern',
         'vram_baseaddr': 0xed6ed000 + 1024*768*4*2,
-
+        
         # From old configdata.
         'patch2':       0xc025dc8c,
-        'patch4':       0xc01d17c0,
         'patch5':       0xc023fac0,
-        'patch6':       0xc02558dc,
     },
 },
 
@@ -77,5 +93,7 @@
     },
     '#kern': {
         '@binary': '/Users/comex/share/tense3',
+        
+        'patch3':       '70 46 13 22 .. 4b 98 47 00 .. -',
     },
 },
