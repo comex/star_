@@ -14,8 +14,9 @@ static unsigned int read32(unsigned int addy) {
     unsigned int ret;
     assert(kmem_fd);
 
+    errno = 0;
     if(pread(kmem_fd, &ret, 4, (unsigned long long) addy) != 4) {
-        printf("could not read %x\n", addy);
+        printf("could not read %x: %s\n", addy, strerror(errno));
         abort();
     }
     return ret;
@@ -70,7 +71,7 @@ static unsigned int virt2phys(unsigned int virt, int verbose) {
 int main() {
     assert(sizeof(off_t) == 8);
     kmem_fd = open("/dev/kmem", O_RDWR);
-    assert(kmem_fd);
+    assert(kmem_fd > 0);
     char buf[0x1000];
     unsigned int crap = 0x00000000;
     do {

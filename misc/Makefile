@@ -1,6 +1,6 @@
 include ../env.mk
 all: machdump pmap
-pmap: ../config/config.cflags
+pmap: pmap.c ../config/config.cflags
 	$(GCC) -o pmap pmap.c
 
 clean:

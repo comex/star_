@@ -1,5 +1,8 @@
 *.db
 *.cache
 *.swp
-out/*.txt
 headers
+f
+out
+config.cflags
+config.json
