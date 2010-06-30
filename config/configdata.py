@@ -15,9 +15,43 @@
         'mem_size':     '-_mem_size',
     },
 },
+'.armv7': {
+    '<':            '.base',
+    'arch':         'armv7',
+
+    '#launchd': {
+        # mov r0, #1; bx lr
+       -1:              '@ + 01 20 70 47',
+        # ldr r0, [r0] -> _launch_data_new_errno
+        0:              '+ 00 68 .. .. .. .. 22 46 01 34',
+        # lsr r0, r0, #2 -> _setrlimit
+        1:              '60 69 29 46 + 80 08',
+        # add r0, #3 -> __exit
+        2:              'b0 f1 ff 3f .. .. + 03 30 16 f0',
+        # ldmia r0, {r0-r3} -> _audit_token_to_au32
+        3:              '8d e8 0f 00 0c f1 14 00 + 0f c8',
+        # str r2, [sp, #4] -> _launch_data_unpack
+        4:              '02 98 00 93 59 46 13 46 + 01 92',
+        # str r3, [sp, #8] -> _launch_data_dict_iterate
+        5:              '6a 46 01 93 01 33 + 02 93',
+        # pop {r4, r7, pc}
+        6:              '@ + 90 bd',
+        # sub.w sp, r7, #0xc; pop {r4-r7, pc}
+        7:              '@ + a7 f1 0c 0d f0 bd',
+        # mov r0, r4; mov r1, r5; mov r2, r6;
+        # blx _strlcpy; pop {r4-r7, pc}
+        8:              '16 46 .. .. .. .. .. .. + 20 46 29 46 32 46',
+        # str r0, [r5]; pop {r4-r7, pc} 
+        9:              '@ + 28 60 f0 bd',
+        # ldr r0, [r4]; blx _pthread_detach
+       10:              '0b 46 20 46 .. .. .. .. 00 28 .. .. + 20 68',
+        # mov r0, r6; pop {r4-r7, pc}
+       11:              '@ + 30 46 f0 bd',
+    },
+},
+
 '.armv7_3.2+': {
-    '<': '.base',
-    'arch': 'armv7',
+    '<': '.armv7',
     '#cache': {
         # ldr r0, [r0]; pop {r4, r5, r7, pc}
         'k4': '@ + 00 68 b0 bd',
@@ -37,34 +71,43 @@
         'k11': '@ + f0 bd',
         # blx r4; pop {r4, r7, pc}
         'k12': '@ + a0 47 90 bd',
+
+        # add r5, sp, #168; pop {r0, r1, r3, pc}
+        'k13': '@ + 2a ad 0b bd',
+        # add r0, r5; pop {r4, r5, r7, pc}
+        'k14': '@ + 28 44 b0 bd',
+
+        # str r4, [r0]; pop {r4, r7, pc}
+        'k15': '@ + 40 f8 04 4b 90 bd',
+
+        # ldr r0, [r4]; pop {r4, r7, pc}
+        'k16': '@ + 20 68 90 bd',
+
     },
     '#kern': {
         'storedude': '+ 43 6a 00 20 13 60 70 47',
 
-        'patch1':       '% 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93',
+        'patch1':       '- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93',
         'patch1_to':    0x46c00f02,
         'patch3':       '61 1c 13 22 .. 4b 98 47 00 .. -',
         'patch3_to':    0x1c201c20,
         
         # It would be better to patch setup_kmem itself but this is easier.
         'patchkmem0':   '1b 68 00 2b - .. .. .. .. .. .. 04 f1 08 05',
-        'patchkmem0_to': 0xc046c046,
+        'patchkmem0_to': 0x46c046c0,
         # Note: the 1a 68 in tense3 is only because it was already patched
         # It is actually 1b 68, but I'm going to be lazy here
-        'patchkmem1':   '.. 68 00 2b - .. .. a3 68 2a 4a',
-        'patchkmem1_to': 0x68a3c046,
+        'patchkmem1':   '.. 68 - 00 2b .. .. a3 68 2a 4a',
+        'patchkmem1_to': 0x46c046c0,
+
+        'patch_cs_enforcement_disable': '@ 00 00 00 00 00 00 00 - 00 00 00 00 01 00 00 00 80',
+        'patch_cs_enforcement_disable_to': 1,
     },
 },
 
 'iPad1,1_3.2': {
     '<': '.armv7_3.2+',
     '#cache': {
-        # movs r2, #0; movs r0, r2; pop {pc}
-        'k1': '@ + 00 22 10 46 00 bd',
-        # add r0, sp; pop {r3, r6, pc}
-        'k2': '@ + 68 44 48 bd',
-        # subs r0, r3; pop {r4, r7, pc}
-        'k3': '@ + c0 1a 90 bd',
 
         '@binary': '../dsc/iPad1,1_3.2.cache',
         '@syms': '../dsc/syms/iPad1,1_3.2.db',
@@ -72,28 +115,32 @@
     '#kern': {
         '@binary': '/Users/comex/share/ipadkern',
         'vram_baseaddr': 0xed6ed000 + 1024*768*4*2,
+        'vram_baseaddr_atboot': 0xed6ed000 + 1024*768*4,
         
         # From old configdata.
-        'patch2':       0xc025dc8c,
-        'patch5':       0xc023fac0,
+        #'patch2':       0xc025dc8c, _mac_proc_enforce
+        #'patch5':       0xc023fac0, _cs_enforcement_disable
+    },
+    '#launchd': {
+        '@binary': '/Users/comex/igor/ipsw/ipad_dump/launchd',
     },
 },
 
 'iPhone3,1_4.0': {
     '<': '.armv7_3.2+',
     '#cache': {
-        # add r5, sp, #896; lsrs r6, #11; pop {r1-r3, pc}
-        'k13': '@ + e0 ad f6 0a 0e bd', 
-        # mov r0, r5; pop {r4, r5, pc}
-        'k14': '@ + 28 46 30 bd',
-        # add r0, r4; pop {r4, r7, pc}
-        'k15': '@ + 22 40 90 bd',
         '@binary': '../dsc/iPhone3,1_4.0.cache',
         '@syms': '../dsc/syms/iPhone3,1_4.0.db',
     },
     '#kern': {
         '@binary': '/Users/comex/share/tense3',
         
+        'vram_baseaddr': 0xd35e9000 + 640*960*4*3,
+        # ???
+        'vram_baseaddr_atboot': 0xd35e9000 + 640*960*4,
         'patch3':       '70 46 13 22 .. 4b 98 47 00 .. -',
+    },
+    '#launchd': {
+        '@binary': '/Users/comex/share/iPhone3,1_4.0_launchd',
     },
 },

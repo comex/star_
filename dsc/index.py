@@ -2,7 +2,9 @@ import struct, anydbm, sys, glob
 
 def build(path):
     db = anydbm.open('index', 'c')
-    for fil in glob.glob('%s/*.txt' % path):
+    files = glob.glob('%s/*.txt' % path)
+    db['_files'] = '\0'.join(files)
+    for fil in files:
         lineno = 1
         fileoff = 0
         for line in open(fil, 'rb'):
@@ -12,11 +14,11 @@ def build(path):
             except:
                 if ':' in line:
                     key = '\0\0\0\0' + line[:line.find(':')]
-                    db[key] = struct.pack('BII', files.index(fil), lineno, fileoff)
+                    db[key] = struct.pack('III', files.index(fil), lineno, fileoff)
             else:
                 key = struct.pack('I', key)
                 if not db.has_key(key):
-                    db[key] = struct.pack('BII', files.index(fil), lineno, fileoff)
+                    db[key] = struct.pack('III', files.index(fil), lineno, fileoff)
             lineno += 1
             fileoff += len(line)
 
@@ -30,9 +32,10 @@ def ful(fp):
 
 def lookup_sym(sym, full=False):
     db = anydbm.open('index')
+    files = db['_files'].split('\0')
     key = '\0\0\0\0' + sym
     try:
-        fili, line, filoff = struct.unpack('BII', db[key])
+        fili, line, filoff = struct.unpack('III', db[key])
     except KeyError:
         return None
     fp = open(files[fili], 'rb')
@@ -42,10 +45,11 @@ def lookup_sym(sym, full=False):
 
 def lookup_addr(addr, full=False):
     db = anydbm.open('index')
+    files = db['_files'].split('\0')
     addr &= ~1
     key = struct.pack('I', int(addr) / 0x100)
     try:
-        fili, line, filoff = struct.unpack('BII', db[key])
+        fili, line, filoff = struct.unpack('III', db[key])
     except KeyError:
         return None
     fp = open(files[fili], 'rb')

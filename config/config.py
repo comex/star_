@@ -157,7 +157,7 @@ def do_binary_uncached_dyldcache(d, binary):
         if soff is None:
             raise ValueError('No offset in %s' % (v,))
         soffs[k] = soff
-    
+
     searched = confighelper.search_for_things(binary, mydict)
     print searched
 
@@ -178,7 +178,7 @@ def do_binary_uncached_dyldcache(d, binary):
             print >> sys.stderr, 'ERROR: Could not find %s' % (d[k],)
             warned = True
             continue
-        file_offset = offset + soff
+        file_offset = offset + soffs[k]
         for sfm_address, sfm_size, sfm_file_offset in mappings:
             if file_offset >= sfm_file_offset and file_offset < (sfm_file_offset + sfm_size):
                 result[k] = sfm_address + file_offset - sfm_file_offset

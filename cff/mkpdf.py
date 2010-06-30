@@ -1,6 +1,7 @@
 import zlib
-z = zlib.compress(open('out.cff').read())[2:-4]
+u = open('out.cff').read()
+z = zlib.compress(u)
 pdf = open('out.pdf.template').read()
-pdf = pdf.replace('XXX', 'x\x01' + z)
+pdf = pdf.replace('XXX', z).replace('YYY', str(len(z)))#'x\x01' + z)#[2:-4]
 open('out.pdf', 'w').write(pdf)
 

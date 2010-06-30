@@ -1,7 +1,7 @@
 all: 
 	make -C misc
 	make -C dsc
-	python zero.py
+	make -C goo
 	make -C cff
 
 clean:
@@ -9,6 +9,7 @@ clean:
 	make -C cff clean
 	make -C cry clean
 	make -C dsc clean
+	make -C goo clean
 
 distclean:
 	make clean

