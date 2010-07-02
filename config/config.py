@@ -1,5 +1,5 @@
 #!/opt/local/bin/python2.6
-import json, struct, re, subprocess, time, shelve, hashlib, cPickle, os, sys, plistlib, optparse, mmap
+import json, struct, re, subprocess, time, shelve, hashlib, cPickle, os, sys, plistlib, optparse, mmap, anydbm
 import pyximport; pyximport.install()
 import confighelper
 
@@ -25,19 +25,23 @@ def lookup_off(sects, addr):
     return val
 
 
+def do_symstring(syms, v):
+    name = v[1:]
+    offs = 0
+    z = name.find('+')
+    if z != -1:
+        offs = eval(name[z+1:])
+        name = name[:z]
+    addr = syms[name]
+    if isinstance(addr, basestring): addr = struct.unpack('I', addr)[0]
+    # Data, so even a thumb symbol shouldn't be &1
+    if v[0] == '-': addr &= ~1
+    addr += offs
+    return addr
+
 def do_binary_kv(syms, sects, stuff, k, v):
     if v[0] in ('-', '+') and v[1] != ' ':
-        name = v[1:]
-        offs = 0
-        z = name.find('+')
-        if z != -1:
-            offs = eval(name[z+1:])
-            name = name[:z]
-        addr = syms[name]
-        # Data, so even a thumb symbol shouldn't be &1
-        if v[0] == '-': addr &= ~1
-        addr += offs
-        return addr
+        return do_symstring(syms, v)
     elif v[0] == '*' and v[1] != ' ':
         off = lookup_off(sects, syms[v[1:]])
         return struct.unpack('I', stuff[off:off+4])[0]
@@ -99,9 +103,9 @@ def do_binary_kv(syms, sects, stuff, k, v):
         raise ValueError('%s is not aligned: %x' % (v, val))
     return val
 
-def get_syms(binary):
+def get_syms(d):
     syms = {}
-    for line in subprocess.Popen(['nm', '-p', '-m', binary], stdout=subprocess.PIPE).stdout:
+    for line in subprocess.Popen(['nm', '-p', '-m', d['@binary']], stdout=subprocess.PIPE).stdout:
         stuff = line[:-1].split(' ')
         name = stuff[-1]
         addr = stuff[0]
@@ -136,7 +140,7 @@ def get_sects(binary):
     return sects, stuff
 
 def do_binary_uncached_macho(d, binary):
-    syms = get_syms(binary)
+    syms = get_syms(d)
     sects, stuff = get_sects(binary)
 
     tocache = {}
@@ -149,10 +153,17 @@ def do_binary_uncached_macho(d, binary):
 # more efficient.
 
 def do_binary_uncached_dyldcache(d, binary):
+    syms = None
     mydict = {}
     soffs = {}
+    result = {}
     for k, v in d.iteritems():
         if not isinstance(k, basestring) or k.startswith('@'): continue
+        if v[0] in ('-', '+') and v[1] != ' ':
+            print d['@syms']
+            if syms is None: syms = anydbm.open(d['@syms'])
+            result[k] = do_symstring(syms, v)
+            continue
         soff = None
         sstr = ''
         bits = v.split(' ')
@@ -186,7 +197,6 @@ def do_binary_uncached_dyldcache(d, binary):
 
     warned = False
 
-    result = {}
     for k, offset in searched.iteritems():
         if offset is None:
             print >> sys.stderr, 'ERROR: Could not find %s' % (d[k],)

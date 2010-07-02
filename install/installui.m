@@ -2,6 +2,8 @@
 #import <dumpedUIKit/UIAlertView.h>
 #import <Foundation/Foundation.h>
 #import <IOKit/IOKitLib.h>
+#include <mach/mach.h>
+#include <assert.h>
 
 @interface Dude : NSObject {
     UIAlertView *progressAlertView;
@@ -45,10 +47,28 @@
 }
 @end
 
-void iui_go(io_connect_t port) {
-    // Apparently we get here with a locked thing
+static void ridiculous_hack() {
+    // Apparently we get here with a locked thing.
+    // This is ridiculous, but
+    thread_act_array_t threads;
+    mach_msg_type_number_t threadcount;
+    assert(!task_threads(mach_task_self(), &threads, &threadcount));
+    for(int i = 0; i < threadcount; i++) {
+        thread_t thread = threads[i];
+        arm_thread_state_t state;
+        mach_msg_type_number_t state_count = ARM_THREAD_STATE_COUNT;
+        assert(!thread_get_state(thread, ARM_THREAD_STATE, &state, &state_count));
+        if(state.__pc == CONFIG_SEMAPHORE_WAIT_SIGNAL_TRAP + 8) {
+            void *ptr = (void *) state.__r[5]);
+            NSLog(@"Unlocking %p", ptr);
+            pthread_mutex_unlock(ptr);
+        }
+    }
+}
 
-    CGFontCacheUnlock();
+void iui_go(io_connect_t port) {
+    ridiculous_hack();
+
     NSLog(@"iui_go: %d", (int) port);
     Dude *dude = [[Dude alloc] init];
     [dude performSelectorOnMainThread:@selector(startWithPort:) withObject:[NSNumber numberWithInt:(int)port] waitUntilDone:NO];

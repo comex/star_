@@ -1,3 +1,4 @@
+#!/opt/local/bin/python2.6
 import struct, sys, os, json
 import warnings
 warnings.simplefilter('error')

@@ -23,9 +23,6 @@
         'patch_vnode_enforce_to': 0,
         'patch_vnode_enforce_orig': 1,
 
-        # for installui.m
-        'font_caches': '-_fontCaches',
-
         # for pmap.c
         'kernel_pmap':  '-_kernel_pmap',
         'mem_size':     '-_mem_size',
@@ -90,6 +87,8 @@
         # ldr r0, [r4]; pop {r4, r7, pc}
         'k16': '@ + 20 68 90 bd',
 
+        # for installui.m
+        'semaphore_wait_signal_trap': '-_semaphore_wait_signal_trap',
     },
     '#kern': {
         'storedude': '+ 43 6a 00 20 13 60 70 47',
@@ -117,7 +116,7 @@
     '#cache': {
 
         '@binary': '../dsc/iPad1,1_3.2.cache',
-        '@syms': '../dsc/syms/iPad1,1_3.2.db',
+        '@syms': '../dsc/syms/iPad1,1_3.2',
     },
     '#kern': {
         '@binary': '/Users/comex/share/ipadkern',
@@ -137,7 +136,7 @@
     '<': '.armv7_3.2+',
     '#cache': {
         '@binary': '../dsc/iPhone3,1_4.0.cache',
-        '@syms': '../dsc/syms/iPhone3,1_4.0.db',
+        '@syms': '../dsc/syms/iPhone3,1_4.0',
     },
     '#kern': {
         '@binary': '/Users/comex/share/tense3',

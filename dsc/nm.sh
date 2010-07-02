@@ -8,8 +8,8 @@ sleep 1
 find f -type f | (while IFS='*' read x
 do
 echo "$x"
-(nm -p -m "$x" | egrep '^[^ ]') || true
-done) | python -c "import sys, os, struct, anydbm
+(nm -a -p -m "$x" | egrep '^[^ ]') || true
+done) | /opt/local/bin/python2.6 -c "import sys, os, struct, anydbm
 if os.path.exists('$2'): os.remove('$2')
 db = anydbm.open('$2', 'c')
 for line in sys.stdin:
