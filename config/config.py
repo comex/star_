@@ -10,12 +10,20 @@ data = eval('{%s}' % open('configdata.py').read())
 cache = shelve.open('config1.cache')
 
 ## Mach-O
-def lookup(sects, off, soff):
-    for vmaddr, sectstart, sectend in sects:
-        if off >= sectstart and off < sectend:
-            val = vmaddr + (off - sectstart) + soff
+def lookup_addr(sects, off):
+    for startaddr, startoff, size in sects:
+        if off >= startoff and off < (startoff + size):
+            val = startaddr + (off - startoff)
             break
     return val
+
+def lookup_off(sects, addr):
+    for startaddr, startoff, size in sects:
+        if addr >= startaddr and addr < (startaddr + size):
+            val = startoff + (addr - startaddr)
+            break
+    return val
+
 
 def do_binary_kv(syms, sects, stuff, k, v):
     if v[0] in ('-', '+') and v[1] != ' ':
@@ -30,9 +38,15 @@ def do_binary_kv(syms, sects, stuff, k, v):
         if v[0] == '-': addr &= ~1
         addr += offs
         return addr
+    elif v[0] == '*' and v[1] != ' ':
+        off = lookup_off(sects, syms[v[1:]])
+        return struct.unpack('I', stuff[off:off+4])[0]
+    elif v[0] == '$' and v[1] != ' ':
+        off = stuff.find(struct.pack('I', lookup_addr(sects, stuff.find(v[1:] + '\0')))) - 8
+        return struct.unpack('I', stuff[off:off+4])[0]
     elif v == '!':
         off = re.search('\x14[\x14\x00]{256}', stuff).start()
-        val = lookup(sects, off, 0)
+        val = lookup_addr(sects, off)
         val = (val + 4) & ~3
         return val
 
@@ -80,7 +94,7 @@ def do_binary_kv(syms, sects, stuff, k, v):
     elif not loose and len(offs) >= 2:
         raise ValueError('I found multiple (%d) %s' % (len(offs), v))
     off = offs[0].start()
-    val = lookup(sects, off, soff)
+    val = lookup_addr(sects, off + soff)
     if aligned and (val & 3):
         raise ValueError('%s is not aligned: %x' % (v, val))
     return val
@@ -116,7 +130,7 @@ def get_sects(binary):
             #print name
             fp.seek(xoff + 24)
             vmaddr, vmsize, foff, fsiz = struct.unpack('IIII', fp.read(16))
-            sects.append((vmaddr, foff, foff + fsiz))
+            sects.append((vmaddr, foff, fsiz))
         fp.seek(xoff + clen)
     fp.close()
     return sects, stuff

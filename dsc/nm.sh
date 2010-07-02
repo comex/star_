@@ -1,4 +1,5 @@
 #!/bin/bash
+# Usage: ./nm.sh iPad1,1_3.2.cache syms/iPad1,1_3.2
 set -e
 test "x$2" != "x"
 if [ -e f/System ]; then umount f; fi
@@ -7,13 +8,19 @@ sleep 1
 find f -type f | (while IFS='*' read x
 do
 echo "$x"
-(nm "$x" | fgrep -v ' U ') || true
+(nm -p -m "$x" | egrep '^[^ ]') || true
 done) | python -c "import sys, os, struct, anydbm
 if os.path.exists('$2'): os.remove('$2')
 db = anydbm.open('$2', 'c')
 for line in sys.stdin:
-    line = line.strip().split()
-    if len(line) != 3: continue
-    addy, tee, sym = line
-    db[sym] = struct.pack('I', int(addy, 16))"
+    line = line.strip()
+    z = line.find('external')
+    if z == -1: continue
+    addy = int(line[:8], 16)
+    if '[Thumb]' in line:
+        addy |= 1
+        sym = line[z+17:]
+    else:
+        sym = line[z+9:]
+    db[sym] = struct.pack('I', addy)"
 

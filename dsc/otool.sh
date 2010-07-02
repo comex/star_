@@ -1,4 +1,5 @@
 #!/bin/bash
+# Usage: ./otool.sh iPad1,1_3.2.cache outpad
 set -e
 if [ -e f/System ]; then umount f; fi
 test x"$2" != "x"
