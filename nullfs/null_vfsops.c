@@ -84,6 +84,23 @@
 #include <sys/malloc.h>
 #include "null.h"
 #include <sys/mount.h>
+#include <sys/vm.h>
+struct proc *current_proc(void);
+
+struct vfs_attr;
+
+extern int VFS_MOUNT(mount_t, vnode_t, user_addr_t, vfs_context_t);
+extern int VFS_START(mount_t, int, vfs_context_t);
+extern int VFS_UNMOUNT(mount_t, int, vfs_context_t);
+extern int VFS_ROOT(mount_t, vnode_t *, vfs_context_t);
+extern int VFS_QUOTACTL(mount_t, int, uid_t, caddr_t, vfs_context_t);
+extern int VFS_GETATTR(mount_t, struct vfs_attr *, vfs_context_t);
+extern int VFS_SETATTR(mount_t, struct vfs_attr *, vfs_context_t);
+extern int VFS_SYNC(mount_t, int, vfs_context_t);
+extern int VFS_VGET(mount_t, ino64_t, vnode_t *, vfs_context_t);
+extern int VFS_FHTOVP(mount_t, int, unsigned char *, vnode_t *, vfs_context_t);
+extern int VFS_VPTOFH(vnode_t, int *, unsigned char *, vfs_context_t);
+
 
 #define VFSATTR_INIT(s)         ((s)->f_supported = (s)->f_active = 0LL)
 #define VFSATTR_SET_SUPPORTED(s, a) ((s)->f_supported |= VFSATTR_ ## a)
@@ -156,6 +173,7 @@ struct vfs_attr {
     uint16_t    f_carbon_fsid;  /* same as Carbon's FSVolumeInfo.filesystemID */
 };
 
+void	vfs_getnewfsid(struct mount *);
 
 /*
  * Mount null layer
@@ -172,7 +190,7 @@ nullfs_mount(mp, devvp, data, context)
 	struct vnode *lowerrootvp, *vp;
 	struct vnode *nullm_rootvp;
 	struct null_mount *xmp;
-	u_int size;
+	size_t size;
     struct nameidata nd;
 
 #ifdef NULLFS_DIAGNOSTIC
@@ -229,7 +247,7 @@ nullfs_mount(mp, devvp, data, context)
 	 * Save reference.  Each mount also holds
 	 * a reference on the root vnode.
 	 */
-	error = null_node_create(mp, lowerrootvp, &vp);
+	error = null_node_create(mp, lowerrootvp, &vp, 1);
 	/*
 	 * Make sure the node alias worked
 	 */
@@ -244,9 +262,10 @@ nullfs_mount(mp, devvp, data, context)
 	 * It is vnode_put'd in nullfs_unmount.
 	 */
 	nullm_rootvp = vp;
+    vnode_get(nullm_rootvp);
 	nullm_rootvp->v_flag |= VROOT;
 	xmp->nullm_rootvp = nullm_rootvp;
-	if (NULLVPTOLOWERVP(nullm_rootvp)->v_mount->mnt_flag & MNT_LOCAL)
+	//if (NULLVPTOLOWERVP(nullm_rootvp)->v_mount->mnt_flag & MNT_LOCAL)
 		mp->mnt_flag |= MNT_LOCAL;
 	mp->mnt_data = (qaddr_t) xmp;
 	vfs_getnewfsid(mp);
@@ -342,7 +361,7 @@ nullfs_root(mp, vpp, context)
 			NULLVPTOLOWERVP(MOUNTTONULLMOUNT(mp)->nullm_rootvp)
 			);
 #endif
-
+    //*((unsigned int *) 0xdead1234) = 0x1234;
 	/*
 	 * Return locked reference to root.
 	 */
@@ -363,6 +382,7 @@ nullfs_quotactl(mp, cmd, uid, datap, context)
 	return -1;//return VFS_QUOTACTL(MOUNTTONULLMOUNT(mp)->nullm_vfs, cmd, uid, datap, context);
 }
 
+int vfs_getattr(mount_t mp, struct vfs_attr *vfa, vfs_context_t ctx);
 static int
 nullfs_getattr(mount_t mp, struct vfs_attr *fsap, vfs_context_t context)
 {
@@ -376,6 +396,9 @@ nullfs_getattr(mount_t mp, struct vfs_attr *fsap, vfs_context_t context)
 			);
 #endif
 
+    if(!MOUNTTONULLMOUNT(mp)->nullm_vfs) {
+        return -1;
+    }
 
     VFSATTR_INIT(&attr);
     VFSATTR_WANTED(&attr, f_bsize);
@@ -391,13 +414,14 @@ nullfs_getattr(mount_t mp, struct vfs_attr *fsap, vfs_context_t context)
 
 	/* now copy across the "interesting" information and fake the rest */
 	//sbp->f_type = mstat.f_type;
-    if(VFSATTR_IS_SUPPORTED(&attr, f_bsize)) fsap->f_bsize = attr.f_bsize;
-    if(VFSATTR_IS_SUPPORTED(&attr, f_blocks)) fsap->f_blocks = attr.f_blocks;
-    if(VFSATTR_IS_SUPPORTED(&attr, f_bfree)) fsap->f_bfree = attr.f_bfree;
-    if(VFSATTR_IS_SUPPORTED(&attr, f_bavail)) fsap->f_bavail = attr.f_bavail;
-    if(VFSATTR_IS_SUPPORTED(&attr, f_files)) fsap->f_files = attr.f_files;
-    if(VFSATTR_IS_SUPPORTED(&attr, f_ffree)) fsap->f_ffree = attr.f_ffree;       
 	
+    fsap->f_bsize = VFSATTR_IS_SUPPORTED(&attr, f_bsize) ? attr.f_bsize : 0;
+    fsap->f_blocks = VFSATTR_IS_SUPPORTED(&attr, f_blocks) ? attr.f_blocks : 0;
+    fsap->f_bfree = VFSATTR_IS_SUPPORTED(&attr, f_bfree) ? attr.f_bfree : 0;
+    fsap->f_bavail = VFSATTR_IS_SUPPORTED(&attr, f_bavail) ? attr.f_bavail : 0;
+    fsap->f_files = VFSATTR_IS_SUPPORTED(&attr, f_files) ? attr.f_files : 0;
+    fsap->f_ffree = VFSATTR_IS_SUPPORTED(&attr, f_ffree) ? attr.f_ffree : 0;       
+
     VFSATTR_SET_SUPPORTED(fsap, f_bsize);
     VFSATTR_SET_SUPPORTED(fsap, f_blocks);
     VFSATTR_SET_SUPPORTED(fsap, f_bfree);
@@ -655,11 +679,11 @@ struct vfs_fsentry {
 
 
 extern struct vnodeopv_desc null_vnodeop_opv_desc;
-struct vnodeopv_desc descs[] = { &null_vnodeop_opv_desc, NULL };
+struct vnodeopv_desc *descs[] = { &null_vnodeop_opv_desc, NULL };
 struct vfs_fsentry fe = {
     &null_vfsops,
     1,
-    &descs,
+    descs,
     9,
     "loopback",
     VFC_VFSGENERICARGS,

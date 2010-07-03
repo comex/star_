@@ -78,6 +78,7 @@
 #include <sys/namei.h>
 #include <sys/malloc.h>
 #include <sys/ubc.h>
+#include <sys/ubc.h>
 #include "null.h"
 
 #define LOG2_SIZEVNODE 7		/* log2(sizeof struct vnode) */
@@ -156,10 +157,11 @@ loop:
  * Maintain a reference to (lowervp).
  */
 static int
-null_node_alloc(mp, lowervp, vpp)
+null_node_alloc(mp, lowervp, vpp, markroot)
 	struct mount *mp;
 	struct vnode *lowervp;
 	struct vnode **vpp;
+    char markroot;
 {
 	struct null_node_hashhead *hd;
 	struct null_node *xp;
@@ -171,15 +173,15 @@ null_node_alloc(mp, lowervp, vpp)
     vfsp.vnfs_mp = mp;
     vfsp.vnfs_vtype = lowervp->v_type;
     vfsp.vnfs_str = "nullfs";
-    vfsp.vnfs_dvp = NULL;
+    vfsp.vnfs_dvp = NULLVP;
     vfsp.vnfs_fsnode = xp;
-    vfsp.vnfs_cnp = NULL;
+    vfsp.vnfs_cnp = NULLVP;
     vfsp.vnfs_vops = null_vnodeop_p;
     vfsp.vnfs_rdev = 0;
     vfsp.vnfs_filesize = 0;
     vfsp.vnfs_flags = VNFS_NOCACHE | VNFS_CANTCACHE;
     vfsp.vnfs_marksystem = 0;
-    vfsp.vnfs_markroot = 0;
+    vfsp.vnfs_markroot = markroot;
 
 	if (error = vnode_create(VNCREATE_FLAVOR, VCREATESIZE, &vfsp, vpp)) {
 		FREE(xp, M_TEMP);
@@ -191,6 +193,7 @@ null_node_alloc(mp, lowervp, vpp)
 	xp->null_vnode = vp;
 	vp->v_data = xp;
 	xp->null_lowervp = lowervp;
+    vp->v_op = null_vnodeop_p; // lol :<
 	/*
 	 * Before we insert our new node onto the hash chains,
 	 * check to see if someone else has beaten us to it.
@@ -203,8 +206,9 @@ null_node_alloc(mp, lowervp, vpp)
 		*vpp = othervp;
 		return 0;
 	};
-	if (vp->v_type == VREG)
-		ubc_info_init(vp);
+	/*if (vp->v_type == VREG) vnode_create already does this!
+		ubc_info_init(vp);*/
+    //*((int *) 0x000fdfdf) = 0x10101010;
 	vnode_get(lowervp);   /* Extra vnode_get will be vnode_put'd in null_node_create */
 	hd = NULL_NHASH(lowervp);
 	LIST_INSERT_HEAD(hd, xp, null_hash);
@@ -218,10 +222,11 @@ null_node_alloc(mp, lowervp, vpp)
  * contains a reference to the lower vnode.
  */
 int
-null_node_create(mp, lowervp, newvpp)
+null_node_create(mp, lowervp, newvpp, markroot)
 	struct mount *mp;
 	struct vnode *lowervp;
 	struct vnode **newvpp;
+    char markroot;
 {
 	struct vnode *aliasvp;
 
@@ -247,7 +252,7 @@ null_node_create(mp, lowervp, newvpp)
 		/*
 		 * Make new vnode reference the null_node.
 		 */
-		if (error = null_node_alloc(mp, lowervp, &aliasvp))
+		if (error = null_node_alloc(mp, lowervp, &aliasvp, markroot))
 			return error;
 
 		/*

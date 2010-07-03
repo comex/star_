@@ -8,8 +8,9 @@ for line in os.popen('/opt/xbinutils/bin/gnm -a ~/share/ipadkern'):
         addr = int(line[0], 16)
     except:
         continue
-    if line[1] == 'T': addr |= 1
     sym = line[2]
+    if line[1] == 'T' and sym not in ('_copyin', '_memset'):
+        addr |= 1
     syms[sym] = addr
 
 # todo: config.

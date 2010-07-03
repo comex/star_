@@ -102,7 +102,7 @@ struct null_node {
 	struct vnode		*null_vnode;	/* Back pointer */
 };
 
-extern int null_node_create(struct mount *mp, struct vnode *target, struct vnode **vpp);
+extern int null_node_create(struct mount *mp, struct vnode *target, struct vnode **vpp, char markroot);
 
 #define	MOUNTTONULLMOUNT(mp) ((struct null_mount *)((mp)->mnt_data))
 #define	VTONULL(vp) ((struct null_node *)(vp)->v_data)

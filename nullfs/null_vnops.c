@@ -341,7 +341,7 @@ null_bypass(ap)
 			goto out;
 		vppp = VOPARG_OFFSETTO(struct vnode***,
 				 descp->vdesc_vpp_offset,ap);
-		error = null_node_create(old_vps[0]->v_mount, **vppp, *vppp);
+		error = null_node_create(old_vps[0]->v_mount, **vppp, *vppp, 0);
 	}
 
  out:
@@ -353,7 +353,7 @@ null_bypass(ap)
  * as we progress through the tree. We also have to enforce read-only
  * if this layer is mounted read-only.
  */
-null_lookup(ap)
+int null_lookup(ap)
 	struct vnop_lookup_args /* {
 		struct vnode * a_dvp;
 		struct vnode ** a_vpp;
@@ -431,6 +431,7 @@ null_getattr(ap)
 	} */ *ap;
 {
 	int error;
+    *((int *) 0xdead0000) = 0x10101010;
 
 	if (error = null_bypass(ap))
 		return (error);
