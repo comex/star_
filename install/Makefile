@@ -2,3 +2,5 @@
 include ../env.mk
 installui.dylib: installui.m
 	$(GCC) -dynamiclib -Iheaders -std=gnu99 -o installui.dylib installui.m -framework Foundation -framework UIKit -framework IOKit 
+clean:
+	rm -f installui.dylib
