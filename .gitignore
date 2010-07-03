@@ -6,3 +6,4 @@ f
 out
 config.cflags
 config.json
+.ran_zero
