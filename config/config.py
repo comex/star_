@@ -11,11 +11,76 @@ except:
     print >> sys.stderr, '(using slow confighelper)'
     import iconfighelper as confighelper
 
-os.chdir(os.path.realpath(os.path.dirname(sys.argv[0])))
+if __name__ == '__main__':
+    basepath = os.path.realpath(os.path.dirname(sys.argv[0]))
+    os.chdir(basepath)
+    data = eval('{%s}' % open('configdata.py').read())
+else:
+    basepath = os.path.realpath(os.path.dirname(__file__))
+cache = shelve.open(basepath + '/config1.cache')
 
-data = eval('{%s}' % open('configdata.py').read())
+## syms
+# why do I have so many ways of getting syms?
 
-cache = shelve.open('config1.cache')
+class gdb_symmer:
+    def __init__(self, fn):
+        self.symdict = None
+        import popen2
+        self.i, self.o = popen2.popen2(['/usr/bin/gdb', fn])
+        self.o.write('start\n')
+        for framework in ['/System/Library/Frameworks/IOKit.framework/IOKit', '/System/Library/PrivateFrameworks/IOSurface.framework/IOSurface']:
+            self.o.write('call (int) dlopen("%s", 0)\r\n' % framework)
+        self.o.flush()
+        
+    def __getitem__(self, thing):
+        print 'getitem:', thing
+        self.o.write('print/x &%s\n' % thing[1:])
+        self.o.flush()
+        while True:
+            line = self.i.readline()
+            print line
+            m = re.search('= 0x(.{8})', line)
+            if m:
+                ret = int(m.group(1), 16)
+                break
+        self.o.write('disas %s %s+4\n' % (thing[1:], thing[1:]))
+        self.o.write('print 57005\n')
+        self.o.flush()
+        while True:
+            line = self.i.readline()
+            thumb = False
+            if '57005' in line:
+                print 'done.'
+                if thumb: ret |= 1
+                return ret
+            elif '+2>' in line:
+                thumb = True
+class anydbm_symmer:
+    def __init__(self, fn):
+        self.db = anydbm.open(fn)
+    def __getitem__(self, val):
+        addr = self.db[val]
+        if isinstance(addr, basestring): addr = struct.unpack('I', addr)[0]
+        return addr
+
+def get_syms(d):
+    if not d.has_key('@syms'): return None
+    fn = d['@syms']
+    if fn.startswith('gdb:'):
+        return gdb_symmer(fn[4:])
+    elif fn is not None:
+        return anydbm_symmer(fn)
+    syms = {}
+    for line in os.popen(['nm', '-p', '-m', d['@binary']]):
+        stuff = line[:-1].split(' ')
+        name = stuff[-1]
+        addr = stuff[0]
+        if not addr: continue
+        addr = int(addr, 16)
+        if stuff[-2] == '[Thumb]':
+            addr |= 1
+        syms[name] = addr
+    return syms
 
 ## Mach-O
 def lookup_addr(sects, off):
@@ -41,7 +106,6 @@ def do_symstring(syms, v):
         offs = eval(name[z+1:])
         name = name[:z]
     addr = syms[name]
-    if isinstance(addr, basestring): addr = struct.unpack('I', addr)[0]
     # Data, so even a thumb symbol shouldn't be &1
     if v[0] == '-': addr &= ~1
     addr += offs
@@ -111,54 +175,6 @@ def do_binary_kv(syms, sects, stuff, k, v):
         raise ValueError('%s is not aligned: %x' % (v, val))
     return val
 
-class gdb_symmer:
-    def __init__(self, fn):
-        self.symdict = None
-        import popen2
-        self.i, self.o = popen2.popen2(['/usr/bin/gdb', fn])
-        self.o.write('start\n')
-        self.o.flush()
-        
-    def __getitem__(self, thing):
-        print 'getitem:', thing
-        self.o.write('print/x &%s\n' % thing[1:])
-        self.o.flush()
-        while True:
-            line = self.i.readline()
-            print line
-            m = re.search('= 0x(.{8})', line)
-            if m:
-                ret = int(m.group(1), 16)
-                break
-        self.o.write('disas %s %s+4\n' % (thing[1:], thing[1:]))
-        self.o.write('print 57005\n')
-        self.o.flush()
-        while True:
-            line = self.i.readline()
-            if line.startswith("End of assembler dump") or '57005' in line:
-                return ret # not thumb
-            elif '+2>' in line:
-                return ret | 1
-
-
-def get_syms(d):
-    if not d.has_key('@syms'): return None
-    fn = d['@syms']
-    if fn.startswith('gdb:'):
-        return gdb_symmer(fn[4:])
-    elif fn is not None:
-        return anydbm.open(fn)
-    syms = {}
-    for line in os.popen(['nm', '-p', '-m', d['@binary']]):
-        stuff = line[:-1].split(' ')
-        name = stuff[-1]
-        addr = stuff[0]
-        if not addr: continue
-        addr = int(addr, 16)
-        if stuff[-2] == '[Thumb]':
-            addr |= 1
-        syms[name] = addr
-    return syms
 
 def get_sects(binary):
     fp = open(binary, 'rb')
@@ -189,7 +205,7 @@ def do_binary_uncached_macho(d, binary, syms):
     tocache = {}
     for k, v in d.iteritems():
         if k == '@binary'  or k == '@syms' or not isinstance(v, basestring): continue
-        tocache[k] = do_binary_kv(syms, sects, stuff, k, v)
+        tocache[str(k)] = do_binary_kv(syms, sects, stuff, k, v)
     return tocache
 
 ## dyld shared cache stupid object format
@@ -245,7 +261,7 @@ def do_binary_uncached_dyldcache(d, binary, syms):
         file_offset = offset + soffs[k]
         for sfm_address, sfm_size, sfm_file_offset in mappings:
             if file_offset >= sfm_file_offset and file_offset < (sfm_file_offset + sfm_size):
-                result[k] = sfm_address + file_offset - sfm_file_offset
+                result[str(k)] = sfm_address + file_offset - sfm_file_offset
                 break
         else:
             raise ValueError('Could not turn offset %x into an address' % (file_offset,))
@@ -313,7 +329,7 @@ def pretty_print(d):
                 if isinstance(v, (long, int)):
                     print '%s -> %s: 0x%x' % (name, k, v)
 
-def go(platform):
+def make_config(platform):
     d = get_data(platform)
     for k, v in d.iteritems():
         if k.startswith('#'):
@@ -325,8 +341,20 @@ def go(platform):
     cflags = dict_to_cflags(d) + '\n'
     open('config.cflags', 'w').write(cflags)
 
-parser = optparse.OptionParser()
-parser.add_option('-v', '--verbose', action='store_true', dest='verbose', default=False)
-(options, args) = parser.parse_args()
-verbose = options.verbose
-go(args[0])
+if __name__ == '__main__':
+    parser = optparse.OptionParser()
+    parser.add_option('-v', '--verbose', action='store_true', dest='verbose', default=False)
+    (options, args) = parser.parse_args()
+    verbose = options.verbose
+    make_config(args[0])
+
+class config_data(dict):
+    def __init__(self, fn): 
+        import __builtin__
+        dict.__init__(self, json.loads(__builtin__.open(fn).read()))
+    def get_syms(self, sub):
+        return get_syms(self[sub])       
+        
+def open():
+    return config_data(basepath + '/config.json')
+

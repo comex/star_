@@ -4,13 +4,10 @@ import warnings
 warnings.simplefilter('error')
 debug_mode = False
 
-try:
-    import json
-except:
-    import ijson as json
-config = json.loads(open('../config/config.json').read())
-arch = config['arch']
-launchd = config['#launchd']
+import config
+cfg = config.open()
+arch = cfg['arch']
+launchd = cfg['#launchd']
 assert arch in ['armv6', 'armv7']
 def nexti(addr):
     if addr & 1:
