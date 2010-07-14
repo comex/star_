@@ -1,7 +1,3 @@
-/* TODO:
-* Cleanup (AST vs A is just dumb)
-* use readfunc and lzma
-*/
 #define CFCOMMON
 //#define LOG_FP
 #include "common.h"
@@ -21,11 +17,9 @@
 #include <spawn.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/sysctl.h>
 #include <fts.h>
 #include <CoreFoundation/CoreFoundation.h>
-#include "fb.h"
-
-//FILE *log_fp;
 
 extern void do_copy(char *, char *, ssize_t (*)(int, const void *, size_t));
 extern void init();
@@ -34,9 +28,13 @@ extern void register_application(CFStringRef app);
 static int written_bytes;
 static bool is_ipad;
 
+static const char *freeze;
+static int freeze_len;
+static void (*set_progress)(float);
+
 static void wrote_bytes(ssize_t bytes) {
     written_bytes += bytes;
-    gasgauge_set_progress(written_bytes / 15759544.0);
+    set_progress(written_bytes / 15759544.0);
 }
 
 ssize_t my_write(int fd, const void *buf, size_t len) {
@@ -119,25 +117,6 @@ static inline void copy_files(const char *from, const char *to, bool copy) {
     free(b);
 }
 
-#if 0
-static void qmkdir(const char *path) {
-    mkdir(path, 0755);
-    chown(path, 0, 0);
-}
-
-static int qposix_spawn(pid_t * pid, const char * path, 
-const posix_spawn_file_actions_t *nul, const posix_spawnattr_t *attrp, 
-char *const argv[], char *const envp[]) {
-    posix_spawn_file_actions_t file_actions;
-    posix_spawn_file_actions_init(&file_actions);
-    posix_spawn_file_actions_addopen(&file_actions, 1, "/var/mobile/Media/log.txt", O_WRONLY | O_CREAT, 0644);
-    int ret = posix_spawn(pid, path, &file_actions, attrp, argv, envp);
-    posix_spawn_file_actions_destroy(&file_actions);
-    return ret;
-}
-#endif
-#define qposix_spawn posix_spawn
-
 static int qlaunchctl(char *what, char *who) {
     char *args[] = {
         "/bin/launchctl",
@@ -156,19 +135,10 @@ static void lol_mkdir() {
     // It patches the mkdir function to ask for NOCROSSMOUNT
     // does the mkdir real quick, then patches it back
 
-    int fd = open("/var/mobile/Media/spirit/one.dylib", O_RDONLY);
-    AST(lol_one_fd, fd > 0);
-
-    struct stat st;
-    TRY(lol_stat, fstat(fd, &st));
-
-    unsigned int addy;
-    AST(lol_sizeof, 4 == sizeof(addy));
-    AST(lol_read_addy, 4 == pread(fd, &addy, 4, st.st_size - 4));
+    unsigned int addy = CONFIG_VNODE_PATCH;
     I("lol_mkdir: addy = %x", addy);
 
-    close(fd);
-    fd = open("/dev/kmem", O_RDWR);
+    int fd = open("/dev/kmem", O_RDWR);
     AST(lol_kmem_fd, fd > 0);
 
     int flags;
@@ -202,7 +172,6 @@ static void qstat(const char *path) {
 }
 
 struct lzmactx {
-    int fd;
     lzma_stream strm;
     uint8_t buf[BUFSIZ];
     uint8_t in_buf[BUFSIZ];
@@ -212,12 +181,12 @@ struct lzmactx {
 
 int lzmaopen(const char *path, int oflag, int foo) {
     struct lzmactx *ctx = malloc(sizeof(struct lzmactx));
-    ctx->fd = open(path, oflag, foo);
     ctx->strm = (lzma_stream) LZMA_STREAM_INIT;
     lzma_ret ret;
     TRY(stream_decoder, lzma_stream_decoder(&ctx->strm, 64*1024*1024, 0));
 
-    ctx->strm.avail_in = 0;
+    ctx->strm.avail_in = freeze_len;
+    ctx->strm.next_in = freeze; 
     ctx->strm.next_out = ctx->buf;
     ctx->strm.avail_out = BUFSIZ;
     ctx->read_buf = ctx->buf;
@@ -244,12 +213,7 @@ ssize_t lzmaread(int fd, void *buf_, size_t len) {
             continue;                
         }
 
-        if(ctx->strm.avail_in == 0) {
-            // No bytes, feed it some
-            ctx->strm.next_in = ctx->in_buf;
-            ctx->strm.avail_in = read(ctx->fd, ctx->in_buf, BUFSIZ);
-            if(ctx->strm.avail_in == -1) break;
-        }
+        AST(still_has_bytes, ctx->strm.avail_in != 0);
 
         if(ctx->strm.avail_out <= 128) {
             ctx->strm.next_out = ctx->buf;
@@ -294,7 +258,7 @@ static void add_app(CFMutableDictionaryRef mi_cache, char *app) {
 }
 
 
-static void extract(char *fn) {
+static void extract() {
     CFDataRef mi_cache_data = cr("/var/mobile/Library/Caches/com.apple.mobile.installation.plist");
     CFMutableDictionaryRef mi_cache = (void*) CFPropertyListCreateFromXMLData(NULL, mi_cache_data, kCFPropertyListMutableContainersAndLeaves, NULL);
 
@@ -303,6 +267,7 @@ static void extract(char *fn) {
 
     TAR *tar;
     char *current_app = NULL;
+    char *fn = "<buf>";
     // TAR_VERBOSE
     if(tar_open(&tar, fn, &xztype, O_RDONLY, 0, TAR_GNU)) {
         E("could not open %s: %s", fn, strerror(errno));
@@ -353,9 +318,9 @@ static void qmount() {
     pid_t pid, pid2;
 
     strcpy(x, "/");
-    qposix_spawn(&pid, args[0], NULL, NULL, args, NULL);
+    posix_spawn(&pid, args[0], NULL, NULL, args, NULL);
     strcpy(x, "/private/var");
-    qposix_spawn(&pid2, args[0], NULL, NULL, args, NULL);
+    posix_spawn(&pid2, args[0], NULL, NULL, args, NULL);
     int stat;
     waitpid(pid, &stat, 0);
     waitpid(pid2, &stat, 0);
@@ -456,38 +421,26 @@ static void kill_installd() {
         TRY(launchctl_unload, qlaunchctl("unload", "/System/Library/LaunchDaemons/com.apple.installd.plist"));
         TRY(launchctl_load, qlaunchctl("load", "/System/Library/LaunchDaemons/com.apple.installd.plist"));
     }
-    notify_post("com.apple.mobile.application_installed"); // useless if SB is not running but eh
+    notify_post("com.apple.mobile.application_installed");
 }
 
 
-static void actually_install() {
+static void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(float)) {
+    set_progress = set_progress_;
     chdir("/");
-    I("actually_install");
-    unlink("/var/db/launchd.db/com.apple.launchd/overrides.plist"); // might fail
+    I("do_install");
     TIME(remount());
     TIME(lol_mkdir());
     //TIME(stash());
     TIME(dok48());
-    TIME(extract("/var/mobile/Media/spirit/freeze.tar.xz"));
+    freeze = freeze_;
+    freeze_len = freeze_len_;
+    TIME(extract()); // !! this should include libgmalloc
     I("extract out.");
-    qcopy("/var/mobile/Media/spirit/one.dylib", "/usr/lib/libgmalloc.dylib");
-    //TRY(install_unlink, unlink("/var/mobile/Media/spirit/install")); // if this doesn't work, it will screw up on reboot
-    TIME(remove_files("/var/mobile/Media/spirit"));
-    unlink("/var/mobile/Media/spirit");
     TIME(kill_installd());
     TIME(sync());
     I("written_bytes = %d", written_bytes);
+    int zero = 0;
+    TRY(sysctlbyname, sysctlbyname("security.mac.vnode_enforce",  NULL, 0, &zero, sizeof(zero)));
 }
 
-int main() {
-    //log_fp = fopen("/var/mobile/Media/spirit/i_am_install", "w+");
-    I("I am install!");
-    gasgauge_init();
-    actually_install();
-    //for(int i = 0; i < 10; i++) { wrote_bytes(10000000); sleep(1); }
-    gasgauge_fini();
-    I("SpringBoard, you're up.");
-    qlaunchctl("load", "/System/Library/LaunchDaemons/com.apple.SpringBoard.plist");
-
-    return 0;
-}

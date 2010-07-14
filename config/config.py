@@ -1,9 +1,17 @@
 #!/opt/local/bin/python2.6
-import json, struct, re, subprocess, time, shelve, hashlib, cPickle, os, sys, plistlib, optparse, mmap, anydbm
-import pyximport; pyximport.install()
-import confighelper
+import struct, re, subprocess, time, shelve, hashlib, cPickle, os, sys, plistlib, optparse, mmap, anydbm
+try:
+    import json
+except:
+    print >> sys.stderr, '(using fake json)'
+    import ijson as json
+try:
+    import pyximport; pyximport.install()
+except:
+    print >> sys.stderr, '(using slow confighelper)'
+    import iconfighelper as confighelper
 
-os.chdir(os.path.dirname(sys.argv[0]))
+os.chdir(os.path.realpath(os.path.dirname(sys.argv[0])))
 
 data = eval('{%s}' % open('configdata.py').read())
 
@@ -103,9 +111,45 @@ def do_binary_kv(syms, sects, stuff, k, v):
         raise ValueError('%s is not aligned: %x' % (v, val))
     return val
 
+class gdb_symmer:
+    def __init__(self, fn):
+        self.symdict = None
+        import popen2
+        self.i, self.o = popen2.popen2(['/usr/bin/gdb', fn])
+        self.o.write('start\n')
+        self.o.flush()
+        
+    def __getitem__(self, thing):
+        print 'getitem:', thing
+        self.o.write('print/x &%s\n' % thing[1:])
+        self.o.flush()
+        while True:
+            line = self.i.readline()
+            print line
+            m = re.search('= 0x(.{8})', line)
+            if m:
+                ret = int(m.group(1), 16)
+                break
+        self.o.write('disas %s %s+4\n' % (thing[1:], thing[1:]))
+        self.o.write('print 57005\n')
+        self.o.flush()
+        while True:
+            line = self.i.readline()
+            if line.startswith("End of assembler dump") or '57005' in line:
+                return ret # not thumb
+            elif '+2>' in line:
+                return ret | 1
+
+
 def get_syms(d):
+    if not d.has_key('@syms'): return None
+    fn = d['@syms']
+    if fn.startswith('gdb:'):
+        return gdb_symmer(fn[4:])
+    elif fn is not None:
+        return anydbm.open(fn)
     syms = {}
-    for line in subprocess.Popen(['nm', '-p', '-m', d['@binary']], stdout=subprocess.PIPE).stdout:
+    for line in os.popen(['nm', '-p', '-m', d['@binary']]):
         stuff = line[:-1].split(' ')
         name = stuff[-1]
         addr = stuff[0]
@@ -139,29 +183,25 @@ def get_sects(binary):
     fp.close()
     return sects, stuff
 
-def do_binary_uncached_macho(d, binary):
-    syms = get_syms(d)
+def do_binary_uncached_macho(d, binary, syms):
     sects, stuff = get_sects(binary)
 
     tocache = {}
     for k, v in d.iteritems():
-        if k == '@binary' or not isinstance(v, basestring): continue
+        if k == '@binary'  or k == '@syms' or not isinstance(v, basestring): continue
         tocache[k] = do_binary_kv(syms, sects, stuff, k, v)
     return tocache
 
 ## dyld shared cache stupid object format
 # more efficient.
 
-def do_binary_uncached_dyldcache(d, binary):
-    syms = None
+def do_binary_uncached_dyldcache(d, binary, syms):
     mydict = {}
     soffs = {}
     result = {}
     for k, v in d.iteritems():
         if not isinstance(k, basestring) or k.startswith('@'): continue
         if v[0] in ('-', '+') and v[1] != ' ':
-            print d['@syms']
-            if syms is None: syms = anydbm.open(d['@syms'])
             result[k] = do_symstring(syms, v)
             continue
         soff = None
@@ -216,19 +256,20 @@ def do_binary_uncached_dyldcache(d, binary):
 ###
 
 def do_binary(d):
-    for i in ['@syms', '@binary']:
-        if d.has_key(i):
-            d[i] = os.path.realpath(d[i])
+    #for i in ['@syms', '@binary']:
+    #    if d.has_key(i):
+    #        d[i] = os.path.realpath(d[i])
     binary = d['@binary']
     cachekey = hashlib.sha1(cPickle.dumps((d, os.path.getmtime(binary)), cPickle.HIGHEST_PROTOCOL)).digest()
     if cache.has_key(cachekey):
         d.update(cache[cachekey])
         return
   
-    if binary.endswith('.cache'):
-        tocache = do_binary_uncached_dyldcache(d, binary)
+    syms = get_syms(d)
+    if binary.endswith('.cache') or 'dyld_shared_cache' in binary:
+        tocache = do_binary_uncached_dyldcache(d, binary, syms)
     else:
-        tocache = do_binary_uncached_macho(d, binary)
+        tocache = do_binary_uncached_macho(d, binary, syms)
     d.update(tocache)
     cache[cachekey] = tocache
 

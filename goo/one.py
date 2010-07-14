@@ -231,10 +231,6 @@ fp.write(heap)
 assert fp.tell() < 0x4000
 OFF = fp.tell()
 
-# Tack this on at the end for the installer to find
-# (lame but whatever)
-#fp.write(struct.pack('I', config['kern']['vnode_patch']))
-
 fp.seek(split1)
 fp.write(struct.pack('I', heapsize))
 fp.seek(split2)
