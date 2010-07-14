@@ -1,9 +1,13 @@
 #!/opt/local/bin/python2.6
-import struct, sys, os, json
+import struct, sys, os
 import warnings
 warnings.simplefilter('error')
 debug_mode = False
 
+try:
+    import json
+except:
+    import ijson as json
 config = json.loads(open('../config/config.json').read())
 arch = config['arch']
 launchd = config['#launchd']
