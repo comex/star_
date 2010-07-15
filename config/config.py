@@ -7,8 +7,9 @@ except:
     import ijson as json
 try:
     import pyximport; pyximport.install()
+    import confighelper
 except:
-    print >> sys.stderr, '(using slow confighelper)'
+    print >> sys.stderr, '(Cython couldn\'t be imported; using slow confighelper)'
     import iconfighelper as confighelper
 
 if __name__ == '__main__':
@@ -63,40 +64,18 @@ class anydbm_symmer:
         if isinstance(addr, basestring): addr = struct.unpack('I', addr)[0]
         return addr
 
+        
 def get_syms(d):
     if not d.has_key('@syms'): return None
     fn = d['@syms']
-    if fn.startswith('gdb:'):
+    if fn is None:
+        return macho_load(d['@binary']).get_syms()
+    elif fn.startswith('gdb:'):
         return gdb_symmer(fn[4:])
-    elif fn is not None:
+    else:
         return anydbm_symmer(fn)
-    syms = {}
-    for line in os.popen(['nm', '-p', '-m', d['@binary']]):
-        stuff = line[:-1].split(' ')
-        name = stuff[-1]
-        addr = stuff[0]
-        if not addr: continue
-        addr = int(addr, 16)
-        if stuff[-2] == '[Thumb]':
-            addr |= 1
-        syms[name] = addr
-    return syms
 
 ## Mach-O
-def lookup_addr(sects, off):
-    for startaddr, startoff, size in sects:
-        if off >= startoff and off < (startoff + size):
-            val = startaddr + (off - startoff)
-            break
-    return val
-
-def lookup_off(sects, addr):
-    for startaddr, startoff, size in sects:
-        if addr >= startaddr and addr < (startaddr + size):
-            val = startoff + (addr - startaddr)
-            break
-    return val
-
 
 def do_symstring(syms, v):
     name = v[1:]
@@ -111,18 +90,18 @@ def do_symstring(syms, v):
     addr += offs
     return addr
 
-def do_binary_kv(syms, sects, stuff, k, v):
+def do_binary_kv(syms, macho, k, v):
     if v[0] in ('-', '+') and v[1] != ' ':
         return do_symstring(syms, v)
     elif v[0] == '*' and v[1] != ' ':
-        off = lookup_off(sects, syms[v[1:]])
-        return struct.unpack('I', stuff[off:off+4])[0]
+        off = macho.lookup_off(syms[v[1:]])
+        return struct.unpack('I', macho.stuff[off:off+4])[0]
     elif v[0] == '$' and v[1] != ' ':
-        off = stuff.find(struct.pack('I', lookup_addr(sects, stuff.find(v[1:] + '\0')))) - 8
-        return struct.unpack('I', stuff[off:off+4])[0]
+        off = macho.stuff.find(struct.pack('I', macho.lookup_addr(macho.stuff.find(v[1:] + '\0')))) - 8
+        return struct.unpack('I', macho.stuff[off:off+4])[0]
     elif v == '!':
-        off = re.search('\x14[\x14\x00]{256}', stuff).start()
-        val = lookup_addr(sects, off)
+        off = re.search('\x14[\x14\x00]{256}', macho.stuff).start()
+        val = macho.lookup_addr(off)
         val = (val + 4) & ~3
         return val
 
@@ -135,13 +114,7 @@ def do_binary_kv(syms, sects, stuff, k, v):
     n = 0
     for bit in bits:
         if bit.startswith('='):
-            myaddr = syms[bit[1:]] & ~1 
-            for vmaddr, sectstart, sectend in sects:
-                if vmaddr <= myaddr < vmaddr + (sectend - sectstart):
-                    startoff = myaddr - vmaddr + sectstart
-                    break
-            else:
-                raise ValueError('wtf')
+            startoff = macho.lookup_off(syms[bit[1:]] & ~1)
         elif bit == '@':
             loose = True
         elif bit == '+':
@@ -160,52 +133,84 @@ def do_binary_kv(syms, sects, stuff, k, v):
     if soff is None:
         raise ValueError('No offset in %s' % (v,))
     if startoff is not None:
-        print stuff[startoff:startoff+64].encode('hex')
-        offs = list(re.compile(sstr).finditer(stuff, startoff, startoff+64))
+        print macho.stuff[startoff:startoff+64].encode('hex')
+        offs = list(re.compile(sstr).finditer(macho.stuff, startoff, startoff+64))
     else:
-        offs = list(re.finditer(sstr, stuff))
+        offs = list(re.finditer(sstr, macho.stuff))
     if len(offs) == 0:
         print repr(sstr)
         raise ValueError('I couldn\'t find %s' % v)
     elif not loose and len(offs) >= 2:
         raise ValueError('I found multiple (%d) %s' % (len(offs), v))
     off = offs[0].start()
-    val = lookup_addr(sects, off + soff)
+    val = macho.lookup_addr(off + soff)
     if aligned and (val & 3):
         raise ValueError('%s is not aligned: %x' % (v, val))
     return val
 
+class macho:
+    def __init__(self, binary):
+        fp = open(binary, 'rb')
+        self.stuff = mmap.mmap(fp.fileno(), os.path.getsize(binary), prot=mmap.PROT_READ)
+        magic, cputype, cpusubtype, \
+        filetype, filetype, ncmds, sizeofcmds, \
+        flags = struct.unpack('IHHIIIII', fp.read(0x1c))
+        self.sects = sects = []
+        while True:
+            xoff = fp.tell()
+            if xoff >= sizeofcmds: break
+            cmd, clen = struct.unpack('II', fp.read(8))
+            if cmd == 1: # LC_SEGMENT
+                name = fp.read(16).rstrip('\0')
+                #print name
+                vmaddr, vmsize, foff, fsiz = struct.unpack('IIII', fp.read(16))
+                sects.append((vmaddr, foff, fsiz))
+            elif cmd == 2: # LC_SYMTAB
+                self.symoff, self.nsyms, self.stroff, self.strsize = struct.unpack('IIII', fp.read(16))
+            fp.seek(xoff + clen)
+        self.fp = fp
 
-def get_sects(binary):
-    fp = open(binary, 'rb')
-    stuff = mmap.mmap(fp.fileno(), os.path.getsize(binary), prot=mmap.PROT_READ)
-    magic, cputype, cpusubtype, \
-    filetype, filetype, ncmds, sizeofcmds, \
-    flags = struct.unpack('IHHIIIII', fp.read(0x1c))
-    sects = []
-    while True:
-        xoff = fp.tell()
-        if xoff >= sizeofcmds: break
-        cmd, clen = struct.unpack('II', fp.read(8))
-        if cmd == 1: # LC_SEGMENT
-            fp.seek(xoff + 8)
-            name = fp.read(16)
-            name = name[:name.find('\0')]
-            #print name
-            fp.seek(xoff + 24)
-            vmaddr, vmsize, foff, fsiz = struct.unpack('IIII', fp.read(16))
-            sects.append((vmaddr, foff, fsiz))
-        fp.seek(xoff + clen)
-    fp.close()
-    return sects, stuff
+    def get_syms(self):
+        # This could be a lot more efficient.
+        # and don't get me started about lc_dyld_info
+        ret = {}
+        self.fp.seek(self.symoff)
+        for i in xrange(self.nsyms):
+            n_strx, n_type, n_sect, n_desc, n_value = struct.unpack('IBBhI', self.fp.read(12))
+            n_strx += self.stroff
+            if n_desc & 8:
+                # thumb
+                n_value |= 1
+            ret[self.stuff[n_strx:self.stuff.find('\0', n_strx)]] = n_value
+        return ret
+
+    def lookup_addr(self, off):
+        for startaddr, startoff, size in self.sects:
+            if off >= startoff and off < (startoff + size):
+                val = startaddr + (off - startoff)
+                break
+        return val
+
+    def lookup_off(self, addr):
+        for startaddr, startoff, size in self.sects:
+            if addr >= startaddr and addr < (startaddr + size):
+                val = startoff + (addr - startaddr)
+                break
+        return val
+
+machos = {}
+def macho_load(binary):
+    if not machos.has_key(binary): 
+        machos[binary] = macho(binary)
+    return machos[binary]
 
 def do_binary_uncached_macho(d, binary, syms):
-    sects, stuff = get_sects(binary)
+    macho = macho_load(binary)
 
     tocache = {}
     for k, v in d.iteritems():
         if k == '@binary'  or k == '@syms' or not isinstance(v, basestring): continue
-        tocache[str(k)] = do_binary_kv(syms, sects, stuff, k, v)
+        tocache[str(k)] = do_binary_kv(syms, macho, k, v)
     return tocache
 
 ## dyld shared cache stupid object format
