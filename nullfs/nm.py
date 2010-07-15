@@ -37,7 +37,7 @@ for line in os.popen('otool -Ivv nullfs.dylib'):
 for line in os.popen('otool -rvv nullfs.dylib'):
     line = line.strip()
     if '_' in line and '(__' not in line:
-        iaddr = int(line[:8], 16) + 0xc03c0000#0xc06ef000
+        iaddr = int(line[:8], 16) + 0xc06ed000
         sym = line[line.find('_'):]
         usyms.append((iaddr, sym))
 

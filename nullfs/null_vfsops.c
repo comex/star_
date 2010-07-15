@@ -222,7 +222,7 @@ nullfs_mount(mp, devvp, data, context)
     /*
      * Find lower node
      */
-    NDINIT(&nd, LOOKUP, FOLLOW|WANTPARENT|LOCKLEAF,
+    NDINIT(&nd, LOOKUP, FOLLOW|WANTPARENT,
         UIO_USERSPACE, args.target, context);
     if (error = namei(&nd))
         return (error);
@@ -231,9 +231,15 @@ nullfs_mount(mp, devvp, data, context)
      * Sanity check on lower vnode
      */
     lowerrootvp = nd.ni_vp;
+    vnode_get(lowerrootvp);
+    vnode_ref(lowerrootvp);
 
-    vnode_put(nd.ni_dvp);
+    //vnode_put(nd.ni_dvp);
     nd.ni_dvp = NULL;
+    
+    printf("lowerrootvp->v_type = %d\n", lowerrootvp->v_type);
+    printf("lowerrootvp->v_usecount = %d\n", lowerrootvp->v_usecount);
+    printf("lowerrootvp->v_iocount = %d\n", lowerrootvp->v_iocount);
 
     xmp = (struct null_mount *) _MALLOC(sizeof(struct null_mount),
                 M_UFSMNT, M_WAITOK);    /* XXX */

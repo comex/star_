@@ -150,7 +150,9 @@ loop:
     return NULL;
 }
 
-
+int iocount(struct vnode *vp) {
+    return vp->v_iocount;
+}
 /*
  * Make a new null_node node.
  * Vp is the alias vnode, lofsvp is the lower vnode.
@@ -175,19 +177,22 @@ null_node_alloc(mp, lowervp, vpp, markroot)
     vfsp.vnfs_str = "nullfs";
     vfsp.vnfs_dvp = NULLVP;
     vfsp.vnfs_fsnode = xp;
-    vfsp.vnfs_cnp = NULLVP;
+    vfsp.vnfs_cnp = 0;
     vfsp.vnfs_vops = null_vnodeop_p;
     vfsp.vnfs_rdev = 0;
     vfsp.vnfs_filesize = 0;
     vfsp.vnfs_flags = VNFS_NOCACHE | VNFS_CANTCACHE;
     vfsp.vnfs_marksystem = 0;
-    vfsp.vnfs_markroot = markroot;
+    vfsp.vnfs_markroot = markroot ? VROOT : 0;
 
     if (error = vnode_create(VNCREATE_FLAVOR, VCREATESIZE, &vfsp, vpp)) {
+        printf("welp: vnode_create failed\n");
         FREE(xp, M_TEMP);
         return (error);
     }
     vp = *vpp;
+    printf("I just created it; it has usecount %d\n", vp->v_usecount);
+    printf("iocount %d\n", vp->v_iocount);
 
     vp->v_type = lowervp->v_type;
     xp->null_vnode = vp;
@@ -237,7 +242,7 @@ null_node_create(mp, lowervp, newvpp, markroot)
          * to the alias vnode.
          */
 #ifdef NULLFS_DIAGNOSTIC
-        vprint("null_node_create: exists", NULLTOV(ap));
+        printf("null_node_create: exists\n");
 #endif
         /* vnode_get(aliasvp); --- done in null_node_find */
     } else {
@@ -262,19 +267,20 @@ null_node_create(mp, lowervp, newvpp, markroot)
     }
 
     vnode_put(lowervp);
+    printf("usecount = %d\n", lowervp->v_usecount);
 
 #if DIAGNOSTIC
     if (lowervp->v_usecount < 1) {
         /* Should never happen... */
-        vprint ("null_node_create: alias ", aliasvp);
-        vprint ("null_node_create: lower ", lowervp);
+        //vprint ("null_node_create: alias ", aliasvp);
+        //vprint ("null_node_create: lower ", lowervp);
         panic ("null_node_create: lower has 0 usecount.");
     };
 #endif
 
 #ifdef NULLFS_DIAGNOSTIC
-    vprint("null_node_create: alias", aliasvp);
-    vprint("null_node_create: lower", lowervp);
+    //vprint("null_node_create: alias", aliasvp);
+    //vprint("null_node_create: lower", lowervp);
 #endif
 
     *newvpp = aliasvp;
@@ -307,7 +313,7 @@ null_checkvp(vp, fil, lno)
             printf(" %x", p[i]);
         printf("\n");
         /* wait for debugger */
-        while (null_checkvp_barrier) /*WAIT*/ ;
+        //while (null_checkvp_barrier) /*WAIT*/ ;
         panic("null_checkvp");
     }
     if (a->null_lowervp->v_usecount < 1) {
@@ -317,7 +323,7 @@ null_checkvp(vp, fil, lno)
             printf(" %x", p[i]);
         printf("\n");
         /* wait for debugger */
-        while (null_checkvp_barrier) /*WAIT*/ ;
+        //while (null_checkvp_barrier) /*WAIT*/ ;
         panic ("null with unref'ed lowervp");
     };
 #ifdef notyet

@@ -18,7 +18,7 @@ if __name__ == '__main__':
     data = eval('{%s}' % open('configdata.py').read())
 else:
     basepath = os.path.realpath(os.path.dirname(__file__))
-cache = shelve.open(basepath + '/config1.cache')
+cache = shelve.open(basepath + '/config.cache')
 
 ## syms
 # why do I have so many ways of getting syms?
@@ -297,7 +297,7 @@ def do_binary(d):
 def dict_to_cflags(d):
     cflags = ''
     for k, v in d.iteritems():
-        if not isinstance(k, basestring) or k.startswith('@'): continue
+        if not isinstance(k, basestring) or '-' in k or k.startswith('@'): continue
         if isinstance(v, dict):
             cflags += dict_to_cflags(v)
             continue

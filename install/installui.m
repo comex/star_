@@ -15,7 +15,7 @@
 @interface Dude : NSObject {
     UIAlertView *progressAlertView;
     UIProgressBar *progressBar;
-    NSMutableData *pack;
+    NSMutableData *wad;
     long long expectedLength;
     const char *freeze;
     int freeze_len;
@@ -57,19 +57,38 @@ static void set_progress(float progress) {
 }
 
 - (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data {
-    [pack appendData:data];
-    [progressBar setProgress:((float)[pack length])/expectedLength];
+    [wad appendData:data];
+    [progressBar setProgress:((float)[wad length])/expectedLength];
 }
 
+struct wad {
+    unsigned char sha1[20];
+    unsigned int first_part_size;
+    unsigned char data[];
+};
+
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection {
-    uint32_t dysize = *((uint32_t *) [pack bytes]);
-    [[pack subdataWithRange:NSMakeRange(sizeof(uint32_t), dysize)] writeToFile:@"/tmp/install.dylib" atomically:NO];
-    freeze = [pack bytes] + sizeof(uint32_t) + dysize;
-    freeze_len = [pack length] - sizeof(uint32_t) - dysize;
+    if([wad length] < sizeof(struct wad)) goto error;
+    struct wad *sw = [wad bytes];
+    unsigned char sha1[20];
+    CC_SHA1(&sw->first_part_size, [wad length] - 20, sha1);
+    if(memcmp(sha1, sw->sha1, 20)) goto error;
+    [[wad subdataWithRange:NSMakeRange(sizeof(struct wad), sw->first_part_size)] writeToFile:@"/tmp/install.dylib" atomically:NO];
+    freeze = &sw->data[sizeof(struct wad) + sw->first_part_size];
+    freeze_len = [wad length] - sizeof(struct wad) - sw->first_part_size;
     progressAlertView.title = @"Jailbreaking...";
     progressAlertView.message = @"Sit tight.";
     [progressBar setProgress:0.0];
     [NSThread detachNewThreadSelector:@selector(doStuff) toTarget:self withObject:nil];
+    return;
+    error:
+
+    [progressAlertView hide];
+    [progressAlertView release];
+    progressAlertView = nil;
+
+    UIAlertView *errorAlertView = [[UIAlertView alloc] initWithTitle:@"Error" message:@"Invalid file received.  Are you on a fail wi-fi connection?" delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:@"Retry", nil];
+    [alertView show];
 }
 
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
@@ -99,8 +118,8 @@ static void set_progress(float progress) {
     [progressBar setProgressBarStyle:2];
     [progressAlertView addSubview:progressBar];
     [progressAlertView show]; 
-    pack = [[NSMutableData alloc] init];
-    [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://ip/pack.bin"]] delegate:self];
+    wad = [[NSMutableData alloc] init];
+    [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://ip/wad.bin"]] delegate:self];
 
     [NSTimer scheduledTimerWithTimeInterval:20 target:self selector:@selector(bored) userInfo:nil repeats:NO];
     [NSTimer scheduledTimerWithTimeInterval:40 target:self selector:@selector(bored2) userInfo:nil repeats:NO];
