@@ -238,7 +238,17 @@ def binary_open(filename):
     return binary
     
 def do_binary(name, d):
-    filename = d.get('@binary', '../bs/%s/%s' % (platform, name[1:]))
+    if d.has_key('@binary'):
+        filename = d['@binary']
+    else:
+        plat = '../bs/%s' % platform
+        filename = plat + '/' + name[1:]
+        if not os.path.exists(filename):
+            if not os.path.exists(plat): os.mkdir(plat)
+            assert 0 == os.system('wget -O "%s.lzma" "http://$BS_HOST/%s.lzma"' % (filename, filename[3:]))
+            assert 0 == os.system('lzma -d "%s".lzma' % filename)
+            assert os.path.exists(filename)
+
     cachekey = hashlib.sha1(cPickle.dumps((d, os.path.getmtime(filename)), cPickle.HIGHEST_PROTOCOL)).digest()
     if cache.has_key(cachekey):
         d.update(cache[cachekey])

@@ -115,21 +115,13 @@
 
 'iPad1,1_3.2': {
     '<': '.armv7_3.2+',
-    '#cache': {
-
-        '@binary': '../dsc/iPad1,1_3.2.cache',
-    },
     '#kern': {
-        '@binary': '/Users/comex/share/ipadkern',
         'vram_baseaddr': 0xed6ed000 + 1024*768*4*2,
         'vram_baseaddr_atboot': 0xed6ed000 + 1024*768*4,
         
         # From old configdata.
         #'patch2':       0xc025dc8c, _mac_proc_enforce
         #'patch5':       0xc023fac0, _cs_enforcement_disable
-    },
-    '#launchd': {
-        '@binary': '/Users/comex/igor/ipsw/ipad_dump/launchd',
     },
 },
 'iPad1,1_3.2_self': {
@@ -141,18 +133,11 @@
 
 'iPhone3,1_4.0': {
     '<': '.armv7_3.2+',
-    '#cache': {
-        '@binary': '../dsc/iPhone3,1_4.0.cache',
-    },
     '#kern': {
-        '@binary': '/Users/comex/share/tense3',
         
         'vram_baseaddr': 0xd35e9000 + 640*960*4*3,
         # ???
         'vram_baseaddr_atboot': 0xd35e9000 + 640*960*4,
         'patch3':       '70 46 13 22 .. 4b 98 47 00 .. -',
-    },
-    '#launchd': {
-        '@binary': '/Users/comex/share/iPhone3,1_4.0_launchd',
     },
 },
