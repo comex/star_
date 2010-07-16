@@ -118,11 +118,9 @@
     '#cache': {
 
         '@binary': '../dsc/iPad1,1_3.2.cache',
-        '@syms': '../dsc/syms/iPad1,1_3.2',
     },
     '#kern': {
         '@binary': '/Users/comex/share/ipadkern',
-        '@syms': None,
         'vram_baseaddr': 0xed6ed000 + 1024*768*4*2,
         'vram_baseaddr_atboot': 0xed6ed000 + 1024*768*4,
         
@@ -136,8 +134,8 @@
 },
 'iPad1,1_3.2_self': {
     '<': 'iPad1,1_3.2',
-    '#cache': { '@binary': '/System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv7', '@syms': 'gdb:/bin/echo', },
-    '#kern': { '@binary': '/var/mobile/ipadkern', '@syms': 'gdb:/var/mobile/ipadkern', },
+    '#cache': { '@binary': '/System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv7', },
+    '#kern': { '@binary': '/var/mobile/ipadkern', },
     '#launchd': { '@binary': '/sbin/launchd', },
 },
 
@@ -145,11 +143,9 @@
     '<': '.armv7_3.2+',
     '#cache': {
         '@binary': '../dsc/iPhone3,1_4.0.cache',
-        '@syms': '../dsc/syms/iPhone3,1_4.0',
     },
     '#kern': {
         '@binary': '/Users/comex/share/tense3',
-        '@syms': None,
         
         'vram_baseaddr': 0xd35e9000 + 640*960*4*3,
         # ???

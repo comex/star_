@@ -13,24 +13,24 @@ else:
     basepath = os.path.realpath(os.path.dirname(__file__))
 cache = shelve.open(basepath + '/config.cache')
 
-def do_symstring(syms, v):
+def do_symstring(binary, v):
     name = v[1:]
     offs = 0
     z = name.find('+')
     if z != -1:
         offs = eval(name[z+1:])
         name = name[:z]
-    addr = syms[name]
+    addr = binary.get_sym(name)
     # Data, so even a thumb symbol shouldn't be &1
     if v[0] == '-': addr &= ~1
     addr += offs
     return addr
 
-def do_binary_kv(syms, binary, k, v):
+def do_binary_kv(binary, k, v):
     if v[0] in ('-', '+') and v[1] != ' ':
-        return do_symstring(syms, v)
+        return do_symstring(binary, v)
     elif v[0] == '*' and v[1] != ' ':
-        off = binary.lookup_off(syms[v[1:]] & ~1)
+        off = binary.lookup_off(binary.get_sym(v[1:]) & ~1)
         return struct.unpack('I', binary.stuff[off:off+4])[0]
     elif v[0] == '$' and v[1] != ' ':
         off = binary.stuff.find(struct.pack('I', binary.lookup_addr(binary.stuff.find(v[1:] + '\0')))) - 8
@@ -50,7 +50,7 @@ def do_binary_kv(syms, binary, k, v):
     n = 0
     for bit in bits:
         if bit.startswith('='):
-            startoff = binary.lookup_off(syms[bit[1:]] & ~1)
+            startoff = binary.lookup_off(binary.get_sym(bit[1:]) & ~1)
         elif bit == '@':
             loose = True
         elif bit == '+':
@@ -107,14 +107,15 @@ class basebin:
 
 class macho(basebin):
     def __init__(self, stuff):
-        stuff.seek(0)
+        xbase = stuff.tell()
         magic, cputype, cpusubtype, \
         filetype, filetype, ncmds, sizeofcmds, \
         flags = struct.unpack('IHHIIIII', stuff.read(0x1c))
         self.sects = sects = []
+        self.nsyms = None
         while True:
             xoff = stuff.tell()
-            if xoff >= sizeofcmds: break
+            if xoff >= xbase + sizeofcmds: break
             cmd, clen = struct.unpack('II', stuff.read(8))
             if cmd == 1: # LC_SEGMENT
                 name = stuff.read(16).rstrip('\0')
@@ -123,41 +124,119 @@ class macho(basebin):
                 sects.append((vmaddr, foff, fsiz))
             elif cmd == 2: # LC_SYMTAB
                 self.symoff, self.nsyms, self.stroff, self.strsize = struct.unpack('IIII', stuff.read(16))
+            elif cmd == 11: # LC_DYSYMTAB
+                self.ilocalsym, self.nlocalsym = struct.unpack('II', stuff.read(8))
+                self.iextdefsym, self.nextdefsym = struct.unpack('II', stuff.read(8))
+                self.iundefsym, self.nundefsym = struct.unpack('II', stuff.read(8))
             stuff.seek(xoff + clen)
         self.stuff = stuff
 
-    def get_syms(self):
-        # This could be a lot more efficient.
-        # and don't get me started about lc_dyld_info
-        ret = {}
-        self.fp.seek(self.symoff)
+    def print_all_syms(self):
+        print 'local:', self.ilocalsym, self.nlocalsym
+        print 'extdef:', self.iextdefsym, self.nextdefsym
+        print 'undef:', self.iundefsym, self.nundefsym
         for i in xrange(self.nsyms):
-            n_strx, n_type, n_sect, n_desc, n_value = struct.unpack('IBBhI', self.fp.read(12))
+            off = self.symoff + 12*i
+            n_strx, n_type, n_sect, n_desc, n_value = struct.unpack('IBBhI', self.stuff[off:off+12])
             n_strx += self.stroff
+            psym = self.stuff[n_strx:self.stuff.find('\0', n_strx)]
+            print '%d: %s' % (i, psym)
+
+    def get_sym(self, sym):
+        # Local syms aren't sorted.  So I can't use a binary search.
+        if self.nsyms is None:
+            raise KeyError, sym
+        for off in xrange(self.symoff, self.symoff + 12*self.nsyms, 12):
+            n_strx, n_type, n_sect, n_desc, n_value = struct.unpack('IBBhI', self.stuff[off:off+12])
+            n_strx += self.stroff
+            psym = self.stuff[n_strx:self.stuff.find('\0', n_strx)]
+            print psym
+            if sym != psym: continue
+            # ok we found it
             if n_desc & 8:
                 # thumb
                 n_value |= 1
-            ret[self.stuff[n_strx:self.stuff.find('\0', n_strx)]] = n_value
-        return ret
+            print sym, hex(n_value)
+            return n_value
+        raise KeyError, sym
+            
+
+    def get_extdefsym(self, sym):
+        # ImageLoaderMachOClassic::binarySearch
+        if self.nsyms is None:
+            raise KeyError, sym
+        low = self.iextdefsym
+        high = self.iextdefsym + self.nextdefsym - 1
+        print 'nsyms =', self.nsyms
+        while low <= high:
+            pivot = (low + high) / 2
+            off = self.symoff + 12*pivot
+            n_strx, n_type, n_sect, n_desc, n_value = struct.unpack('IBBhI', self.stuff[off:off+12])
+            n_strx += self.stroff
+            psym = self.stuff[n_strx:self.stuff.find('\0', n_strx)]
+            print 'psym=', psym
+            result = cmp(sym, psym)
+            if result > 0:
+                low = pivot + 1
+                continue
+            elif result < 0:
+                high = pivot - 1
+                continue
+            # ok we found it
+            if n_desc & 8:
+                # thumb
+                n_value |= 1
+            print sym, hex(n_value)
+            return n_value
+        raise KeyError, sym
 
 class dyldcache(basebin):
     def __init__(self, stuff):
+        self.stuff = stuff
         stuff.seek(0)
         magic = stuff.read(16)
-        assert re.find('dyld_v1   armv.\0' , magic)
+        assert re.match('dyld_v1   armv.\0' , magic)
     
         mappingOffset, mappingCount = struct.unpack('II', stuff.read(8))
-        f.seek(mappingOffset)
+        imagesOffset, imagesCount = struct.unpack('II', stuff.read(8))
+
+        stuff.seek(mappingOffset)
         self.sects = []
         for i in xrange(mappingCount):
             sfm_address, sfm_size, sfm_file_offset, sfm_max_prot, sfm_init_prot = struct.unpack('QQQII', stuff.read(32))
             self.sects.append((sfm_address, sfm_file_offset, sfm_size))
+        
+        self.files = {}
+        for i in xrange(imagesCount):
+            stuff.seek(imagesOffset + 32*i)
+            address, modTime, inode, pathFileOffset, pad = struct.unpack('QQQII', stuff.read(32))
+            stuff.seek(self.lookup_off(address))
+            self.files[stuff[pathFileOffset:stuff.find('\0', pathFileOffset)]] = macho(stuff)
 
-    def get_syms(self):
-        pass
+    def get_sym(self, sym):
+        for name, macho in self.files.iteritems():
+            try:
+                result = macho.get_sym(sym)
+            except KeyError:
+                continue
+            else:
+                return result
+        raise KeyError, sym
+        
 
 ###
-
+def binary_open(filename):
+    fp = open(filename, 'rb')
+    magic = fp.read(4)
+    stuff = mmap.mmap(fp.fileno(), os.path.getsize(filename), prot=mmap.PROT_READ)
+    if magic == 'dyld':
+        binary = dyldcache(stuff)
+    elif magic == struct.pack('I', 0xfeedface):
+        binary = macho(stuff)
+    else:
+        raise Exception('Unknown magic %r' % magic)
+    return binary
+    
 def do_binary(d):
     filename = d['@binary']
     cachekey = hashlib.sha1(cPickle.dumps((d, os.path.getmtime(filename)), cPickle.HIGHEST_PROTOCOL)).digest()
@@ -165,20 +244,12 @@ def do_binary(d):
         d.update(cache[cachekey])
         return
 
-    fp = open(filename, 'rb')
-    magic = fp.read(4)
-    stuff = mmap.mmap(fp.fileno(), os.path.getsize(filename), prot=mmap.PROT_READ)
-    if magic == 'dyld':
-        binary = dyldcache(stuff)
-    elif magic == struct.pack('I', 0xfeedface)
-        binary = macho(stuff)
-    else:
-        raise Exception('Unknown magic %r' % magic)
-    
-    syms = binary.get_syms() 
+    binary = binary_open(filename)
+   
+    tocache = {}
     for k, v in d.iteritems():
         if k == '@binary' or not isinstance(v, basestring): continue
-        tocache[k] = do_binary_kv(syms, binary, k, v)
+        tocache[k] = do_binary_kv(binary, k, v)
 
     d.update(tocache)
     cache[cachekey] = tocache
@@ -249,6 +320,6 @@ class config_data(dict):
     def get_syms(self, sub):
         return get_syms(self[sub])       
         
-def open():
+def openconfig():
     return config_data(basepath + '/config.json')
 
