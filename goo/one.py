@@ -5,7 +5,7 @@ warnings.simplefilter('error')
 debug_mode = False
 
 import config
-cfg = config.open()
+cfg = config.openconfig()
 arch = cfg['arch']
 launchd = cfg['#launchd']
 assert arch in ['armv6', 'armv7']

@@ -42,11 +42,13 @@ def do_binary_kv(binary, k, v):
         return val
 
     bits = v.split(' ')
+    xstr = ''
     sstr = ''
     soff = None
     loose = False
     aligned = False
     startoff = None
+    nonexact = False
     n = 0
     for bit in bits:
         if bit.startswith('='):
@@ -62,16 +64,26 @@ def do_binary_kv(binary, k, v):
             aligned = True
         elif bit == '..':
             sstr += '.'
+            nonexact = True
             n += 1
         else:
-            sstr += re.escape(chr(int(bit, 16)))
+            x = chr(int(bit, 16))
+            xstr += x
+            sstr += re.escape(x)
             n += 1
     if soff is None:
         raise ValueError('No offset in %s' % (v,))
     if loose:
-        m = re.search(sstr, binary.stuff)
-        if not m:
-            raise ValueError('I couldn\'t find (loose) %s' % v)
+        assert startoff is None
+        if nonexact:
+            m = re.search(sstr, binary.stuff)
+            if not m:
+                raise ValueError('I couldn\'t find (loose) %s' % v)
+            off = m.start()
+        else:
+            off = binary.stuff.find(xstr, 0)
+            if off == -1:
+                raise ValueError('I couldn\'t find (loose, exact) %s' % v)
     else:
         if startoff is not None:
             print binary.stuff[startoff:startoff+64].encode('hex')
@@ -83,8 +95,7 @@ def do_binary_kv(binary, k, v):
             raise ValueError('I couldn\'t find %s' % v)
         elif len(offs) >= 2:
             raise ValueError('I found multiple (%d) %s' % (len(offs), v))
-        m = offs[0]
-    off = m.start()
+        off = offs[0].start()
     val = binary.lookup_addr(off + soff)
     if aligned and (val & 3):
         raise ValueError('%s is not aligned: %x' % (v, val))
@@ -105,21 +116,36 @@ class basebin:
                 break
         return val
 
+    def get_sym(self, sym):
+        if self.name is None:
+            return self.get_sym_uncached(sym)
+        cachekey = hashlib.sha1(str(self.name) + struct.pack('f', os.path.getmtime(self.name)) + sym).digest()
+        if cache.has_key(cachekey):
+            return struct.unpack('I', cache[cachekey])[0]
+        value = self.get_sym_uncached(sym)
+        cache[cachekey] = struct.pack('I', value)
+        return value
+
+    def __getitem__(self, sym):
+        return self.get_sym(sym)
+
 class macho(basebin):
-    def __init__(self, stuff):
+    def __init__(self, name, stuff):
+        self.name = name
+        self.stuff = stuff
         xbase = stuff.tell()
         magic, cputype, cpusubtype, \
         filetype, filetype, ncmds, sizeofcmds, \
         flags = struct.unpack('IHHIIIII', stuff.read(0x1c))
         self.sects = sects = []
         self.nsyms = None
+        self.syms = None
         while True:
             xoff = stuff.tell()
             if xoff >= xbase + sizeofcmds: break
             cmd, clen = struct.unpack('II', stuff.read(8))
             if cmd == 1: # LC_SEGMENT
                 name = stuff.read(16).rstrip('\0')
-                #print name
                 vmaddr, vmsize, foff, fsiz = struct.unpack('IIII', stuff.read(16))
                 sects.append((vmaddr, foff, fsiz))
             elif cmd == 2: # LC_SYMTAB
@@ -129,7 +155,6 @@ class macho(basebin):
                 self.iextdefsym, self.nextdefsym = struct.unpack('II', stuff.read(8))
                 self.iundefsym, self.nundefsym = struct.unpack('II', stuff.read(8))
             stuff.seek(xoff + clen)
-        self.stuff = stuff
 
     def print_all_syms(self):
         print 'local:', self.ilocalsym, self.nlocalsym
@@ -141,57 +166,32 @@ class macho(basebin):
             n_strx += self.stroff
             psym = self.stuff[n_strx:self.stuff.find('\0', n_strx)]
             print '%d: %s' % (i, psym)
-
-    def get_sym(self, sym):
+    
+    def get_syms(self):
+        syms = {}
+        for off in xrange(self.symoff, self.symoff + 12*self.nsyms, 12):
+            n_strx, n_type, n_sect, n_desc, n_value = struct.unpack('IBBhI', self.stuff[off:off+12])
+            if n_value == 0: continue
+            n_strx += self.stroff
+            psym = self.stuff[n_strx:self.stuff.find('\0', n_strx)]
+            if n_desc & 8:
+                # thumb
+                n_value |= 1
+            syms[psym] = n_value
+        return syms
+            
+    def get_sym_uncached(self, sym):
         # Local syms aren't sorted.  So I can't use a binary search.
         if self.nsyms is None:
             raise KeyError, sym
-        for off in xrange(self.symoff, self.symoff + 12*self.nsyms, 12):
-            n_strx, n_type, n_sect, n_desc, n_value = struct.unpack('IBBhI', self.stuff[off:off+12])
-            n_strx += self.stroff
-            psym = self.stuff[n_strx:self.stuff.find('\0', n_strx)]
-            print psym
-            if sym != psym: continue
-            # ok we found it
-            if n_desc & 8:
-                # thumb
-                n_value |= 1
-            print sym, hex(n_value)
-            return n_value
-        raise KeyError, sym
-            
+        if self.syms is None:
+            self.syms = self.get_syms()
+        return self.syms[sym]
 
-    def get_extdefsym(self, sym):
-        # ImageLoaderMachOClassic::binarySearch
-        if self.nsyms is None:
-            raise KeyError, sym
-        low = self.iextdefsym
-        high = self.iextdefsym + self.nextdefsym - 1
-        print 'nsyms =', self.nsyms
-        while low <= high:
-            pivot = (low + high) / 2
-            off = self.symoff + 12*pivot
-            n_strx, n_type, n_sect, n_desc, n_value = struct.unpack('IBBhI', self.stuff[off:off+12])
-            n_strx += self.stroff
-            psym = self.stuff[n_strx:self.stuff.find('\0', n_strx)]
-            print 'psym=', psym
-            result = cmp(sym, psym)
-            if result > 0:
-                low = pivot + 1
-                continue
-            elif result < 0:
-                high = pivot - 1
-                continue
-            # ok we found it
-            if n_desc & 8:
-                # thumb
-                n_value |= 1
-            print sym, hex(n_value)
-            return n_value
-        raise KeyError, sym
 
 class dyldcache(basebin):
-    def __init__(self, stuff):
+    def __init__(self, name, stuff):
+        self.name = name
         self.stuff = stuff
         stuff.seek(0)
         magic = stuff.read(16)
@@ -211,9 +211,9 @@ class dyldcache(basebin):
             stuff.seek(imagesOffset + 32*i)
             address, modTime, inode, pathFileOffset, pad = struct.unpack('QQQII', stuff.read(32))
             stuff.seek(self.lookup_off(address))
-            self.files[stuff[pathFileOffset:stuff.find('\0', pathFileOffset)]] = macho(stuff)
+            self.files[stuff[pathFileOffset:stuff.find('\0', pathFileOffset)]] = macho(None, stuff)
 
-    def get_sym(self, sym):
+    def get_sym_uncached(self, sym):
         for name, macho in self.files.iteritems():
             try:
                 result = macho.get_sym(sym)
@@ -230,15 +230,15 @@ def binary_open(filename):
     magic = fp.read(4)
     stuff = mmap.mmap(fp.fileno(), os.path.getsize(filename), prot=mmap.PROT_READ)
     if magic == 'dyld':
-        binary = dyldcache(stuff)
+        binary = dyldcache(filename, stuff)
     elif magic == struct.pack('I', 0xfeedface):
-        binary = macho(stuff)
+        binary = macho(filename, stuff)
     else:
         raise Exception('Unknown magic %r' % magic)
     return binary
     
-def do_binary(d):
-    filename = d['@binary']
+def do_binary(name, d):
+    filename = d.get('@binary', '../bs/%s/%s' % (platform, name[1:]))
     cachekey = hashlib.sha1(cPickle.dumps((d, os.path.getmtime(filename)), cPickle.HIGHEST_PROTOCOL)).digest()
     if cache.has_key(cachekey):
         d.update(cache[cachekey])
@@ -294,12 +294,14 @@ def pretty_print(d):
                 if isinstance(v, (long, int)):
                     print '%s -> %s: 0x%x' % (name, k, v)
 
-def make_config(platform):
+def make_config(platform_):
+    global platform
+    platform = platform_
     d = get_data(platform)
     for k, v in d.iteritems():
         if k.startswith('#'):
             print >> sys.stderr, 'doing', k
-            do_binary(v)
+            do_binary(k, v)
     if verbose:
         pretty_print(d)
     open('config.json', 'w').write(json.dumps(d)+'\n')
@@ -312,14 +314,7 @@ if __name__ == '__main__':
     (options, args) = parser.parse_args()
     verbose = options.verbose
     make_config(args[0])
-
-class config_data(dict):
-    def __init__(self, fn): 
-        import __builtin__
-        dict.__init__(self, json.loads(__builtin__.open(fn).read()))
-    def get_syms(self, sub):
-        return get_syms(self[sub])       
         
 def openconfig():
-    return config_data(basepath + '/config.json')
+    return json.loads(open(basepath + '/config.json').read())
 
