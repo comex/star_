@@ -3,8 +3,9 @@ import struct, re, subprocess, time, shelve, hashlib, cPickle, os, sys, plistlib
 try:
     import json
 except:
-    print >> sys.stderr, '(using fake json)'
-    import ijson as json
+    import simplejson as json
+
+# todo: may as well merge it with kv :/
 try:
     import pyximport; pyximport.install()
     import confighelper
@@ -94,7 +95,7 @@ def do_binary_kv(syms, macho, k, v):
     if v[0] in ('-', '+') and v[1] != ' ':
         return do_symstring(syms, v)
     elif v[0] == '*' and v[1] != ' ':
-        off = macho.lookup_off(syms[v[1:]])
+        off = macho.lookup_off(syms[v[1:]] & ~1)
         return struct.unpack('I', macho.stuff[off:off+4])[0]
     elif v[0] == '$' and v[1] != ' ':
         off = macho.stuff.find(struct.pack('I', macho.lookup_addr(macho.stuff.find(v[1:] + '\0')))) - 8
@@ -209,8 +210,8 @@ def do_binary_uncached_macho(d, binary, syms):
 
     tocache = {}
     for k, v in d.iteritems():
-        if k == '@binary'  or k == '@syms' or not isinstance(v, basestring): continue
-        tocache[str(k)] = do_binary_kv(syms, macho, k, v)
+        if k == '@binary'  or k == '@syms' or not isinstance(v, (basestring, unicode)): continue
+        tocache[k] = do_binary_kv(syms, macho, k, v)
     return tocache
 
 ## dyld shared cache stupid object format

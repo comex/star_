@@ -73,8 +73,10 @@
         'k10': '@ + a7 f1 00 0d 80 bd',
         # pop {r4-r7, pc}
         'k11': '@ + f0 bd',
-        # blx r4; pop {r4, r7, pc}
-        'k12': '@ + a0 47 90 bd',
+        # blx r4; pop {r4, r5, r7, pc}
+        'k12': '@ + a0 47 b0 bd',
+        # blx r4; sub sp, r7, #4; pop {r4, r7, pc}'
+        'k17': '@ + a0 47 a7 f1 04 0d 90 bd',
 
         # add r5, sp, #168; pop {r0, r1, r3, pc}
         'k13': '@ + 2a ad 0b bd',
@@ -88,7 +90,7 @@
         'k16': '@ + 20 68 90 bd',
 
         # for installui.m
-        'semaphore_wait_signal_trap': '-_semaphore_wait_signal_trap',
+        'ft_path_builder_create_path_for_glyph': '-_ft_path_builder_create_path_for_glyph',
     },
     '#kern': {
         'storedude': '+ 43 6a 00 20 13 60 70 47',

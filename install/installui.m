@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <dlfcn.h>
+#include <CommonCrypto/CommonDigest.h>
 
 @interface Dude : NSObject {
     UIAlertView *progressAlertView;
@@ -69,7 +70,7 @@ struct wad {
 
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection {
     if([wad length] < sizeof(struct wad)) goto error;
-    struct wad *sw = [wad bytes];
+    const struct wad *sw = [wad bytes];
     unsigned char sha1[20];
     CC_SHA1(&sw->first_part_size, [wad length] - 20, sha1);
     if(memcmp(sha1, sw->sha1, 20)) goto error;
@@ -83,12 +84,11 @@ struct wad {
     return;
     error:
 
-    [progressAlertView hide];
     [progressAlertView release];
     progressAlertView = nil;
 
     UIAlertView *errorAlertView = [[UIAlertView alloc] initWithTitle:@"Error" message:@"Invalid file received.  Are you on a fail wi-fi connection?" delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:@"Retry", nil];
-    [alertView show];
+    [errorAlertView show];
 }
 
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
@@ -125,44 +125,8 @@ struct wad {
     [NSTimer scheduledTimerWithTimeInterval:40 target:self selector:@selector(bored2) userInfo:nil repeats:NO];
 }
 
-- (void)ridiculousHack {
-    return; //XXX
-    // Apparently we get here with a locked thing.
-    // This is ridiculous, but
-    while(1) {
-        thread_act_array_t threads;
-        mach_msg_type_number_t threadcount;
-        assert(!task_threads(mach_task_self(), &threads, &threadcount));
-        //NSLog(@"SEMAPHORE = %p", (void *) CONFIG_SEMAPHORE_WAIT_SIGNAL_TRAP);
-        for(int i = 0; i < threadcount; i++) {
-            thread_t thread = threads[i];
-            mach_msg_type_number_t state_count = ARM_THREAD_STATE_COUNT;
-            arm_thread_state_t state;
-            assert(!thread_get_state(thread, ARM_THREAD_STATE, (thread_state_t) &state, &state_count));
-            
-            /*for(int j = 0; j < 13; j++) {
-                NSLog(@"Thread %d has R%d = %p", i, j, (void *) state.__r[j]);
-            }
-            NSLog(@"Thread %d has SP = %p", i, (void *) state.__sp);
-            NSLog(@"Thread %d has LR = %p", i, (void *) state.__lr);
-            NSLog(@"Thread %d has PC = %p", i, (void *) state.__pc);*/
-
-            if(state.__pc == CONFIG_SEMAPHORE_WAIT_SIGNAL_TRAP + 8) {
-                void *ptr = (void *) state.__r[5];
-                NSLog(@"Unlocking %p", ptr);
-                char *p = ptr;
-                *((volatile int *) (p - 4 + 0x64)) = 0;
-                assert(!pthread_mutex_unlock(ptr));
-                return;
-            }
-        }
-        assert(!vm_deallocate(mach_task_self(), (vm_address_t) threads, threadcount * sizeof(thread_t)));
-        usleep(100000);
-    }
-}
-
 - (void)pipidi:(NSNumber *)port_ {
-    return; //XXX
+    //return; //XXX
     io_connect_t port = (io_connect_t) [port_ intValue];
     system("killall ptpd");
     sleep(1);
@@ -173,7 +137,6 @@ struct wad {
 
 - (void)startWithPort:(NSNumber *)port {
     [NSThread detachNewThreadSelector:@selector(pipidi:) toTarget:self withObject:port];
-    [NSThread detachNewThreadSelector:@selector(ridiculousHack) toTarget:self withObject:nil];
     UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:@"Do you want to jailbreak?" message:@"Only do this if you understand the consequences." delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Jailbreak", nil];
     [alertView show];
 }
@@ -184,8 +147,12 @@ void iui_go(io_connect_t port) {
     NSLog(@"iui_go: %d", (int) port);
     dude = [[Dude alloc] init];
     [dude performSelectorOnMainThread:@selector(startWithPort:) withObject:[NSNumber numberWithInt:(int)port] waitUntilDone:NO];
-    while(1) {
-        [[NSRunLoop currentRunLoop] run];  
-        sleep(1);
-    }
+
+    // mm.    
+    unsigned int *addr = pthread_get_stackaddr_np(pthread_self());
+    while(*--addr != 0xf00df00d);
+    while(!(*addr >= CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH && *addr < CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH + 0x100)) addr++;
+    addr -= 7;
+    asm("mov sp, %0; pop {r8, r10, r11}; pop {r4-r7, pc}" ::"r"(addr));
+
 }

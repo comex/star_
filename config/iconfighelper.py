@@ -9,7 +9,6 @@ def search_for_things(filename, patterns):
 
     results = {}
     for k, v in patterns.items():
-        print k
         results[k] = stuff.find(v)
 
     os.close(fd)

@@ -51,6 +51,7 @@ def search_for_things(filename, patterns):
                 results[keys[i]] = pos - n + 1
                 for j in range(i, num_patterns - 1):
                     pattern_bufs[j] = pattern_bufs[j+1]
+                    pattern_lens[j] = pattern_lens[j+1]
                     progress[j] = progress[j+1]
                     keys[j] = keys[j+1]
                 num_patterns -= 1
