@@ -19,4 +19,4 @@ GCC_NATIVE = gcc
 endif
 
 CFLAGS = `cat $(ROOT)/config/config.cflags` 
-GCC_BASE = $(GCC_BIN) -Os --sysroot /var/sdk $(CFLAGS) -Wimplicit -isysroot /var/sdk -F/var/sdk/System/Library/Frameworks -F/var/sdk/System/Library/PrivateFrameworks
+GCC_BASE = $(GCC_BIN) -Os $(CFLAGS) -Wimplicit -isysroot /var/sdk -F/var/sdk/System/Library/Frameworks -F/var/sdk/System/Library/PrivateFrameworks

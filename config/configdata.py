@@ -22,6 +22,10 @@
         'patch_vnode_enforce': '$vnode_enforce',
         'patch_vnode_enforce_to': 0,
         'patch_vnode_enforce_orig': 1,
+        
+        #'patch_sandbox': '- f0 b5 03 af 2d e9 00 0d c1 b0 82 46',
+        #'patch_sandbox_to': 0x47702000,
+        #'patch_sandbox_orig': 0xaf03b5f0,
 
         # for pmap.c
         'kernel_pmap':  '-_kernel_pmap',
@@ -80,8 +84,8 @@
 
         # add r5, sp, #168; pop {r0, r1, r3, pc}
         'k13': '@ + 2a ad 0b bd',
-        # add r0, r5; pop {r4, r5, r7, pc}
-        'k14': '@ + 28 44 b0 bd',
+        # ldr r0, [r5, r0]; pop {r4, r5, r7, pc}
+        'k14': '@ + 28 58 b0 bd',
 
         # str r4, [r0]; pop {r4, r7, pc}
         'k15': '@ + 40 f8 04 4b 90 bd',
@@ -90,7 +94,7 @@
         'k16': '@ + 20 68 90 bd',
 
         # for installui.m
-        'ft_path_builder_create_path_for_glyph': '-_ft_path_builder_create_path_for_glyph',
+        'ft_path_builder_create_path_for_glyph': '+_ft_path_builder_create_path_for_glyph',
     },
     '#kern': {
         'storedude': '+ 43 6a 00 20 13 60 70 47',
@@ -108,7 +112,7 @@
         'patchkmem1':   '.. 68 - 00 2b .. .. a3 68 2a 4a',
         'patchkmem1_to': 0x46c046c0,
 
-        'patch_cs_enforcement_disable': '@ 00 00 00 00 00 00 00 - 00 00 00 00 01 00 00 00 80',
+        'patch_cs_enforcement_disable': '~ @ 00 00 00 00 00 00 00 - 00 00 00 00 01 00 00 00 80',
         'patch_cs_enforcement_disable_to': 1,
     },
 },
@@ -123,6 +127,9 @@
         #'patch2':       0xc025dc8c, _mac_proc_enforce
         #'patch5':       0xc023fac0, _cs_enforcement_disable
     },
+    '#cache': {
+        'magic_offset': -960,
+    }
 },
 'iPad1,1_3.2_self': {
     '<': 'iPad1,1_3.2',
@@ -133,11 +140,16 @@
 
 'iPhone3,1_4.0': {
     '<': '.armv7_3.2+',
+    '#cache': {
+        'magic_offset': -964,
+    },
     '#kern': {
-        
         'vram_baseaddr': 0xd35e9000 + 640*960*4*3,
         # ???
         'vram_baseaddr_atboot': 0xd35e9000 + 640*960*4,
         'patch3':       '70 46 13 22 .. 4b 98 47 00 .. -',
     },
+},
+'iPhone3,1_4.0.1': {
+    '<': 'iPhone3,1_4.0',
 },

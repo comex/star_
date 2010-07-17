@@ -130,21 +130,22 @@ static int qlaunchctl(char *what, char *who) {
     return stat;
 }
 
+unsigned int config_vnode_patch;
+
 static void lol_mkdir() {
     // This is a REALLY nasty hack but the HFS thing is causing corruption
     // It patches the mkdir function to ask for NOCROSSMOUNT
     // does the mkdir real quick, then patches it back
 
-    unsigned int addy = CONFIG_VNODE_PATCH;
-    I("lol_mkdir: addy = %x", addy);
+    I("lol_mkdir: addy = %x", config_vnode_patch);
 
     int fd = open("/dev/kmem", O_RDWR);
     AST(lol_kmem_fd, fd > 0);
 
     int flags;
-    AST(lol_read_flags, 4 == pread(fd, &flags, 4, (off_t) addy));
+    AST(lol_read_flags, 4 == pread(fd, &flags, 4, (off_t) config_vnode_patch));
     int flags2 = flags | 0x100;
-    AST(lol_write_flags_1, 4 == pwrite(fd, &flags2, 4, (off_t) addy));
+    AST(lol_write_flags_1, 4 == pwrite(fd, &flags2, 4, (off_t) config_vnode_patch));
 
     // I don't want to leave the kernel in this state no matter what.
     int ret, fail = 0; 
@@ -157,7 +158,7 @@ static void lol_mkdir() {
     I("mkdir 3: %d", ret);
    
     // Restore original flags
-    AST(lol_write_flags_2, 4 == pwrite(fd, &flags, 4, (off_t) addy));
+    AST(lol_write_flags_2, 4 == pwrite(fd, &flags, 4, (off_t) config_vnode_patch));
 }
 
 static void qstat(const char *path) {
@@ -262,9 +263,6 @@ static void extract() {
     CFDataRef mi_cache_data = cr("/var/mobile/Library/Caches/com.apple.mobile.installation.plist");
     CFMutableDictionaryRef mi_cache = (void*) CFPropertyListCreateFromXMLData(NULL, mi_cache_data, kCFPropertyListMutableContainersAndLeaves, NULL);
 
-    CFMutableDictionaryRef user = (void*) CFDictionaryGetValue(mi_cache, CFSTR("User"));
-    CFDictionaryRemoveValue(user, CFSTR("com.ex.spirit.fakecydia"));
-
     TAR *tar;
     char *current_app = NULL;
     char *fn = "<buf>";
@@ -299,7 +297,7 @@ static void extract() {
     tar_close(tar);
     CFDataRef mi_cache_outdata = CFPropertyListCreateXMLData(NULL, mi_cache);
     I("out");
-    I("outdata is %s", CFDataGetBytePtr(mi_cache_outdata));
+    //I("outdata is %s", CFDataGetBytePtr(mi_cache_outdata));
     I("data");
     cw("/var/mobile/Library/Caches/com.apple.mobile.installation.plist", mi_cache_outdata);
 
@@ -360,6 +358,7 @@ static void remount() {
         fseek(fp, 0, 0);
         fwrite(buf, len, 1, fp);
         fclose(fp);
+        free(buf);
     }
 }
 
@@ -414,33 +413,37 @@ static void dok48() {
     CFRelease(outdata);
 }
 static void kill_installd() {
-    if(!access("/System/Library/LaunchDaemons/com.apple.mobile.installd.plist", R_OK)) {
-        TRY(launchctl_unload, qlaunchctl("unload", "/System/Library/LaunchDaemons/com.apple.mobile.installd.plist"));
-        TRY(launchctl_load, qlaunchctl("load", "/System/Library/LaunchDaemons/com.apple.mobile.installd.plist"));
-    } else {
-        TRY(launchctl_unload, qlaunchctl("unload", "/System/Library/LaunchDaemons/com.apple.installd.plist"));
-        TRY(launchctl_load, qlaunchctl("load", "/System/Library/LaunchDaemons/com.apple.installd.plist"));
-    }
+    killall("installd");
     notify_post("com.apple.mobile.application_installed");
 }
 
 
-static void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(float)) {
+void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(float), unsigned int config_vnode_patch_) {
     set_progress = set_progress_;
+    config_vnode_patch = config_vnode_patch_;
+    freeze = freeze_;
+    freeze_len = freeze_len_;
+
+#if 0
+    hex_dump((void *) freeze, 0x40);
+    I("<- %p len=%d", freeze, freeze_len);
+    int xfd = lzmaopen("", 0, 0);
+    char buf[0x40];
+    lzmaread(xfd, buf, 0x40);
+    hex_dump(buf, 0x40);
+    return;
+#endif
+
     chdir("/");
     I("do_install");
     TIME(remount());
-    TIME(lol_mkdir());
+    TIME(lol_mkdir()); 
     //TIME(stash());
     TIME(dok48());
-    freeze = freeze_;
-    freeze_len = freeze_len_;
     TIME(extract()); // !! this should include libgmalloc
     I("extract out.");
     TIME(kill_installd());
     TIME(sync());
     I("written_bytes = %d", written_bytes);
-    int zero = 0;
-    TRY(sysctlbyname, sysctlbyname("security.mac.vnode_enforce",  NULL, 0, &zero, sizeof(zero)));
 }
 

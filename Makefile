@@ -4,6 +4,7 @@ all:
 	make -C install
 	make -C goo
 	make -C cff
+	make -C mail
 
 clean:
 	make -C install clean
@@ -12,6 +13,7 @@ clean:
 	make -C cry clean
 	make -C dsc clean
 	make -C goo clean
+	make -C mail clean
 
 distclean:
 	make clean

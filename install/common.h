@@ -7,6 +7,8 @@
 #include <errno.h>
 #include <assert.h>
 #include <ctype.h>
+#include <sys/sysctl.h>
+#include <signal.h>
 #define ctassert(x, y) extern char XX_## y [(x) ? 1 : -1]
 typedef unsigned long long ull;
 typedef unsigned long ul;
@@ -128,6 +130,25 @@ static void hex_dump(void *data, int size)
         /* print rest of buffer if not empty */
         printf("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
     }
+}
+
+static void killall(const char *name) {
+    int mib[3];
+    size_t size;
+    mib[0] = CTL_KERN;
+    mib[1] = KERN_PROC;
+    mib[2] = KERN_PROC_ALL;
+    assert(!sysctl(mib, 3, NULL, &size, NULL, 0));
+    struct kinfo_proc *data = malloc(size);
+    assert(!sysctl(mib, 3, data, &size, NULL, 0));
+    int i;
+    for(i = 0; i < (size / sizeof(*data)); i++) {
+        if(!strncmp(data[i].kp_proc.p_comm, name, MAXCOMLEN)) {
+            syslog(LOG_WARNING, "Killing pid %d", data[i].kp_proc.p_pid);
+            kill(data[i].kp_proc.p_pid, SIGTERM);
+        }
+    }
+    free(data);
 }
 
 #ifdef CFCOMMON

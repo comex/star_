@@ -26,7 +26,7 @@ def do_symstring(binary, v):
     addr += offs
     return addr
 
-def do_binary_kv(binary, k, v):
+def do_binary_kv(binary, mtime, k, v):
     if v[0] in ('-', '+') and v[1] != ' ':
         return do_symstring(binary, v)
     elif v[0] == '*' and v[1] != ' ':
@@ -46,7 +46,7 @@ def do_binary_kv(binary, k, v):
     sstr = ''
     soff = None
     loose = False
-    aligned = False
+    align = 2
     startoff = None
     nonexact = False
     n = 0
@@ -59,9 +59,8 @@ def do_binary_kv(binary, k, v):
             soff = n + 1
         elif bit == '-': # ARM or data
             soff = n
-        elif bit == '%':
-            soff = n
-            aligned = True
+        elif bit == '~':
+            align = 1
         elif bit == '..':
             sstr += '.'
             nonexact = True
@@ -77,12 +76,18 @@ def do_binary_kv(binary, k, v):
         assert startoff is None
         if nonexact:
             m = re.search(sstr, binary.stuff)
-            if not m:
+            while m:
+                if m.start() % align == 0: break
+                m = re.search(sstr, binary.stuff, m.start() + 1)
+            else:
                 raise ValueError('I couldn\'t find (loose) %s' % v)
             off = m.start()
         else:
             off = binary.stuff.find(xstr, 0)
-            if off == -1:
+            while off != -1:
+                if off % align == 0: break
+                off = binary.stuff.find(xstr, off + 1)
+            else:
                 raise ValueError('I couldn\'t find (loose, exact) %s' % v)
     else:
         if startoff is not None:
@@ -90,6 +95,7 @@ def do_binary_kv(binary, k, v):
             offs = list(re.compile(sstr).finditer(binary.stuff, startoff, startoff+64))
         else:
             offs = list(re.finditer(sstr, binary.stuff))
+        offs = [i for i in offs if i.start() % align == 0]
         if len(offs) == 0:
             print repr(sstr)
             raise ValueError('I couldn\'t find %s' % v)
@@ -97,8 +103,7 @@ def do_binary_kv(binary, k, v):
             raise ValueError('I found multiple (%d) %s' % (len(offs), v))
         off = offs[0].start()
     val = binary.lookup_addr(off + soff)
-    if aligned and (val & 3):
-        raise ValueError('%s is not aligned: %x' % (v, val))
+    #print 'for', k, 'off=%x soff=%x addr=%x' % (off, soff, val)
     return val
 
 class basebin:
@@ -245,24 +250,21 @@ def do_binary(name, d):
         filename = plat + '/' + name[1:]
         if not os.path.exists(filename):
             if not os.path.exists(plat): os.mkdir(plat)
-            assert 0 == os.system('wget -O "%s.lzma" "http://$BS_HOST/%s.lzma"' % (filename, filename[3:]))
-            assert 0 == os.system('lzma -d "%s".lzma' % filename)
+            assert 0 == os.system('curl "http://$BS_HOST/%s.lzma" | lzma -d > "%s"' % (filename[3:], filename))
             assert os.path.exists(filename)
-
-    cachekey = hashlib.sha1(cPickle.dumps((d, os.path.getmtime(filename)), cPickle.HIGHEST_PROTOCOL)).digest()
-    if cache.has_key(cachekey):
-        d.update(cache[cachekey])
-        return
+    d['@binary'] = os.path.realpath(filename)
 
     binary = binary_open(filename)
-   
-    tocache = {}
+  
+    mtime = str(os.path.getmtime(filename))
     for k, v in d.iteritems():
         if k == '@binary' or not isinstance(v, basestring): continue
-        tocache[k] = do_binary_kv(binary, k, v)
+        cachekey = mtime + str(k) + str(v)
+        if cache.has_key(cachekey):
+            d[k] = cache[cachekey]
+        else:
+            d[k] = cache[cachekey] = do_binary_kv(binary, mtime, k, v)
 
-    d.update(tocache)
-    cache[cachekey] = tocache
 
 def dict_to_cflags(d):
     cflags = ''
@@ -308,6 +310,7 @@ def make_config(platform_):
     global platform
     platform = platform_
     d = get_data(platform)
+    d['platform'] = platform
     for k, v in d.iteritems():
         if k.startswith('#'):
             print >> sys.stderr, 'doing', k
