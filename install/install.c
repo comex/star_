@@ -137,13 +137,13 @@ static void lol_mkdir() {
     // It patches the mkdir function to ask for NOCROSSMOUNT
     // does the mkdir real quick, then patches it back
 
-    I("lol_mkdir: addy = %x", config_vnode_patch);
-
     int fd = open("/dev/kmem", O_RDWR);
     AST(lol_kmem_fd, fd > 0);
 
     int flags;
     AST(lol_read_flags, 4 == pread(fd, &flags, 4, (off_t) config_vnode_patch));
+    I("lol_mkdir: addy = %x flags = %x", config_vnode_patch, flags);
+
     int flags2 = flags | 0x100;
     AST(lol_write_flags_1, 4 == pwrite(fd, &flags2, 4, (off_t) config_vnode_patch));
 
@@ -248,7 +248,7 @@ static void add_app(CFMutableDictionaryRef mi_cache, char *app) {
     CFMutableDictionaryRef system = (void*) CFDictionaryGetValue(mi_cache, CFSTR("System"));
     CFDictionarySetValue(system, CFDictionaryGetValue(plist, CFSTR("CFBundleIdentifier")), plist);
    
-    if(is_ipad) {
+    if(1) {//is_ipad) {
         register_application(app_);
     }
 
@@ -284,7 +284,7 @@ static void extract() {
             I("done with %s (%s), adding it", current_app, full);
             add_app(mi_cache, current_app);
             free(current_app);
-            current_app = 0;
+            current_app = NULL;
         }
 
         int len = strlen(full);
@@ -294,6 +294,14 @@ static void extract() {
         }
         free(full);
     }
+
+    if(current_app) {
+        I("done with %s, adding it", current_app);
+        add_app(mi_cache, current_app);
+        free(current_app);
+        current_app = NULL;
+    }
+
     tar_close(tar);
     CFDataRef mi_cache_outdata = CFPropertyListCreateXMLData(NULL, mi_cache);
     I("out");
@@ -317,11 +325,11 @@ static void qmount() {
 
     strcpy(x, "/");
     posix_spawn(&pid, args[0], NULL, NULL, args, NULL);
-    strcpy(x, "/private/var");
-    posix_spawn(&pid2, args[0], NULL, NULL, args, NULL);
+    //strcpy(x, "/private/var");
+    //posix_spawn(&pid2, args[0], NULL, NULL, args, NULL);
     int stat;
     waitpid(pid, &stat, 0);
-    waitpid(pid2, &stat, 0);
+    //waitpid(pid2, &stat, 0);
     //printf("mount %s %s with %d\n", x, WIFEXITED(stat) ? "exited" : "terminated", WIFEXITED(stat) ? WEXITSTATUS(stat) : WTERMSIG(stat));
 }
     
@@ -412,13 +420,20 @@ static void dok48() {
     CFRelease(plist);
     CFRelease(outdata);
 }
+
 static void kill_installd() {
     killall("installd");
     notify_post("com.apple.mobile.application_installed");
 }
 
+static void write_gmalloc(unsigned char *one, unsigned int one_len) {
+    int fd = open("/usr/lib/libgmalloc.dylib", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    AST(gmalloc_fd, fd > 0);
+    AST(gmalloc_write, write(fd, one, one_len) == one_len);
+    close(fd);
+}
 
-void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(float), unsigned int config_vnode_patch_) {
+void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(float), unsigned int config_vnode_patch_, unsigned char *one, unsigned int one_len) {
     set_progress = set_progress_;
     config_vnode_patch = config_vnode_patch_;
     freeze = freeze_;
@@ -437,12 +452,18 @@ void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(floa
     chdir("/");
     I("do_install");
     TIME(remount());
+    //I("S1"); sleep(5);
     TIME(lol_mkdir()); 
     //TIME(stash());
+    TIME(write_gmalloc(one, one_len));
     TIME(dok48());
-    TIME(extract()); // !! this should include libgmalloc
+    //I("S2"); sleep(5);
+    TIME(extract());
+    //I("S3"); sleep(5);
     I("extract out.");
+    //I("S4"); sleep(5);
     TIME(kill_installd());
+    //I("S5"); sleep(5);
     TIME(sync());
     I("written_bytes = %d", written_bytes);
 }

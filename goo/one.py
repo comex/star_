@@ -26,7 +26,7 @@ myreps = {
     '_launch_data_dict_iterate': launchd['6'],
 }
 
-imports = sorted(myreps.keys())
+imports = sorted(myreps.keys() + ['__mh_execute_header'])
 
 beforesize = 0x8000
 heapaddr = 0x11130000
@@ -48,9 +48,6 @@ for k, v in myreps.items():
     relocs.append((heapaddr + len(heap) + 4, k))
     heap += struct.pack('II', v, 0)
 
-    
-
-li = len(imports)
 strings = '\0' + '\0'.join(sorted(imports)) + '\0'
 fp = open('one.dylib', 'wb')
 OFF = 0
@@ -78,7 +75,8 @@ elif arch == 'i386':
 f(6) # MH_DYLIB
 f(6) # number of load commands
 f(123) # overwrite this
-f(0x00000104) # flags
+# flags: MH_FORCE_FLAT | MH_DYLDLINK | MH_PREBOUND
+f(0x100 | 0x4 | 0x10)
 
 # Load commands
 # linkedit!
@@ -86,6 +84,7 @@ f(0x00000104) # flags
 f(1)
 f(56)
 f('__LINKEDIT' + '\0'*6)
+ohcrap = OFF
 f(baseaddr) # vmaddr
 f(0x1000) # vmsize
 f(0) # fileoff
@@ -94,6 +93,11 @@ f(3) # maxprot
 f(3) # initprot
 f(0) # no sections
 f(0) # flags=0
+
+# ...now that ohcrap is set...
+relocs.append((baseaddr + ohcrap, '__mh_execute_header'))
+relocs.append((baseaddr + ohcrap + 4, '_getpid'))
+
 
 # LC_SEGMENT
 f(1) 
@@ -177,7 +181,7 @@ f(path)
 f(2) # LC_SYMTAB
 f(4*6)
 f(0x1000 + 8*len(relocs)) # symbol table offset
-f(li) # nsyms
+f(len(imports)) # nsyms
 stringy = OFF
 f(0) # stroff
 f(len(strings)) # strsize
@@ -186,7 +190,7 @@ f(len(strings)) # strsize
 f(0xb) # LC_DYSYMTAB
 f(0x50)
 f(0); f(0) # local
-f(li); f(0) # extdef
+f(len(imports)); f(0) # extdef
 f(0); f(0) # undef
 f(0); f(0) # toc
 f(0); f(0) # modtab
@@ -208,15 +212,17 @@ OFF = 0x1000
 for addr, new in relocs:
     f(addr - baseaddr)
     f(0x0c000000 | imports.index(new))
-    
 
 # Symbol table - undefined
 for imp in imports:
     f(strings.find('\0'+imp+'\0') + 1)
-    f('\x01')
-    f('\x00') 
-    f('\x20\x00') # N_GSYM
-    f(0) # n_value
+    f('\x01') # n_type
+    f('\x00') # n_sect 
+    f('\x00\x00')
+    if imp == '__mh_execute_header':
+        f(baseaddr + ohcrap) # n_value
+    else:
+        f(0) # n_value
 
 
 fp.seek(stringy)

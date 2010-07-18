@@ -2,12 +2,14 @@ all:
 	make -C misc
 	make -C dsc
 	make -C install
+	make -C installui
 	make -C goo
 	make -C cff
 	make -C mail
 
 clean:
 	make -C install clean
+	make -C installui clean
 	make -C misc clean
 	make -C cff clean
 	make -C cry clean

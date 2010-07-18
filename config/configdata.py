@@ -4,28 +4,23 @@
         'ovbcopy':      '+_ovbcopy',
         'scratch':      '!',
 
-        'patch2_to':    0,
         'patch4':       '-_PE_i_can_has_debugger',
         'patch4_to':    0x47702001,
-        'patch5_to':    1,
-        'patch6_to':    1,
 
         # Do this just long enough to setuid(0) and sysctl
         # TODO arm on armv6?
         'patch_suser': '-_suser',
         'patch_suser_to': 0x47702000,
-        'patch_suser_orig': '*_suser',
+        'patch_suser_orig': '*(-_suser)',
 
         'patch_proc_enforce': '$proc_enforce',
         'patch_proc_enforce_to': 0,
 
-        'patch_vnode_enforce': '$vnode_enforce',
-        'patch_vnode_enforce_to': 0,
-        'patch_vnode_enforce_orig': 1,
-        
         #'patch_sandbox': '- f0 b5 03 af 2d e9 00 0d c1 b0 82 46',
         #'patch_sandbox_to': 0x47702000,
         #'patch_sandbox_orig': 0xaf03b5f0,
+
+        'mac_policy_list': '*(-_mac_label_get-4)',
 
         # for pmap.c
         'kernel_pmap':  '-_kernel_pmap',
@@ -114,6 +109,10 @@
 
         'patch_cs_enforcement_disable': '~ @ 00 00 00 00 00 00 00 - 00 00 00 00 01 00 00 00 80',
         'patch_cs_enforcement_disable_to': 1,
+
+        # search for bic.*0xc00, look 
+        'patch_nosuid': 'c8 f8 4c 30 d6 f8 88 30 db 6b - 13 f0 08 0f',
+        'patch_nosuid_to': 0x0f00f013, # tst r3, #0
     },
 },
 

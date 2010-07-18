@@ -15,31 +15,27 @@ cache = shelve.open(basepath + '/config.cache')
 
 def do_symstring(binary, v):
     name = v[1:]
-    offs = 0
-    z = name.find('+')
-    if z != -1:
-        offs = eval(name[z+1:])
-        name = name[:z]
     addr = binary.get_sym(name)
     # Data, so even a thumb symbol shouldn't be &1
     if v[0] == '-': addr &= ~1
-    addr += offs
     return addr
 
+def find_sysctl(binary, name):
+    off = binary.stuff.find(struct.pack('I', binary.lookup_addr(binary.stuff.find(name + '\0')))) - 8
+    return struct.unpack('I', binary.stuff[off:off+4])[0]
+
+def find_scratch(binary):
+    off = re.search('\x14[\x14\x00]{256}', binary.stuff).start()
+    val = binary.lookup_addr(off)
+    return (val + 4) & ~3
+
 def do_binary_kv(binary, mtime, k, v):
-    if v[0] in ('-', '+') and v[1] != ' ':
-        return do_symstring(binary, v)
-    elif v[0] == '*' and v[1] != ' ':
-        off = binary.lookup_off(binary.get_sym(v[1:]) & ~1)
-        return struct.unpack('I', binary.stuff[off:off+4])[0]
-    elif v[0] == '$' and v[1] != ' ':
-        off = binary.stuff.find(struct.pack('I', binary.lookup_addr(binary.stuff.find(v[1:] + '\0')))) - 8
-        return struct.unpack('I', binary.stuff[off:off+4])[0]
-    elif v == '!':
-        off = re.search('\x14[\x14\x00]{256}', binary.stuff).start()
-        val = binary.lookup_addr(off)
-        val = (val + 4) & ~3
-        return val
+    if ' ' not in v:
+        v = v.replace('*', 'binary.deref')
+        v = re.sub('([\-\+]_[a-zA-Z0-9_]+)', 'do_symstring(binary, "\\1")', v)
+        v = re.sub('\$([a-zA-Z0-9_]+)', 'find_sysctl(binary, "\\1")', v)
+        v = re.sub('!', 'find_scratch(binary)', v)
+        return eval(v)
 
     bits = v.split(' ')
     xstr = ''
@@ -120,6 +116,10 @@ class basebin:
                 val = startoff + (addr - startaddr)
                 break
         return val
+    
+    def deref(self, addr):
+        off = self.lookup_off(addr)
+        return struct.unpack('I', self.stuff[off:off+4])[0]
 
     def get_sym(self, sym):
         if self.name is None:

