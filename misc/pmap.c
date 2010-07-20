@@ -25,6 +25,7 @@ static unsigned int read32(unsigned int addy) {
 static unsigned int virt2phys(unsigned int virt, int verbose) {
     // Note: assuming addr_hi is 0
     unsigned int pmap = read32(CONFIG_KERNEL_PMAP);
+    //printf("[pmap]=%x [pmap+408]=%x\n", read32(pmap), read32(pmap + 0x408));
     unsigned int gVirtBase = read32(CONFIG_MEM_SIZE - 12);
     unsigned int gPhysBase = read32(CONFIG_MEM_SIZE - 8);
     //printf("gVirtBase = %x     gPhysBase = %x\n", gVirtBase, gPhysBase);

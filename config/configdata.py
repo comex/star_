@@ -113,6 +113,11 @@
         # search for bic.*0xc00, look 
         'patch_nosuid': 'c8 f8 4c 30 d6 f8 88 30 db 6b - 13 f0 08 0f',
         'patch_nosuid_to': 0x0f00f013, # tst r3, #0
+
+        'e1': '+ 01 98 a7 f1 18 0d bd e8 00 0d f0 bd',
+        'e2': '+ ca f8 0c 80 bd e8 00 05 f0 bd',
+        'e3': '+ .. .. .. .. 00 90 07 48 e0 47 a7 f1 00 0d 80 bd',
+        'e4': '+ a7 f1 04 0d 90 bd',
     },
 },
 
