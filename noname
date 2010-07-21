@@ -1,0 +1,75 @@
+sp + 0x90 + ((r8 + 1) * 4) - 0x10 // sp + 0x84 + 4*r8
+sp + 0x90 + (r8 * 4) - 0x90 // sp + 4*r8
+sp + 0x90 + (r8 * 16) - 0x50 = 0 // sp + 16*r8 + 0x40
+sp + 0x90 + (r8 * 16) - 0x4c = 0 // sp + 16*r8 + 0x44
+sp + 0x90 + (r8 * 16) - 0x48 = self[0x58] // sp + 16*r8 + 0x48 (i.e. aligned to 8)
+sp + 0x90 + (r8 * 16) - 0x44 = self[0x5c] // sp + 16*r8 + 0x4c (i.e. aligned to 12)
+
+58 is 1024, 5c is 768 (ie size of the surface)
+
+LR is sp + 0x90 + 7*4 = 0xac (aligned to 12)
+
+our stack:
+
+iomfreal1: we screw up r4, r5, r6, r7, pc
+iomf1: pop r4, r7, pc [r5, r6 still bad]
+shim: sp, sp, r7, #4; pop r4, r7, pc
+IOUC::eM pops r4-r7, pc :) but R6 must be a valid address
+c01c5bb8 pops r8,r10,r11,r4-r7,pc but R11 must be a valid address
+    -> R6, R8 should be 0
+
+R6 is (still) the IOExternalMethodArguments
+R5 is the dispatch (null)
+R0 is probably 0
+
+
+When we return, [SP,#4] should be popped by iomf4 as R7; if we then (sub sp, r7, #4; pop {r4, r7, pc}), we're okay.  
+
+let our R7 be "basesp"
+
+__text:C0185138	01 98			    LDR	    R0,	[SP,#0x30+var_2C]
+__text:C018513A	A7 F1 18 0D		    SUB.W   SP,	R7, #0x18  SP = basesp - 0x18
+__text:C018513E	BD E8 00 0D		    POP.W   {R8,R10,R11} SP = basesp - 0xc
+__text:C0185142	F0 BD			    POP	    {R4-R7,PC} SP = basesp + 8
+                                            [-0x18] = value to store
+                                            [-0x14] = address - 0xc
+                                            [-0x10] = some valid addy
+                                            [-0xc] (R4)
+                                            [-0x8] (R5)
+                                            [-0x4] (R6)
+                                             [0x0] (R7)
+                                             [0x4] = next
+
+
+where we specify R11 as a valid address and don't change it
+
+__text:C01DA4EE	CA F8 0C 80		    STR.W   R8,	[R10,#0xC]
+__text:C01DA4F2	BD E8 00 05		    POP.W   {R8,R10} SP = basesp + 0x10
+__text:C01DA4F6	F0 BD			    POP	    {R4-R7,PC} SP = basesp + 0x24
+                                                        [0x18] = 0 (R6)
+                                                        [0x1c] = basesp + 0x24 (R7)
+                                                        [0x20] = next
+
+
+__text:C01C850A	DF F8 20 C0		    LDR.W   R12, =(_IOLog+1)
+__text:C01C850E	00 90			    STR	    R0,	[SP,#0xC+var_C] STORED to [basesp + 0x24]
+__text:C01C8510	07 48			    LDR	    R0,	=aIvarKalloc0x08 ; "\nivar kalloc()       0x%08x\nmalloc()   "...
+__text:C01C8512	E0 47			    BLX	    R12
+__text:C01C8514	A7 F1 00 0D		    SUB.W   SP,	R7, #0  
+                                        let R7 be basesp + 0x24
+__text:C01C8518	80 BD			    POP	    {R7,PC} 
+                                            [0x24] is stored to
+                                            [0x28] = next
+                                
+
+
+finally,
+
+__text:C01D1E6C	A7 F1 04 0D		    SUB.W   SP,	R7, #4
+__text:C01D1E70	90 BD			    POP	    {R4,R7,PC}
+
+
+our goals:
+- write32 any of R4-R6, R8, R10 etc
+- somehow get r7 = r0
+- sub sp, r7, #4; pop {r4, r7, pc}

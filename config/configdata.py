@@ -25,6 +25,9 @@
         # for pmap.c
         'kernel_pmap':  '-_kernel_pmap',
         'mem_size':     '-_mem_size',
+
+        'adjusted_vram_baseaddr': ('vram_baseaddr', 'e1'),
+        'adjusted_vram_baseaddr_atboot': ('vram_baseaddr_atboot', 'e1'),
     },
 },
 '.armv7': {
@@ -91,12 +94,13 @@
         # for installui.m
         'ft_path_builder_create_path_for_glyph': '+_ft_path_builder_create_path_for_glyph',
     },
+
     '#kern': {
         'storedude': '+ 43 6a 00 20 13 60 70 47',
 
         'patch1':       '- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93',
         'patch1_to':    0x46c00f02,
-        'patch3':       '61 1c 13 22 .. 4b 98 47 00 .. -',
+        'patch3':       '23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -',
         'patch3_to':    0x1c201c20,
         
         # It would be better to patch setup_kmem itself but this is easier.
@@ -114,10 +118,11 @@
         'patch_nosuid': 'c8 f8 4c 30 d6 f8 88 30 db 6b - 13 f0 08 0f',
         'patch_nosuid_to': 0x0f00f013, # tst r3, #0
 
-        'e1': '+ 01 98 a7 f1 18 0d bd e8 00 0d f0 bd',
-        'e2': '+ ca f8 0c 80 bd e8 00 05 f0 bd',
+        'e1': '@ + 01 98 a7 f1 18 0d bd e8 00 0d f0 bd',
+        #'e1': 0xc0185139,
+        'e2': '@ + ca f8 0c 80 bd e8 00 05 f0 bd',
         'e3': '+ .. .. .. .. 00 90 07 48 e0 47 a7 f1 00 0d 80 bd',
-        'e4': '+ a7 f1 04 0d 90 bd',
+        'e4': '@ + a7 f1 04 0d 90 bd',
     },
 },
 
@@ -135,6 +140,10 @@
         'magic_offset': -960,
     }
 },
+'iPad1,1_3.2.1': {
+    '<': 'iPad1,1_3.2',
+},
+
 'iPad1,1_3.2_self': {
     '<': 'iPad1,1_3.2',
     '#cache': { '@binary': '/System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv7', },

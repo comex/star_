@@ -241,7 +241,23 @@ def binary_open(filename):
     else:
         raise Exception('Unknown magic %r' % magic)
     return binary
-    
+   
+def do_adjusted_vram_baseaddr(d, k):
+    if not d.has_key(k): return
+    r7_key, pc_key = d[k]
+    r7 = d[r7_key]
+    pc = d[pc_key]
+    cachekey = struct.pack('II', r7, pc)
+    if cache.has_key(cachekey):
+        d[k] = struct.unpack('II', cache[cachekey])
+    else:
+        r7 = (r7 + 3) & ~3
+        size, r7_ = min(((pc * i * 4) & 0xffffffff, i) for i in xrange(r7, r7 + 1000000, 4))
+        #print 'well', k, size, (r7_ - r7)
+        size = max(size, (r7_ - r7) + 0x1000)
+        cache[cachekey] = struct.pack('II', size, r7_)
+        d[k] = (size, r7_)
+
 def do_binary(name, d):
     if d.has_key('@binary'):
         filename = d['@binary']
@@ -264,6 +280,9 @@ def do_binary(name, d):
             d[k] = cache[cachekey]
         else:
             d[k] = cache[cachekey] = do_binary_kv(binary, mtime, k, v)
+
+    do_adjusted_vram_baseaddr(d, 'adjusted_vram_baseaddr')
+    do_adjusted_vram_baseaddr(d, 'adjusted_vram_baseaddr_atboot')
 
 
 def dict_to_cflags(d):

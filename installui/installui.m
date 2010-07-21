@@ -170,18 +170,9 @@ struct wad {
     [NSTimer scheduledTimerWithTimeInterval:40 target:self selector:@selector(bored2) userInfo:nil repeats:NO];
 }
 
-- (void)pipidi:(NSNumber *)port_ {
-    //return; //XXX
-    io_connect_t port = (io_connect_t) [port_ intValue];
-    killall("ptpd");
-    sleep(1);
-    killall("ptpd");
-    sleep(1);
-    IOServiceClose(port);
-}
 
-- (void)startWithPort:(NSNumber *)port {
-    [NSThread detachNewThreadSelector:@selector(pipidi:) toTarget:self withObject:port];
+- (void)start {
+    //[NSThread detachNewThreadSelector:@selector(pipidi:) toTarget:self withObject:port];
     choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Do you want to jailbreak?" message:@"Only do this if you understand the consequences." delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Jailbreak", nil];
     [choiceAlertView show];
 }
@@ -192,10 +183,10 @@ void foo() {
     asm("");
 }
 
-void iui_go(io_connect_t port, unsigned char **ptr, unsigned char *one, unsigned int one_len) {
-    NSLog(@"iui_go: %d", (int) port);
+void iui_go(unsigned char **ptr, unsigned char *one, unsigned int one_len) {
+    NSLog(@"iui_go");
     dude = [[Dude alloc] initWithOne:one oneLen:one_len];
-    [dude performSelectorOnMainThread:@selector(startWithPort:) withObject:[NSNumber numberWithInt:(int)port] waitUntilDone:NO];
+    [dude performSelectorOnMainThread:@selector(start) withObject:nil waitUntilDone:NO];
 
     // hmm.
     NSLog(@"ptr = %p; *ptr = %p; **ptr = %u", ptr, *ptr, (unsigned int) **ptr);
