@@ -44,7 +44,7 @@
         # ldr r0, [r0] -> _launch_data_new_errno
         0:              '- 00 00 90 e5 .. .. .. .. 04 20 a0 e1',
         # lsr r0, r0, #2 -> _setrlimit
-        1:              '38 50 45 e2 05 10 a0 e1 - 20 01 a0 e1 .. .. .. .. 01 00 70 e3',
+        1:              '05 10 a0 e1 - 20 01 a0 e1 .. .. .. .. 01 00 70 e3 .. .. .. .. .. .. .. .. 04 10 a0 e3',
         # add r0, #3 -> __exit
         2:              '01 00 00 .. - 03 00 80 e2',
         # ldmia r0, {r0-r3} -> _audit_token_to_au32
@@ -86,15 +86,17 @@
         'k10': '@ - 00 d0 47 e2 80 80 bd e8',
         # pop {r4-r7, pc}
         'k11': '@ + f0 bd',
+        # pop {r4, pc}
+        'k18': '@ + 10 bd',
         # blx r4; pop {r4, r5, r7, pc}
         'k12': '@ - 34 ff 2f e1 b0 80 bd e8',
         # blx r4; sub sp, r7, #4; pop {r4, r7, pc}'
-        'k17': '@ - 34 ff 2f e1 04 d0 47 e2 90 80 bd e8',
+        #########'k17': '@ - 34 ff 2f e1 04 d0 47 e2 90 80 bd e8',
 
-        # add r5, sp, #864; lsrs r7, r6, #10; pop {r2, r3, pc}
-        'k13_': '@ + d8 ad b7 0a 0c bd',
-        # ldr r0, [r5, r4]; pop {r4-r7, pc}
-        'k14_': '@ - 04 00 95 e7 f0 80 bd e8',
+        # ldr r3, [sp, #12]; str r0, [r3]; pop {r7, pc}
+        'k13_': '@ + 03 9b e3 60 90 bd',
+        # ldr r0, [r4, r3]; pop {r4-r7, pc}
+        'k14': '@ - 03 00 94 e7 f0 80 bd e8',
 
         # str r4, [r0]; pop {r4, r7, pc}
         'k15': '@ - 00 40 80 e5 90 80 bd e8',
@@ -118,7 +120,7 @@
         'patchkmem1': '1b 68 - 00 2b .. .. a3 68 .. .. .. .. 5b 18 93 42 cc',
         'patchkmem1_to': 0x46c046c0,
 
-        'patch_nosuid': '6a 5a .. .. - 13 40 6b 52 95 23',
+        #'patch_nosuid': '6a 5a .. .. - 13 40 6b 52 95 23',
         'patch_nosuid_to': 0x46c046c0,
 
         # ldr r0, [sp, #4]; sub sp, r7, #0x18; pop {r8, r10, r11}; pop {r4-r7, pc}
@@ -126,11 +128,15 @@
         # str r8, [r10]; str r6, [r11]; mov r0, r5; pop {r8, r10, r11}; pop {r4-r7, pc}
         'e5': '@ - 00 80 8a e5 00 60 8b e5 05 00 a0 e1 00 0d bd e8 f0 80 bd e8',
         # str r0, [sp, #0x10]; (log stuff); sub sp, r7, #0; pop {r7, pc}
-        'e6': '- 10 00 8d e5 0d 00 a0 e1 .. .. .. .. 00 d0 47 e2 80 80 bd e8',
+        #'e6': '- 10 00 8d e5 0d 00 a0 e1 .. .. .. .. 00 d0 47 e2 80 80 bd e8',
         # sub sp, r7, #4; pop {r4, r7, pc}
         'e4': '@ - 04 d0 47 e2 90 80 bd e8',
     },
 
+},
+
+'.armv6_3.1.x': {
+    '<': '.armv6',
 },
 
 '.armv7': {
@@ -175,15 +181,17 @@
         'k10': '@ + a7 f1 00 0d 80 bd',
         # pop {r4-r7, pc}
         'k11': '@ + f0 bd',
+        # pop {r4, pc}
+        'k18': '@ + 10 bd',
         # blx r4; pop {r4, r5, r7, pc}
         'k12': '@ + a0 47 b0 bd',
         # blx r4; sub sp, r7, #4; pop {r4, r7, pc}'
-        'k17': '@ + a0 47 a7 f1 04 0d 90 bd',
+        ###'k17': '@ + a0 47 a7 f1 04 0d 90 bd',
 
-        # add r5, sp, #168; pop {r0, r1, r3, pc}
-        'k13': '@ + 2a ad 0b bd',
-        # ldr r0, [r5, r0]; pop {r4, r5, r7, pc}
-        'k14': '@ + 28 58 b0 bd',
+        # ldr r3, [sp, #12]; str r3, [r4, #12]; pop {r4, r7, pc}
+        'k13': '@ + 03 9b e3 60 90 bd',
+        # ldr r0, [r4, r3]; pop {r4-r7, pc}
+        'k14': '@ - 03 00 94 e7 f0 80 bd e8',
 
         # str r4, [r0]; pop {r4, r7, pc}
         'k15': '@ + 40 f8 04 4b 90 bd',
@@ -226,6 +234,10 @@
     },
 },
 
+'.armv7_3.1.x': {
+    '<': '.armv7',
+},
+
 'iPad1,1_3.2': {
     '<': '.armv7',
     '#kern': {
@@ -266,99 +278,135 @@
 'iPhone3,1_4.0.1': { '<': 'iPhone3,1_4.0', },
 'iPhone1,2_4.0': {
     '<': '.armv6',
-    # a lie
     '#kern': {
-        'vram_baseaddr': 0xed6ed000 + 1024*768*4*2,
-        'vram_baseaddr_atboot': 0xed6ed000 + 1024*768*4,
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     },
 },
 'iPhone1,2_4.0.1': {
-    '<': '.armv6_3.2+',
+    '<': '.armv6',
     '#kern': {
-    
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     },
 },
 'iPhone2,1_4.0': {
-    '<': '.armv7_3.2+',
+    '<': '.armv7',
     '#kern': {
     
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     },
 },
 'iPhone2,1_4.0.1': {
-    '<': '.armv7_3.2+',
+    '<': '.armv7',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPod2,1_4.0': {
-    '<': '.armv6_3.2+',
+    '<': '.armv6',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPhone2,1_3.1.3': {
     '<': '.armv7_3.1.x',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPhone2,1_3.1.2': {
     '<': '.armv7_3.1.x',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPhone1,2_3.1.3': {
     '<': '.armv6_3.1.x',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPhone1,2_3.1.2': {
     '<': '.armv6_3.1.x',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPod2,1_3.1.2': {
     '<': '.armv6_3.1.x',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPod2,1_3.1.3': {
     '<': '.armv6_3.1.x',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPhone1,1_3.1.3': {
     '<': '.armv6_3.1.x',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPhone1,1_3.1.2': {
     '<': '.armv6_3.1.x',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPod3,1_3.1.3': {
     '<': '.armv7_3.1.x',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPod3,1_3.1.2': {
     '<': '.armv7_3.1.x',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },
 'iPod1,1_3.1.3': {
     '<': '.armv6_3.1.x',
     '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
+    
+    },
+},
+'iPod3,1_4.0': {
+    '<': '.armv7',
+    '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
     
     },
 },

@@ -83,8 +83,8 @@ stuff = p.read().strip()
 
 if '3.1.' in short_identifier:
     arch += '_3.1.x'
-else:
-    arch += '_3.2+'
+#else:
+#    arch += '_3.2+'
 
 # allow for customization.
 if not eval('{%s}' % open(configdata).read()).has_key(short_identifier):

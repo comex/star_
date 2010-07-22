@@ -1138,6 +1138,22 @@
 				<string>Firmware/all_flash/all_flash.n18ap.production/iBoot.n18ap.RELEASE.img3</string>
 			</dict>
 		</dict>
+        <key>4.0</key>
+        <dict>
+            <key>RootFilesystem</key>
+            <dict>
+                <key>RootFilesystemKey</key>
+                <string>ec6eb0268c4e9f8ab9d003f601e8f4b36f4fc4311c61e5ebed07ce718424ffee7e7d924d</string>
+            </dict>
+            <key>KernelCache</key>
+            <dict>
+                <key>IV</key>
+                <string>a25717ffda39ee5619ed4d0b177cbd5b</string>
+                <key>Key</key>
+                <string>bbdb9356910793c190253d46f2e5fe4a78d42276b3b36c921f7548fdf98cc083</string>
+            </dict>
+        </dict>
+
 	</dict>
 </dict>
 </plist>
