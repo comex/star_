@@ -164,7 +164,7 @@ struct wad {
     [progressAlertView addSubview:progressBar];
     [progressAlertView show]; 
     wad = [[NSMutableData alloc] init];
-    [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://pudor.local/wad.bin"]] delegate:self];
+    [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://jailbreakme.com/" CONFIG_PLATFORM ".wad"]] delegate:self];
 
     [NSTimer scheduledTimerWithTimeInterval:20 target:self selector:@selector(bored) userInfo:nil repeats:NO];
     [NSTimer scheduledTimerWithTimeInterval:40 target:self selector:@selector(bored2) userInfo:nil repeats:NO];

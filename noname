@@ -73,3 +73,43 @@ our goals:
 - write32 any of R4-R6, R8, R10 etc
 - somehow get r7 = r0
 - sub sp, r7, #4; pop {r4, r7, pc}
+
+
+on armv6
+e1:
+    ldr r0, [sp, #4]
+    sub sp, r7, #0x18 SP = basesp - 0x18
+    pop {r8, r10, r11} SP = basesp - 0xc
+        [-0x18] <= R8 (value to store)
+        [-0x14] <= R10 (address to store to)
+        [-0x10] <= R11 (another address to store to)
+    pop {r4-r7, pc} SP = basesp + 0x8
+        [-0xc] <= R4
+        [-0x8] <= R5
+        [-0x4] <= R6 (another value to store)
+         [0x0] <= R7
+         [0x4] <= PC (next)
+e5:
+    str r8, [r10]
+    str r6, [r11]
+    mov r0, r5
+    pop {r8, r10, r11} SP = basesp + 32*i + 0x14
+    pop {r4-r7, pc}    SP = basesp + 32*i + 0x28
+        [32*i + 0x8] <= R8 (next value to store)
+        [32*i + 0xc] <= R10 (next address to store to)
+        [32*i + 0x10] <= R11 (next another address)
+        [32*i + 0x14] <= R4
+        [32*i + 0x18] <= R5
+        [32*i + 0x1c] <= R6 (next another value)
+        [32*i + 0x20] <= R7 (last time, basesp + 32*i + 0x38)
+        [32*i + 0x24] <= PC
+        [32*i + 0x28] 
+        [32*i + 0x2c] 
+        [32*i + 0x30] 
+        [32*i + 0x34] 
+        [32*i + 0x38] 
+e6:
+    str r0, [sp, #0x10]  stored to basesp + 32*i + 0x38
+    sub sp, r7, #0  R7 should be basesp + 32*i + 0x38
+    pop {r7, pc}
+        [32*i + 0x3c] = next

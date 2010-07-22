@@ -1,5 +1,5 @@
 all: 
-	make -C misc
+	make -C misc essential
 	make -C dsc
 	make -C install
 	make -C installui

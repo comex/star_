@@ -11,13 +11,13 @@ def go_away():
         os.rmdir(output)
     except:
         pass
-
 atexit.register(go_away)
 
 input_path = os.path.realpath(sys.argv[1])
 os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
 fbs = os.path.realpath('FirmwareBundles')
-configdata = os.path.realpath('../configdata.py')
+configdata = os.path.realpath('configdata.py')
+iDeviceKeys = plistlib.readPlist('iDeviceKeys.plist')
 out_root = os.path.realpath('../bs')
 tmpdir = tempfile.mkdtemp()
 print 'tmpdir:', tmpdir
@@ -29,50 +29,73 @@ nl = z.namelist()
 pl = plistlib.readPlistFromString(z.read('Restore.plist'))
 identifier = '%s_%s_%s' % (pl['ProductType'], pl['ProductVersion'], pl['ProductBuildVersion'])
 short_identifier = '%s_%s' % (pl['ProductType'], pl['ProductVersion'])
-output = os.path.join(out_root, identifier)
+output = os.path.join(out_root, short_identifier)
 os.mkdir(output)
 pwnage_pl_fn = '%s/%s.bundle/Info.plist' % (fbs, identifier)
-system('plutil -convert xml1 %s' % pwnage_pl_fn)
-pwnage_pl = plistlib.readPlist(pwnage_pl_fn)
-kc = pwnage_pl['FirmwarePatches']['KernelCache']
+
+stuff = iDeviceKeys.get(pl['ProductType'], {}).get(pl['ProductVersion'])
+
+if stuff is not None and stuff.has_key('KernelCache'):
+    kc = stuff['KernelCache']
+    kc_key = kc['Key']
+    kc_iv = kc['IV']
+    fs_key = stuff['RootFilesystem']['RootFilesystemKey']
+elif os.path.exists(pwnage_pl_fn):
+    system('plutil -convert xml1 %s' % pwnage_pl_fn)
+    pwnage_pl = plistlib.readPlist(pwnage_pl_fn)
+    kc = pwnage_pl['FirmwarePatches']['KernelCache']
+    kc_key = kc['Key']
+    print kc
+    kc_iv = kc['IV']
+    fs_key = pwnage_pl['RootFilesystemKey']
+else:
+    print 'No keys...'
+    sys.exit(1)
 
 print 'kernelcache...'
-z.extract(kc['File'])
-system('xpwntool %s tempkc.e -k %s -iv %s -decrypt' % (kc['File'], kc['Key'], kc['IV'] )) #!
-os.unlink(kc['File'])
+kc_name = pl.get('KernelCachesByTarget', pl.get('KernelCachesByPlatform')).values()[0]['Release']
+z.extract(kc_name)
+system('xpwntool %s tempkc.e -k %s -iv %s -decrypt' % (kc_name, kc_key, kc_iv)) #!
+os.unlink(kc_name)
 system('xpwntool tempkc.e %s/kern' % output) #!
 os.unlink('tempkc.e')
 
 print 'root filesystem...'
-system('unzip -q -o -j "%s" %s' % (input_path, pwnage_pl['RootFilesystem'])) # for speed
-system('vfdecrypt -i %s -k %s -o temproot.dmg' % (pwnage_pl['RootFilesystem'], pwnage_pl['RootFilesystemKey']))
+fs_name = pl['SystemRestoreImages']['User']
+system('unzip -q -o -j "%s" %s' % (input_path, fs_name)) # 'unzip' used for speed
+system('vfdecrypt -i %s -k %s -o temproot.dmg' % (fs_name, fs_key))
 os.mkdir('mnt')
 system('hdiutil attach -noverify -mountpoint mnt temproot.dmg')
-shutil.copy('mnt/usr/sbin/scutil', '%s/scutil' % output)
-os.chmod('%s/scutil' % output, 0755)
+if os.path.exists('mnt/System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv7'):
+    arch = 'armv7'
+    shutil.copy('mnt/System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv7', '%s/cache' % output)
+elif os.path.exists('mnt/System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv6'):
+    arch = 'armv6'
+    shutil.copy('mnt/System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv6', '%s/cache' % output)
+
 shutil.copy('mnt/sbin/launchd', '%s/launchd' % output)
 os.chmod('%s/launchd' % output, 0755)
 system('hdiutil detach mnt')
 os.unlink('temproot.dmg')
-os.unlink(pwnage_pl['RootFilesystem'])
-p = os.popen('lipo -info %s/scutil' % output)
+os.unlink(fs_name)
+p = os.popen('lipo -info %s/launchd' % output)
 stuff = p.read().strip()
-if stuff.endswith('armv6'):
-    arch = 'armv6'
-elif stuff.endswith('armv7'):
-    arch = 'armv7' 
-else:
-    raise Exception('I don\'t know how to interpret: ' + stuff)
-if '3.1.' in identifier:
+
+if '3.1.' in short_identifier:
     arch += '_3.1.x'
 else:
     arch += '_3.2+'
 
 # allow for customization.
-if not eval('{%s}' % open(configdata).read()).has_key(identifier):
+if not eval('{%s}' % open(configdata).read()).has_key(short_identifier):
     new = '''
-'*X*': { '<': '.*A*', },
-    '''.strip().replace('*I*', identifier).replace('*A*', arch).replace('*X*', short_identifier)
+'*X*': {
+    '<': '.*A*',
+    '#kern': {
+    
+    },
+},
+    '''.strip().replace('*A*', arch).replace('*X*', short_identifier)
     open(configdata, 'a').write(new + '\n')
 
 # clean up

@@ -296,6 +296,8 @@ def dict_to_cflags(d):
             v = hex(v)
         elif not isinstance(v, basestring):
             continue
+        elif ',' in v:
+            v = '"%s"' % v
         cflags += ' -DCONFIG_%s=%s' % (k.upper(), v)
     return cflags
 
