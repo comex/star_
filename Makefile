@@ -3,6 +3,7 @@ all:
 	make -C dsc
 	make -C install
 	make -C installui
+	make -C sandbox
 	make -C goo
 	make -C cff
 	make -C mail
@@ -16,6 +17,7 @@ clean:
 	make -C dsc clean
 	make -C goo clean
 	make -C mail clean
+	make -C sandbox clean
 
 distclean:
 	make clean

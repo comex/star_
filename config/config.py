@@ -11,7 +11,11 @@ if __name__ == '__main__':
     data = eval('{%s}' % open('configdata.py').read())
 else:
     basepath = os.path.realpath(os.path.dirname(__file__))
+
 cache = shelve.open(basepath + '/config.cache')
+def cache_has_key(cachekey):
+    if uncached: return False
+    return cache.has_key(cachekey)
 
 def do_symstring(binary, v):
     name = v[1:]
@@ -29,12 +33,22 @@ def find_scratch(binary):
     val = binary.lookup_addr(off)
     return (val + 4) & ~3
 
-def do_binary_kv(binary, mtime, k, v):
+def find_mpo(binary):
+    found = binary.stuff.find('Seatbelt sandbox policy\0')
+    if found == -1: # 3.1.x
+        found = binary.stuff.find('Seatbelt Policy\0')
+    assert found != -1
+    off = binary.stuff.find(struct.pack('I', binary.lookup_addr(found))) + 12
+    return struct.unpack('I', binary.stuff[off:off+4])[0]
+
+def do_binary_kv(binary, mtime, d, k, v):
     if ' ' not in v:
         v = v.replace('*', 'binary.deref')
         v = re.sub('([\-\+]_[a-zA-Z0-9_]+)', 'do_symstring(binary, "\\1")', v)
-        v = re.sub('\$([a-zA-Z0-9_]+)', 'find_sysctl(binary, "\\1")', v)
-        v = re.sub('!', 'find_scratch(binary)', v)
+        v = re.sub('!sysctl:([a-zA-Z0-9_]+)', 'find_sysctl(binary, "\\1")', v)
+        v = v.replace('!scratch', 'find_scratch(binary)')
+        v = v.replace('!mpo_base', 'find_mpo(binary)')
+        v = re.sub('<([^>]*)>', '(do_binary_k_cached(binary, mtime, d, "\\1"))', v)
         return eval(v)
 
     bits = v.split(' ')
@@ -59,6 +73,10 @@ def do_binary_kv(binary, mtime, k, v):
             align = 1
         elif bit == '..':
             sstr += '.'
+            nonexact = True
+            n += 1
+        elif '/' in bit:
+            sstr += '[%s]' % ''.join(re.escape(chr(int(i, 16))) for i in bit.split('/')) 
             nonexact = True
             n += 1
         else:
@@ -102,12 +120,22 @@ def do_binary_kv(binary, mtime, k, v):
     #print 'for', k, 'off=%x soff=%x addr=%x' % (off, soff, val)
     return val
 
+def do_binary_k_cached(binary, mtime, d, k):
+    v = d[k]
+    if k == '@binary' or not isinstance(v, basestring): return v
+    cachekey = mtime + str(k) + str(v)
+    if not cache_has_key(cachekey):
+        cache[cachekey] = do_binary_kv(binary, mtime, d, k, v)
+    return cache[cachekey]
+
 class basebin:
     def lookup_addr(self, off):
         for startaddr, startoff, size in self.sects:
             if off >= startoff and off < (startoff + size):
                 val = startaddr + (off - startoff)
                 break
+        else:
+            raise ValueError('No address for offset %x' % off)
         return val
 
     def lookup_off(self, addr):
@@ -115,6 +143,8 @@ class basebin:
             if addr >= startaddr and addr < (startaddr + size):
                 val = startoff + (addr - startaddr)
                 break
+        else:
+            raise ValueError('No offset for address %x' % addr)
         return val
     
     def deref(self, addr):
@@ -125,10 +155,10 @@ class basebin:
         if self.name is None:
             return self.get_sym_uncached(sym)
         cachekey = hashlib.sha1(str(self.name) + struct.pack('f', os.path.getmtime(self.name)) + sym).digest()
-        if cache.has_key(cachekey):
-            return struct.unpack('I', cache[cachekey])[0]
+        if cache_has_key(cachekey):
+            return cache[cachekey]
         value = self.get_sym_uncached(sym)
-        cache[cachekey] = struct.pack('I', value)
+        cache[cachekey] = value
         return value
 
     def __getitem__(self, sym):
@@ -247,15 +277,15 @@ def do_adjusted_vram_baseaddr(d, k):
     r7_key, pc_key = d[k]
     r7 = d[r7_key]
     pc = d[pc_key]
-    cachekey = struct.pack('II', r7, pc)
-    if cache.has_key(cachekey):
-        d[k] = struct.unpack('II', cache[cachekey])
+    cachekey = 'vram' + struct.pack('II', r7, pc)
+    if cache_has_key(cachekey):
+        d[k] = cache[cachekey]
     else:
         r7 = (r7 + 3) & ~3
         size, r7_ = min(((pc * i * 4) & 0xffffffff, i) for i in xrange(r7, r7 + 1000000, 4))
         #print 'well', k, size, (r7_ - r7)
         size = max(size, (r7_ - r7) + 0x1000)
-        cache[cachekey] = struct.pack('II', size, r7_)
+        cache[cachekey] = size, r7_
         d[k] = (size, r7_)
 
 def do_binary(name, d):
@@ -271,15 +301,10 @@ def do_binary(name, d):
     d['@binary'] = os.path.realpath(filename)
 
     binary = binary_open(filename)
-  
+     
     mtime = str(os.path.getmtime(filename))
-    for k, v in d.iteritems():
-        if k == '@binary' or not isinstance(v, basestring): continue
-        cachekey = mtime + str(k) + str(v)
-        if cache.has_key(cachekey):
-            d[k] = cache[cachekey]
-        else:
-            d[k] = cache[cachekey] = do_binary_kv(binary, mtime, k, v)
+    for k in d.iterkeys():
+        d[k] = do_binary_k_cached(binary, mtime, d, k)
 
     do_adjusted_vram_baseaddr(d, 'adjusted_vram_baseaddr')
     do_adjusted_vram_baseaddr(d, 'adjusted_vram_baseaddr_atboot')
@@ -345,9 +370,14 @@ def make_config(platform_):
 if __name__ == '__main__':
     parser = optparse.OptionParser()
     parser.add_option('-v', '--verbose', action='store_true', dest='verbose', default=False)
+    parser.add_option('-u', '--uncached', action='store_true', dest='uncached', default=False)
     (options, args) = parser.parse_args()
     verbose = options.verbose
+    uncached = options.uncached
     make_config(args[0])
+else:
+    verbose = False
+    uncached = False
         
 def openconfig():
     return json.loads(open(basepath + '/config.json').read())

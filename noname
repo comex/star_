@@ -109,7 +109,8 @@ e5:
         [32*i + 0x34] 
         [32*i + 0x38] 
 e6:
-    str r0, [sp, #0x10]  stored to basesp + 32*i + 0x38
-    sub sp, r7, #0  R7 should be basesp + 32*i + 0x38
+    str r0, [sp, #4]  stored to basesp + 32*i + 0x2c
+    str r1, [sp]   stored to basesp + 32*i + 0x28
+    sub sp, r7, #0  R7 should be basesp + 32*i + 0x2c
     pop {r7, pc}
-        [32*i + 0x3c] = next
+        [32*i + 0x30] = next

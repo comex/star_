@@ -33,10 +33,26 @@
 static Dude *dude;
 
 @implementation Dude
+- (void)showPurple {
+    UIWindow *window = [[UIApplication sharedApplication] keyWindow];
+    UIImageView *view = [[UIImageView alloc] init]; // todo
+    view.backgroundColor = [UIColor purpleColor];
+    [view setHidden:NO];
+    view.alpha = 0.0;
+    [window addSubview:view];
+    view.autoresizingMask = 18;//UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    view.frame = window.bounds;
+    [UIView beginAnimations:nil context:nil];
+    [UIView setAnimationDuration:1.0];
+    view.alpha = 1.0;
+    [UIView commitAnimations];
+}
+    
 - (id)initWithOne:(unsigned char *)one_ oneLen:(int)one_len_ {
     if(self = [super init]) {
         one = one_;
         one_len = one_len_;
+        [self showPurple];
     }
     return self;
 }
@@ -82,7 +98,11 @@ static void set_progress(float progress) {
 
 - (void)bored2 {
     if([progressAlertView.message isEqualToString:@"(*yawn*)"]) {
-        progressAlertView.message = @"(Come on, it's only a few megabytes!)";
+        if(!memcmp(CONFIG_PLATFORM, "iPhone3,1", 9)) {
+            progressAlertView.message = @"(Let go of the black strip on the left. ;)";
+        } else {
+            progressAlertView.message = @"(Come on, it's only a few megs!)";
+        }
     }
 }
 
@@ -121,12 +141,12 @@ struct wad {
     [progressAlertView release];
     progressAlertView = nil;
 
-    choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Error" message:@"Invalid file received.  Are you on a fail wi-fi connection?" delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:@"Retry", nil];
+    choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Oops..." message:@"Invalid file received.  Are you on a fail wi-fi connection?" delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:@"Retry", nil];
     [choiceAlertView show];
 }
 
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
-    choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Error" message:[error localizedDescription] delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:@"Retry", nil];
+    choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Oops..." message:[error localizedDescription] delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:@"Retry", nil];
     [choiceAlertView show];
 }
 
@@ -143,28 +163,15 @@ struct wad {
         [[UIApplication sharedApplication] terminateWithSuccess];
         return;
     }
+
     // Okay, we can keep going.
-    UIWindow *window = [[UIApplication sharedApplication] keyWindow];
-    UIImageView *view = [[UIImageView alloc] init]; // todo
-    view.backgroundColor = [UIColor purpleColor];
-    [view setHidden:NO];
-    view.alpha = 0.0;
-    [window addSubview:view];
-    view.autoresizingMask = 18;//UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    view.frame = window.bounds;
-    [UIView beginAnimations:nil context:nil];
-    [UIView setAnimationDuration:1.0];
-    view.alpha = 1.0;
-    [UIView commitAnimations];
-    NSLog(@"window=%@ view=%@", window, view);
-    
     progressAlertView = [[UIAlertView alloc] initWithTitle:@"Downloading..." message:@"This might take a while." delegate:nil cancelButtonTitle:nil otherButtonTitles:nil];
     progressBar = [[UIProgressBar alloc] initWithFrame:CGRectMake(92, 95, 100, 10)];
     [progressBar setProgressBarStyle:2];
     [progressAlertView addSubview:progressBar];
     [progressAlertView show]; 
     wad = [[NSMutableData alloc] init];
-    [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://jailbreakme.com/" CONFIG_PLATFORM ".wad"]] delegate:self];
+    [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://jailbreakme.com/wad.bin"]] delegate:self];
 
     [NSTimer scheduledTimerWithTimeInterval:20 target:self selector:@selector(bored) userInfo:nil repeats:NO];
     [NSTimer scheduledTimerWithTimeInterval:40 target:self selector:@selector(bored2) userInfo:nil repeats:NO];
@@ -198,7 +205,7 @@ void iui_go(unsigned char **ptr, unsigned char *one, unsigned int one_len) {
     unsigned int *addr = pthread_get_stackaddr_np(pthread_self());
     NSLog(@"addr = %p", addr);
     while(*--addr != 0xf00df00d);
-    NSLog(@"foodfood found at %p", addr);
+    NSLog(@"foodfood found at %p comparing to %p", addr, CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH);
     while(!(*addr >= CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH && *addr < CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH + ((CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH & 1) ? 0x200 : 0x400))) addr++;
     NSLog(@"Now we want to return to %p - 7", addr);
     foo();

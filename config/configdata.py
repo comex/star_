@@ -2,7 +2,7 @@
     '#kern': {
         'vnode_patch':  '@ - 08 00 10 00', # must be 1st result
         'ovbcopy':      '+_ovbcopy',
-        'scratch':      '!',
+        'scratch':      '!scratch',
 
         'patch4':       '-_PE_i_can_has_debugger',
         'patch4_to':    0x47702001,
@@ -11,9 +11,9 @@
         # TODO arm on armv6?
         'patch_suser': '-_suser',
         'patch_suser_to': 0x47702000,
-        'patch_suser_orig': '*(-_suser)',
+        'patch_suser_orig': '*<patch_suser>',
 
-        'patch_proc_enforce': '$proc_enforce',
+        'patch_proc_enforce': '!sysctl:proc_enforce',
         'patch_proc_enforce_to': 0,
 
         'patch_cs_enforcement_disable': '~ @ 00 00 00 00 00 00 00 - 00 00 00 00 01 00 00 00 80',
@@ -31,6 +31,14 @@
 
         'adjusted_vram_baseaddr': ('vram_baseaddr', 'e1'),
         'adjusted_vram_baseaddr_atboot': ('vram_baseaddr_atboot', 'e1'),
+
+        'strncmp': '+_strncmp',
+        'vn_getpath': '+_vn_getpath',
+        'mpo_base': '!mpo_base',
+        'mpo_vnode_check_access_ptr': '<mpo_base>+(252<<2)',
+        'mpo_vnode_check_open_ptr':   '<mpo_base>+(267<<2)',
+        'mpo_vnode_check_access':     '*<mpo_vnode_check_access_ptr>',
+        'mpo_vnode_check_open':       '*<mpo_vnode_check_open_ptr>',
     },
 },
 
@@ -90,13 +98,11 @@
         'k18': '@ + 10 bd',
         # blx r4; pop {r4, r5, r7, pc}
         'k12': '@ - 34 ff 2f e1 b0 80 bd e8',
-        # blx r4; sub sp, r7, #4; pop {r4, r7, pc}'
-        #########'k17': '@ - 34 ff 2f e1 04 d0 47 e2 90 80 bd e8',
-
-        # ldr r3, [sp, #12]; str r0, [r3]; pop {r7, pc}
-        'k13_': '@ + 03 9b e3 60 90 bd',
-        # ldr r0, [r4, r3]; pop {r4-r7, pc}
-        'k14': '@ - 03 00 94 e7 f0 80 bd e8',
+        
+        # add r0, sp, #600; pop {r1, r7, pc}
+        'k13': '@ + 96 a8 82 bd',
+        # ldr r0, [r4, r0]; pop {r4, r7, pc}
+        'k14': '@ + 20 58 90 bd',
 
         # str r4, [r0]; pop {r4, r7, pc}
         'k15': '@ - 00 40 80 e5 90 80 bd e8',
@@ -120,7 +126,7 @@
         'patchkmem1': '1b 68 - 00 2b .. .. a3 68 .. .. .. .. 5b 18 93 42 cc',
         'patchkmem1_to': 0x46c046c0,
 
-        #'patch_nosuid': '6a 5a .. .. - 13 40 6b 52 95 23',
+        'patch_nosuid': '6a/62 5a .. .. - 13 40 63/6b 52 95 23',
         'patch_nosuid_to': 0x46c046c0,
 
         # ldr r0, [sp, #4]; sub sp, r7, #0x18; pop {r8, r10, r11}; pop {r4-r7, pc}
@@ -128,7 +134,8 @@
         # str r8, [r10]; str r6, [r11]; mov r0, r5; pop {r8, r10, r11}; pop {r4-r7, pc}
         'e5': '@ - 00 80 8a e5 00 60 8b e5 05 00 a0 e1 00 0d bd e8 f0 80 bd e8',
         # str r0, [sp, #0x10]; (log stuff); sub sp, r7, #0; pop {r7, pc}
-        #'e6': '- 10 00 8d e5 0d 00 a0 e1 .. .. .. .. 00 d0 47 e2 80 80 bd e8',
+        'e6': '- 10 00 8d e5 0d 00 a0 e1 .. .. .. .. 00 d0 47 e2 80 80 bd e8',
+        'e6_off': 0x38,
         # sub sp, r7, #4; pop {r4, r7, pc}
         'e4': '@ - 04 d0 47 e2 90 80 bd e8',
     },
@@ -137,6 +144,11 @@
 
 '.armv6_3.1.x': {
     '<': '.armv6',
+    '#kern': {
+        # str r0, [sp, #4]; str r1, [sp]; mov r3, #8; mov r0, r3; sub sp, r7, #0; pop {r7, pc}
+        'e6': '@ - 04 00 8d e5 00 10 8d e5 08 30 a0 e3 03 00 a0 e1 00 d0 47 e2 80 80 bd e8',
+        'e6_off': 0x2c,
+    },
 },
 
 '.armv7': {
@@ -171,8 +183,10 @@
         'k5': '@ + 20 60 90 bd',
         # add r0, r4; pop {r4, r7, pc}
         'k6': '@ + 20 44 90 bd',
+        # pop {r0-r3, pc}
+        'k7': '@ + 0f bd',
         # pop {r0-r3, pc} (ARM!)
-        'k7': '@ - 0f 80 bd e8',
+        #'k7': '@ - 0f 80 bd e8',
         # pop {r1, r2, pc}
         'k8': '@ + 06 bd',
         # pop {r1, r2, r3, pc}
@@ -185,13 +199,11 @@
         'k18': '@ + 10 bd',
         # blx r4; pop {r4, r5, r7, pc}
         'k12': '@ + a0 47 b0 bd',
-        # blx r4; sub sp, r7, #4; pop {r4, r7, pc}'
-        ###'k17': '@ + a0 47 a7 f1 04 0d 90 bd',
 
-        # ldr r3, [sp, #12]; str r3, [r4, #12]; pop {r4, r7, pc}
-        'k13': '@ + 03 9b e3 60 90 bd',
-        # ldr r0, [r4, r3]; pop {r4-r7, pc}
-        'k14': '@ - 03 00 94 e7 f0 80 bd e8',
+        # add r0, sp, #600; pop {r1, r7, pc}
+        'k13': '@ + 96 a8 82 bd',
+        # ldr r0, [r4, r0]; pop {r4, r7, pc}
+        'k14': '@ + 20 58 90 bd',
 
         # str r4, [r0]; pop {r4, r7, pc}
         'k15': '@ + 40 f8 04 4b 90 bd',
@@ -216,11 +228,11 @@
         'patchkmem0_to': 0x46c046c0,
         # Note: the 1a 68 in tense3 is only because it was already patched
         # It is actually 1b 68, but I'm going to be lazy here
-        'patchkmem1':   '.. 68 - 00 2b .. .. a3 68 2a 4a',
+        'patchkmem1':   '.. 68 - 00 2b .. .. a3 68 2a/2b/2f 4a/49',
         'patchkmem1_to': 0x46c046c0,
 
         # search for bic.*0xc00, or vnode_authorize
-        'patch_nosuid': 'c8 f8 4c 30 d6 f8 88 30 db 6b - 13 f0 08 0f',
+        'patch_nosuid': 'd6/d8 f8 88 30 db 6b - 13 f0 08 0f',
         'patch_nosuid_to': 0x0f00f013, # tst r3, #0
 
         # ldr r0, [sp, #4]; sub sp, r7, #0x18; pop {r8, r10, r11}; pop {r4-r7, pc}
@@ -236,6 +248,12 @@
 
 '.armv7_3.1.x': {
     '<': '.armv7',
+    '#kern': {
+        'patch1':       '- 02 0f 40 f0 .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93',
+        'patch1_to':    0xf0400f00,
+        'patch3':       '61 1c 70 46 13 22 05 4b 98 47 - 00 ..',
+        'patch3_to':    0x46c046c0,
+    },
 },
 
 'iPad1,1_3.2': {
@@ -243,10 +261,6 @@
     '#kern': {
         'vram_baseaddr': 0xed6ed000 + 1024*768*4*2,
         'vram_baseaddr_atboot': 0xed6ed000 + 1024*768*4,
-        
-        # From old configdata.
-        #'patch2':       0xc025dc8c, _mac_proc_enforce
-        #'patch5':       0xc023fac0, _cs_enforcement_disable
     },
     '#cache': {
         'magic_offset': -960,
@@ -269,9 +283,9 @@
         'magic_offset': -964,
     },
     '#kern': {
-        'vram_baseaddr': 0xd35e9000 + 640*960*4*3,
+        'vram_baseaddr': 0xd28cd000,
+        'vram_baseaddr_atboot': 0xd2d7d000,
         # ???
-        'vram_baseaddr_atboot': 0xd35e9000 + 640*960*4,
         'patch3':       '70 46 13 22 .. 4b 98 47 00 .. -',
     },
 },
@@ -317,9 +331,8 @@
 'iPhone2,1_3.1.3': {
     '<': '.armv7_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
-    
+        'vram_baseaddr': 0xed8f3000,
+        'vram_baseaddr_atboot': 0xed8f3000,
     },
 },
 'iPhone2,1_3.1.2': {
@@ -333,32 +346,30 @@
 'iPhone1,2_3.1.3': {
     '<': '.armv6_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
-    
+        'vram_baseaddr': 0xeb9cb000,
+        'vram_baseaddr_atboot': 0xeb9cb000,
     },
 },
 'iPhone1,2_3.1.2': {
     '<': '.armv6_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
-    
+        'vram_baseaddr': 0xeb9cb000,
+        'vram_baseaddr_atboot': 0xeb9cb000,
     },
 },
 'iPod2,1_3.1.2': {
     '<': '.armv6_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
+        'vram_baseaddr': 0xeba0b000,
+        'vram_baseaddr_atboot': 0xeba0b000,
     
     },
 },
 'iPod2,1_3.1.3': {
     '<': '.armv6_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
+        'vram_baseaddr': 0xeba0b000,
+        'vram_baseaddr_atboot': 0xeba0b000,
     
     },
 },
@@ -381,9 +392,8 @@
 'iPod3,1_3.1.3': {
     '<': '.armv7_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
-    
+        'vram_baseaddr': 0xed7db000,
+        'vram_baseaddr_atboot': 0xed7db000,
     },
 },
 'iPod3,1_3.1.2': {
@@ -404,6 +414,14 @@
 },
 'iPod3,1_4.0': {
     '<': '.armv7',
+    '#kern': {
+        'vram_baseaddr': 0,
+        'vram_baseaddr_atboot': 0,
+    
+    },
+},
+'iPod1,1_3.1.2': {
+    '<': '.armv6_3.1.x',
     '#kern': {
         'vram_baseaddr': 0,
         'vram_baseaddr_atboot': 0,
