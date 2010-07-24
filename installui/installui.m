@@ -16,6 +16,7 @@
 #include <fcntl.h>
 #include "common.h"
 #include "dddata.h"
+#include <objc/runtime.h>
 
 @interface Dude : NSObject {
     UIAlertView *progressAlertView;
@@ -50,6 +51,10 @@ static Dude *dude;
 }
 #endif
 
+static void my_applicationSuspend(id self, SEL sel, void *event/*, id settings*/) {
+    [self terminateWithSuccess];
+}
+
 - (id)initWithOne:(unsigned char *)one_ oneLen:(int)one_len_ {
     if(self = [super init]) {
         one = one_;
@@ -70,6 +75,13 @@ fail:
     NSLog(@"Unpatch failed!");
 }
 
+static void allow_quit() {
+    Class cls = objc_getClass("UIApplication");
+    Method m;
+    if(m = class_getInstanceMethod(cls, @selector(applicationSuspend:settings:))) method_setImplementation(m, (IMP) my_applicationSuspend);
+    if(m = class_getInstanceMethod(cls, @selector(applicationSuspend:))) method_setImplementation(m, (IMP) my_applicationSuspend);
+}
+
 static void set_progress(float progress) {
     [dude performSelectorOnMainThread:@selector(setProgress:) withObject:[NSNumber numberWithFloat:progress] waitUntilDone:NO];
 }
@@ -84,13 +96,17 @@ static void set_progress(float progress) {
     if(!handle) abort();
     void (*do_install)(const char *, int, void (*)(float), unsigned int, unsigned char *, unsigned int) = dlsym(handle, "do_install");
 
-    do_install(freeze, freeze_len, set_progress, CONFIG_VNODE_PATCH, one, one_len);
+    //do_install(freeze, freeze_len, set_progress, CONFIG_VNODE_PATCH, one, one_len);
 
     NSLog(@"Um, I guess it worked.");
     unpatch();
 
-    progressAlertView.title = @"Done.";
-    progressAlertView.message = @"Press the Home button...";
+    [progressAlertView dismissWithClickedButtonIndex:0 animated:YES];
+    [progressAlertView release];
+    progressAlertView = nil;
+
+    choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Done." message:@"Have fun!" delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:nil];
+    [choiceAlertView show];
 }
 
 - (void)bored {
@@ -175,10 +191,11 @@ struct wad {
     wad = [[NSMutableData alloc] init];
     
     // Lame, just so people need to apply some effort to use a custom wad.bin
-    unsigned char *url = "http://jailbreakme.com/wad.bin";
-    char c, d = 0; while(c = *url++) d ^= c; 
+    char *url = "http://jailbreakme.com/wad.bin";
+    char *p = url, c, d = 0; while(c = *p++) d ^= c; 
     if(d == 2) {
-        [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithCString:url encoding:NSUTF8StringEncoding]]] delegate:self];
+        NSString *string = [NSString stringWithCString:url encoding:NSUTF8StringEncoding];
+        [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:string]] delegate:self];
     }
 
     [NSTimer scheduledTimerWithTimeInterval:20 target:self selector:@selector(bored) userInfo:nil repeats:NO];
