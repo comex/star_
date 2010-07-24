@@ -9,7 +9,7 @@ check_open:
 
     ldr r2, k
     mov r3, sp
-    sub r0, r3, r2
+    subs r0, r3, r2
     mov sp, r0
     sub sp, #4
 
@@ -18,28 +18,28 @@ check_open:
     mov r0, r5
     mov r2, sp
     mov r1, r2
-    add r1, r1, #4
+    adds r1, r1, #4
     ldr r3, vn_getpath
     blx r3
     cmp r0, #0
     bne call_orig_check_open
 
     mov r0, sp
-    add r0, r0, #4
+    adds r0, r0, #4
     adr r1, mobile
-    mov r2, #20
+    movs r2, #20
     ldr r3, strncmp
     blx r3
     cmp r0, #0
     beq check_if_preferences_open
-    mov r0, #0
+    movs r0, #0
     b check_open_return
 
 check_if_preferences_open:
     mov r0, sp
-    add r0, r0, #4
+    adds r0, r0, #4
     adr r1, preferences
-    mov r2, #40
+    movs r2, #40
     ldr r3, strncmp
     blx r3
     cmp r0, #0
@@ -70,7 +70,7 @@ check_access:
 
     ldr r2, k
     mov r3, sp
-    sub r0, r3, r2
+    subs r0, r3, r2
     mov sp, r0
     sub sp, #4
 
@@ -78,28 +78,28 @@ check_access:
 
     mov r0, r5
     mov r2, sp
-    add r1, r2, #4
+    adds r1, r2, #4
     ldr r3, vn_getpath
     blx r3
     cmp r0, #0
     bne call_orig_check_access
 
     mov r0, sp
-    add r0, r0, #4
+    adds r0, r0, #4
     adr r1, mobile
-    mov r2, #20
+    movs r2, #20
     ldr r3, strncmp
     blx r3
     cmp r0, #0
     beq check_if_preferences_access
-    mov r0, #0
+    movs r0, #0
     b check_access_return
 
 check_if_preferences_access:
     mov r0, sp
-    add r0, r0, #4
+    adds r0, r0, #4
     adr r1, preferences
-    mov r2, #40
+    movs r2, #40
     ldr r3, strncmp
     blx r3
     cmp r0, #0

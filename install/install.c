@@ -424,6 +424,8 @@ static void dok48() {
 static void kill_installd() {
     killall("installd");
     notify_post("com.apple.mobile.application_installed");
+    sleep(1);
+    notify_post("com.apple.mobile.application_installed");
 }
 
 static void write_gmalloc(unsigned char *one, unsigned int one_len) {

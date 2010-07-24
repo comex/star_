@@ -28,6 +28,9 @@ def find_sysctl(binary, name):
     off = binary.stuff.find(struct.pack('I', binary.lookup_addr(binary.stuff.find(name + '\0')))) - 8
     return struct.unpack('I', binary.stuff[off:off+4])[0]
 
+def find_stringref(binary, string):
+    return binary.lookup_addr(binary.stuff.find(struct.pack('I', binary.lookup_addr(binary.stuff.find(string)))))
+
 def find_scratch(binary):
     off = re.search('\x14[\x14\x00]{256}', binary.stuff).start()
     val = binary.lookup_addr(off)
@@ -41,13 +44,21 @@ def find_mpo(binary):
     off = binary.stuff.find(struct.pack('I', binary.lookup_addr(found))) + 12
     return struct.unpack('I', binary.stuff[off:off+4])[0]
 
+def find_rgbout(binary):
+    m = re.search('Apple(|H1|M2)RGBOUT\0', binary.stuff)
+    if m: return m.group(0)[:-1]
+    m = re.search('Apple(|H1|M2)CLCD\0', binary.stuff)
+    return m.group(0)[:-1]
+
 def do_binary_kv(binary, mtime, d, k, v):
-    if ' ' not in v:
+    if ' ' not in v or '"' in v:
         v = v.replace('*', 'binary.deref')
         v = re.sub('([\-\+]_[a-zA-Z0-9_]+)', 'do_symstring(binary, "\\1")', v)
         v = re.sub('!sysctl:([a-zA-Z0-9_]+)', 'find_sysctl(binary, "\\1")', v)
         v = v.replace('!scratch', 'find_scratch(binary)')
         v = v.replace('!mpo_base', 'find_mpo(binary)')
+        v = v.replace('!rgbout', 'find_rgbout(binary)')
+        v = re.sub('!stringref:(.*)', 'find_stringref(binary, \'\\1\')', v)
         v = re.sub('<([^>]*)>', '(do_binary_k_cached(binary, mtime, d, "\\1"))', v)
         return eval(v)
 

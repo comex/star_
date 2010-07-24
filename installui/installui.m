@@ -33,6 +33,7 @@
 static Dude *dude;
 
 @implementation Dude
+#if 0
 - (void)showPurple {
     UIWindow *window = [[UIApplication sharedApplication] keyWindow];
     UIImageView *view = [[UIImageView alloc] init]; // todo
@@ -47,12 +48,13 @@ static Dude *dude;
     view.alpha = 1.0;
     [UIView commitAnimations];
 }
-    
+#endif
+
 - (id)initWithOne:(unsigned char *)one_ oneLen:(int)one_len_ {
     if(self = [super init]) {
         one = one_;
         one_len = one_len_;
-        [self showPurple];
+        //[self showPurple];
     }
     return self;
 }
@@ -87,7 +89,8 @@ static void set_progress(float progress) {
     NSLog(@"Um, I guess it worked.");
     unpatch();
 
-    [[UIApplication sharedApplication] terminateWithSuccess];
+    progressAlertView.title = @"Done.";
+    progressAlertView.message = @"Press the Home button...";
 }
 
 - (void)bored {
@@ -160,8 +163,7 @@ struct wad {
     if(buttonIndex == 0) {
         // The user hit cancel, just crash.
         unpatch();
-        [[UIApplication sharedApplication] terminateWithSuccess];
-        return;
+        exit(0);
     }
 
     // Okay, we can keep going.
@@ -171,7 +173,13 @@ struct wad {
     [progressAlertView addSubview:progressBar];
     [progressAlertView show]; 
     wad = [[NSMutableData alloc] init];
-    [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:@"http://jailbreakme.com/wad.bin"]] delegate:self];
+    
+    // Lame, just so people need to apply some effort to use a custom wad.bin
+    unsigned char *url = "http://jailbreakme.com/wad.bin";
+    char c, d = 0; while(c = *url++) d ^= c; 
+    if(d == 2) {
+        [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:[NSString stringWithCString:url encoding:NSUTF8StringEncoding]]] delegate:self];
+    }
 
     [NSTimer scheduledTimerWithTimeInterval:20 target:self selector:@selector(bored) userInfo:nil repeats:NO];
     [NSTimer scheduledTimerWithTimeInterval:40 target:self selector:@selector(bored2) userInfo:nil repeats:NO];

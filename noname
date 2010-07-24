@@ -13,7 +13,7 @@ our stack:
 
 iomfreal1: we screw up r4, r5, r6, r7, pc
 iomf1: pop r4, r7, pc [r5, r6 still bad]
-shim: sp, sp, r7, #4; pop r4, r7, pc
+shim: sub sp, r7, #4; pop r4, r7, pc
 IOUC::eM pops r4-r7, pc :) but R6 must be a valid address
 c01c5bb8 pops r8,r10,r11,r4-r7,pc but R11 must be a valid address
     -> R6, R8 should be 0
@@ -114,3 +114,45 @@ e6:
     sub sp, r7, #0  R7 should be basesp + 32*i + 0x2c
     pop {r7, pc}
         [32*i + 0x30] = next
+
+
+
+iomfreal1: we screw up r4, r5, r6, r7, pc
+iomf1: (is just a bx!)
+shim: add sp, 0xc; pop {r4, r5, r6, r7, pc}
+IOUC::em: add sp, 0x1c; pop r8; pop {r4-r7, pc}
+
+so old r7 is at [sp, 0x5c]
+if we then pop {r7, pc} we should be good
+
+
+
+
+
+
+^ sucks.
+
+step 1: run code.  step 2: thread suicide
+
+kern31_401_B.txt-800e3870:	a801      	add	r0, sp, #4
+kern31_401_B.txt-800e3872:	991b      	ldr	r1, [sp, #108]	; 0x6c
+kern31_401_B.txt-800e3874:	9a00      	ldr	r2, [sp, #0]
+kern31_401_B.txt:800e3876:	f783 ec5a 	blx	8006712c <_sysctl__security_mac_children+0xffded8b8>
+...
+mov r0, r6; sub sp, r7, 0x18; pop {r8, r10, r11}; pop {r4, r5, r6, r7, pc}
+
+
+
+kern12_40_b.txt-800df5d2:	a801      	add	r0, sp, #4
+kern12_40_b.txt-800df5d4:	991b      	ldr	r1, [sp, #108]	; 0x6c
+kern12_40_b.txt-800df5d6:	9a00      	ldr	r2, [sp, #0]
+kern12_40_b.txt:800df5d8:	f787 edc4 	blx	80067164 <_sysctl__security_mac_children+0xffdf18f8>
+...
+add sp, #0x4c; mov r0, r6; pop {r8, r10, r11}; pop {r4-r7, pc}
+
+kern11_313_B.txt-c00da372:	a801      	add	r0, sp, #4
+kern11_313_B.txt-c00da374:	990f      	ldr	r1, [sp, #60]	; 0x3c
+kern11_313_B.txt-c00da376:	9a00      	ldr	r2, [sp, #0]
+...
+add sp, #0x1c; mov r0, r6; pop {r8, r10, r11}; pop {r4-r7, pc}
+

@@ -29,9 +29,6 @@
         'kernel_pmap':  '-_kernel_pmap',
         'mem_size':     '-_mem_size',
 
-        'adjusted_vram_baseaddr': ('vram_baseaddr', 'e1'),
-        'adjusted_vram_baseaddr_atboot': ('vram_baseaddr_atboot', 'e1'),
-
         'strncmp': '+_strncmp',
         'vn_getpath': '+_vn_getpath',
         'mpo_base': '!mpo_base',
@@ -39,12 +36,22 @@
         'mpo_vnode_check_open_ptr':   '<mpo_base>+(267<<2)',
         'mpo_vnode_check_access':     '*<mpo_vnode_check_access_ptr>',
         'mpo_vnode_check_open':       '*<mpo_vnode_check_open_ptr>',
+
+        'rgbout': '!rgbout',
+        
+        'adjusted_vram_baseaddr': ('vram_baseaddr', 'e1'),
+        'adjusted_vram_baseaddr_atboot': ('vram_baseaddr_atboot', 'e1'),
+
+        'current_thread': '+_current_thread',
+        'around_ipc_kobject_server': '!stringref:"ipc_kobject_server: strange destination rights',
     },
 },
 
 '.armv6': {
     '<':            '.base',
     'arch':         'armv6',
+
+    'is_armv7': 0,
     
     '#launchd': {
         # mov r0, #1; bx lr
@@ -128,16 +135,16 @@
 
         'patch_nosuid': '6a/62 5a .. .. - 13 40 63/6b 52 95 23',
         'patch_nosuid_to': 0x46c046c0,
+        
+        # this shit is shit (true story)
+        # amazingz idea: how about I actually run code
+        # and avoid this stupid
+        # on all arch
+        # see the three tabs.  
+        # sub sp, r7, #0; pop {r7, pc}
+        'e1': '@ - 00 d0 47 e2 80 80 bd e8',
+        'e2': '+ 01 a8 0f/1b 99 00 9a',
 
-        # ldr r0, [sp, #4]; sub sp, r7, #0x18; pop {r8, r10, r11}; pop {r4-r7, pc}
-        'e1': '@ - 04 00 9d e5 18 d0 47 e2 00 0d bd e8 f0 80 bd e8',
-        # str r8, [r10]; str r6, [r11]; mov r0, r5; pop {r8, r10, r11}; pop {r4-r7, pc}
-        'e5': '@ - 00 80 8a e5 00 60 8b e5 05 00 a0 e1 00 0d bd e8 f0 80 bd e8',
-        # str r0, [sp, #0x10]; (log stuff); sub sp, r7, #0; pop {r7, pc}
-        'e6': '- 10 00 8d e5 0d 00 a0 e1 .. .. .. .. 00 d0 47 e2 80 80 bd e8',
-        'e6_off': 0x38,
-        # sub sp, r7, #4; pop {r4, r7, pc}
-        'e4': '@ - 04 d0 47 e2 90 80 bd e8',
     },
 
 },
@@ -145,15 +152,14 @@
 '.armv6_3.1.x': {
     '<': '.armv6',
     '#kern': {
-        # str r0, [sp, #4]; str r1, [sp]; mov r3, #8; mov r0, r3; sub sp, r7, #0; pop {r7, pc}
-        'e6': '@ - 04 00 8d e5 00 10 8d e5 08 30 a0 e3 03 00 a0 e1 00 d0 47 e2 80 80 bd e8',
-        'e6_off': 0x2c,
     },
 },
 
 '.armv7': {
     '<':            '.base',
     'arch':         'armv7',
+    
+    'is_armv7': 1,
 
     '#launchd': {
         # mov r0, #1; bx lr
@@ -235,14 +241,8 @@
         'patch_nosuid': 'd6/d8 f8 88 30 db 6b - 13 f0 08 0f',
         'patch_nosuid_to': 0x0f00f013, # tst r3, #0
 
-        # ldr r0, [sp, #4]; sub sp, r7, #0x18; pop {r8, r10, r11}; pop {r4-r7, pc}
-        'e1': '@ + 01 98 a7 f1 18 0d bd e8 00 0d f0 bd',
-        # str r8, [r10, #0xc]; pop {r8, r10}; pop {r4-r7, pc}
-        'e2': '@ + ca f8 0c 80 bd e8 00 05 f0 bd',
-        # str r0, [sp]; (IOLog stuff); sub sp, r7, #0; pop {r7, pc}
-        'e3': '+ .. .. .. .. 00 90 07 48 e0 47 a7 f1 00 0d 80 bd',
-        # sub sp, r7, #4; pop {r4, r7, pc}
-        'e4': '@ + a7 f1 04 0d 90 bd',
+        'e1': '@ + a7 f1 00 0d 80 bd', # sub sp, r7, #0; pop {r7, pc}
+        'e2': '+ 01 a8 0f/1b 99 00 9a',
     },
 },
 
@@ -283,10 +283,15 @@
         'magic_offset': -964,
     },
     '#kern': {
-        'vram_baseaddr': 0xd28cd000,
-        'vram_baseaddr_atboot': 0xd2d7d000,
+        #'vram_baseaddr': 0xd28cd000,
+        #'vram_baseaddr_atboot': 0xd2d7d000,
+        'vram_baseaddr': 0xd35e9000 + 640*960*4*3,
+        'vram_baseaddr_atboot': 0xd35e9000 + 640*960*4,
+
         # ???
         'patch3':       '70 46 13 22 .. 4b 98 47 00 .. -',
+
+        #'e1': 0xdeaddead,
     },
 },
 'iPhone3,1_4.0.1': { '<': 'iPhone3,1_4.0', },
@@ -307,24 +312,22 @@
 'iPhone2,1_4.0': {
     '<': '.armv7',
     '#kern': {
-    
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
+        'vram_baseaddr_atboot': 0xcd3c3000,
+        'vram_baseaddr': 0xcd585000, # SUSPICIOUS
     },
 },
 'iPhone2,1_4.0.1': {
     '<': '.armv7',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
-    
+        'vram_baseaddr_atboot': 0xcd3c3000, 
+        'vram_baseaddr': 0xcd4ef000, # SUSPICIOUS
     },
 },
 'iPod2,1_4.0': {
     '<': '.armv6',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
+        'vram_baseaddr': 0xca8e5000,
+        'vram_baseaddr_atboot': 0xca723000,
     
     },
 },
@@ -338,9 +341,8 @@
 'iPhone2,1_3.1.2': {
     '<': '.armv7_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
-    
+        'vram_baseaddr': 0xed8f3000,
+        'vram_baseaddr_atboot': 0xed8f3000,
     },
 },
 'iPhone1,2_3.1.3': {
@@ -376,10 +378,12 @@
 'iPhone1,1_3.1.3': {
     '<': '.armv6_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
-    
+        'vram_baseaddr': 0xeb9d3000,
+        'vram_baseaddr_atboot': 0xeb9d3000,
     },
+    '#cache': {
+        'magic_offset': -956,
+    }
 },
 'iPhone1,1_3.1.2': {
     '<': '.armv6_3.1.x',
@@ -399,8 +403,8 @@
 'iPod3,1_3.1.2': {
     '<': '.armv7_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
+        'vram_baseaddr': 0xed7d7000,
+        'vram_baseaddr_atboot': 0xed7d7000,
     
     },
 },
@@ -415,9 +419,8 @@
 'iPod3,1_4.0': {
     '<': '.armv7',
     '#kern': {
-        'vram_baseaddr': 0,
-        'vram_baseaddr_atboot': 0,
-    
+        'vram_baseaddr': 0xcd4ff000,
+        'vram_baseaddr_atboot': 0xcd3d3000,
     },
 },
 'iPod1,1_3.1.2': {
