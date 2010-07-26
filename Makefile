@@ -6,9 +6,10 @@ all:
 	make -C sandbox
 	make -C goo
 	make -C cff
-	make -C mail
+	#make -C mail
 
 clean:
+	rm -f i*.pdf i*.pdf_FAILED
 	make -C install clean
 	make -C installui clean
 	make -C misc clean

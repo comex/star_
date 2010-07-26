@@ -429,6 +429,7 @@ static void kill_installd() {
 }
 
 static void write_gmalloc(unsigned char *one, unsigned int one_len) {
+    I("write_gmalloc: one=%p, one_len=%d", one, one_len);    
     int fd = open("/usr/lib/libgmalloc.dylib", O_WRONLY | O_CREAT | O_TRUNC, 0644);
     AST(gmalloc_fd, fd > 0);
     AST(gmalloc_write, write(fd, one, one_len) == one_len);

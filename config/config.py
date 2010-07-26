@@ -31,6 +31,18 @@ def find_sysctl(binary, name):
 def find_stringref(binary, string):
     return binary.lookup_addr(binary.stuff.find(struct.pack('I', binary.lookup_addr(binary.stuff.find(string)))))
 
+def find_bof(binary, eof):
+    # push instruction including lr:
+    # thumb: xx b5
+    # thumb-2: 2d e9
+    # arm: xx xx 2d e9
+    eoff = binary.lookup_off(eof)
+    b5 = binary.stuff.rfind('\xb5', 0, eoff)
+    while 0 == (b5 & 1): b5 = binary.stuff.rfind('\xb5', 0, b5)
+    _2de9 = binary.stuff.rfind('\x2d\xe9', 0, eoff)
+    return binary.lookup_addr(max(b5 - 1, _2de9 - 2)) # not quite right for thumb-2
+        
+
 def find_scratch(binary):
     off = re.search('\x14[\x14\x00]{256}', binary.stuff).start()
     val = binary.lookup_addr(off)
@@ -59,6 +71,7 @@ def do_binary_kv(binary, mtime, d, k, v):
         v = v.replace('!mpo_base', 'find_mpo(binary)')
         v = v.replace('!rgbout', 'find_rgbout(binary)')
         v = re.sub('!stringref:(.*)', 'find_stringref(binary, \'\\1\')', v)
+        v = re.sub('!bof:(.*)', 'find_bof(binary, \\1)', v)
         v = re.sub('<([^>]*)>', '(do_binary_k_cached(binary, mtime, d, "\\1"))', v)
         return eval(v)
 
@@ -286,6 +299,7 @@ def binary_open(filename):
 def do_adjusted_vram_baseaddr(d, k):
     if not d.has_key(k): return
     r7_key, pc_key = d[k]
+    if not isinstance(r7_key, basestring): return
     r7 = d[r7_key]
     pc = d[pc_key]
     cachekey = 'vram' + struct.pack('II', r7, pc)
@@ -293,11 +307,10 @@ def do_adjusted_vram_baseaddr(d, k):
         d[k] = cache[cachekey]
     else:
         r7 = (r7 + 3) & ~3
-        size, r7_ = min(((pc * i * 4) & 0xffffffff, i) for i in xrange(r7, r7 + 1000000, 4))
+        size, dr7 = min((max((pc * (i + r7) * 4) & 0xffffffff, i + 0x1000), i) for i in xrange(0, 1000000, 4))
+        r7_ = r7 + dr7
         #print 'well', k, size, (r7_ - r7)
-        size = max(size, (r7_ - r7) + 0x1000)
-        cache[cachekey] = size, r7_
-        d[k] = (size, r7_)
+        cache[cachekey] = d[k] = (size, r7_)
 
 def do_binary(name, d):
     if d.has_key('@binary'):

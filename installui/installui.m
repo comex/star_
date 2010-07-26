@@ -17,6 +17,13 @@
 #include "common.h"
 #include "dddata.h"
 #include <objc/runtime.h>
+#include <signal.h>
+
+@interface NSObject (ShutUpGcc)
++ (id)sharedBrowserController;
+- (id)tabController;
+- (id)activeTabDocument;
+@end
 
 @interface Dude : NSObject {
     UIAlertView *progressAlertView;
@@ -51,8 +58,8 @@ static Dude *dude;
 }
 #endif
 
-static void my_applicationSuspend(id self, SEL sel, void *event/*, id settings*/) {
-    [self terminateWithSuccess];
+static BOOL my_suspendForEventsOnly(id self, SEL sel, BOOL whatever) {
+    exit(1);
 }
 
 - (id)initWithOne:(unsigned char *)one_ oneLen:(int)one_len_ {
@@ -76,10 +83,10 @@ fail:
 }
 
 static void allow_quit() {
-    Class cls = objc_getClass("UIApplication");
+    Class cls = objc_getClass("Application"); // MobileSafari specific, thanks phoenix3200
     Method m;
-    if(m = class_getInstanceMethod(cls, @selector(applicationSuspend:settings:))) method_setImplementation(m, (IMP) my_applicationSuspend);
-    if(m = class_getInstanceMethod(cls, @selector(applicationSuspend:))) method_setImplementation(m, (IMP) my_applicationSuspend);
+    m = class_getInstanceMethod(cls, @selector(_suspendForEventsOnly:));
+    method_setImplementation(m, (IMP) my_suspendForEventsOnly);
 }
 
 static void set_progress(float progress) {
@@ -96,7 +103,7 @@ static void set_progress(float progress) {
     if(!handle) abort();
     void (*do_install)(const char *, int, void (*)(float), unsigned int, unsigned char *, unsigned int) = dlsym(handle, "do_install");
 
-    //do_install(freeze, freeze_len, set_progress, CONFIG_VNODE_PATCH, one, one_len);
+    do_install(freeze, freeze_len, set_progress, CONFIG_VNODE_PATCH, one, one_len);
 
     NSLog(@"Um, I guess it worked.");
     unpatch();
@@ -105,6 +112,7 @@ static void set_progress(float progress) {
     [progressAlertView release];
     progressAlertView = nil;
 
+    allow_quit();
     choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Done." message:@"Have fun!" delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:nil];
     [choiceAlertView show];
 }
@@ -141,11 +149,19 @@ struct wad {
 };
 
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection {
-    if([wad length] < sizeof(struct wad)) goto error;
+    NSString *message;
+    if([wad length] < sizeof(struct wad)) {
+        message = @"File received was truncated.";
+        goto error;
+    }
     const struct wad *sw = [wad bytes];
     unsigned char sha1[20];
     CC_SHA1(&sw->first_part_size, [wad length] - 20, sha1);
-    if(memcmp(sha1, sw->sha1, 20)) goto error;
+    if(memcmp(sha1, sw->sha1, 20)) {
+        message = @"Invalid file received.  Are you on a fail wi-fi connection?";
+        NSLog(@"length=%u first_part_size=%u ", [wad length], sw->first_part_size);
+        goto error;
+    }
     [[[wad subdataWithRange:NSMakeRange(sizeof(struct wad), sw->first_part_size)] inflatedData] writeToFile:@"/tmp/install.dylib" atomically:NO];
     freeze = &sw->data[sw->first_part_size];
     freeze_len = [wad length] - sizeof(struct wad) - sw->first_part_size;
@@ -160,7 +176,7 @@ struct wad {
     [progressAlertView release];
     progressAlertView = nil;
 
-    choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Oops..." message:@"Invalid file received.  Are you on a fail wi-fi connection?" delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:@"Retry", nil];
+    choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Oops..." message:message delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:@"Retry", nil];
     [choiceAlertView show];
 }
 
@@ -202,11 +218,15 @@ struct wad {
     [NSTimer scheduledTimerWithTimeInterval:40 target:self selector:@selector(bored2) userInfo:nil repeats:NO];
 }
 
-
 - (void)start {
     //[NSThread detachNewThreadSelector:@selector(pipidi:) toTarget:self withObject:port];
     choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Do you want to jailbreak?" message:@"Only do this if you understand the consequences." delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Jailbreak", nil];
-    [choiceAlertView show];
+
+    // Make sure we're actually at jailbreakme.com
+    // XXX Remove the "1" before release!
+    if(1 || [[[[[[(id)objc_getClass("BrowserController") sharedBrowserController] tabController] activeTabDocument] URL] host] isEqualToString:@"jailbreakme.com"]) {
+        [choiceAlertView show];
+    }
 }
 @end
 
@@ -215,11 +235,22 @@ void foo() {
     asm("");
 }
 
+static void bus() {
+    sleep((unsigned int) -1);
+}
+
+static void work_around_apple_bugs() {
+    signal(SIGBUS, bus);
+}
+
 void iui_go(unsigned char **ptr, unsigned char *one, unsigned int one_len) {
-    NSLog(@"iui_go");
+    NSLog(@"iui_go: one=%p one_len=%d", one, one_len);
+    NSLog(@"*one = %d", (int) *one);
+    work_around_apple_bugs();
+    
     dude = [[Dude alloc] initWithOne:one oneLen:one_len];
     [dude performSelectorOnMainThread:@selector(start) withObject:nil waitUntilDone:NO];
-
+    
     // hmm.
     NSLog(@"ptr = %p; *ptr = %p; **ptr = %u", ptr, *ptr, (unsigned int) **ptr);
     **ptr = 0x0e; // endchar
