@@ -111,7 +111,7 @@ static void set_progress(float progress) {
     
     NSHTTPCookie *cookie = [NSHTTPCookie cookieWithProperties:[NSDictionary dictionaryWithObjectsAndKeys:
     @"progress", NSHTTPCookieName,
-    [NSString stringWithFormat:@"2;%u", [[NSDate date] timeIntervalSince1970]], NSHTTPCookieValue,
+    [NSString stringWithFormat:@"2_%u", [[NSDate date] timeIntervalSince1970]], NSHTTPCookieValue,
     @"jailbreakme.com", NSHTTPCookieDomain,
     nil]];
     [[NSHTTPCookieStorage sharedHTTPCookieStorage] setCookie:cookie];
