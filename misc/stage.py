@@ -2,9 +2,9 @@
 import os, sys, shutil, time
 os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])) + '/..')
 os.system('rm -rf staged')
+os.system('make clean')
 os.mkdir('staged')
 os.mkdir('staged/json')
-os.system('make clean')
 for plat in eval('{%s}' % open('config/configdata.py').read()).keys():
     if plat.startswith('.') or plat.endswith('_self'): continue
     outfn = 'staged/' + plat + '.pdf'

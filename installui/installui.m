@@ -21,6 +21,8 @@
 //#include "crc32.h"
 
 #define TESTING 1
+#define PUDOR 0
+#define SLEEP 0
 
 @interface NSObject (ShutUpGcc)
 + (id)sharedBrowserController;
@@ -95,8 +97,11 @@ static void set_progress(float progress) {
     if(!handle) abort();
     void (*do_install)(const char *, int, void (*)(float), unsigned int, unsigned char *, unsigned int) = dlsym(handle, "do_install");
 
-    //do_install(freeze, freeze_len, set_progress, CONFIG_VNODE_PATCH, one, one_len);
+#if !SLEEP
+    do_install(freeze, freeze_len, set_progress, CONFIG_VNODE_PATCH, one, one_len);
+#else
     for(int i = 0; i < 10; i++) { set_progress(0.1 * i); usleep(250000); }
+#endif
 
     NSLog(@"Um, I guess it worked.");
     unpatch();
@@ -111,8 +116,10 @@ static void set_progress(float progress) {
     
     NSHTTPCookie *cookie = [NSHTTPCookie cookieWithProperties:[NSDictionary dictionaryWithObjectsAndKeys:
     @"progress", NSHTTPCookieName,
-    [NSString stringWithFormat:@"2_%u", [[NSDate date] timeIntervalSince1970]], NSHTTPCookieValue,
+    [NSString stringWithFormat:@"2_%f", [[NSDate date] timeIntervalSince1970]], NSHTTPCookieValue,
     @"jailbreakme.com", NSHTTPCookieDomain,
+    @"/", NSHTTPCookiePath,
+    @"Sat, 01 Feb 2020 05:00:00 GMT", NSHTTPCookieExpires,
     nil]];
     [[NSHTTPCookieStorage sharedHTTPCookieStorage] setCookie:cookie];
 }
@@ -204,6 +211,11 @@ struct wad {
 - (void)connection:(NSURLConnection *)connection_ didFailWithError:(NSError *)error {
     [connection release];
     connection = nil;
+
+    [progressAlertView dismissWithClickedButtonIndex:1 animated:YES];
+    [progressAlertView release];
+    progressAlertView = nil;
+
     choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Oops..." message:[error localizedDescription] delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:@"Retry", nil];
     [choiceAlertView show];
 }
@@ -218,7 +230,6 @@ struct wad {
     wad = [[NSMutableData alloc] init];
     
     // Lame, just so people need to apply some effort to use a custom wad.bin
-#define PUDOR 1
     char *url = PUDOR ? "http://pudor.local/wad.bin" : "http://jailbreakme.com/wad.bin";
     char *p = url, c, d = 0; while(c = *p++) d ^= c; 
     if(PUDOR || d == 2) {

@@ -312,14 +312,14 @@
     },
 },
 'iPhone3,1_4.0.1': { '<': 'iPhone3,1_4.0', },
-'iPhone1,2_4.0': {
+'iPhone1,x_4.0': {
     '<': '.armv6_4.x',
     '#kern': {
         'vram_baseaddr': [0xca8d5000],
         'vram_baseaddr_atboot': [0xca713000],
     },
 },
-'iPhone1,2_4.0.1': {
+'iPhone1,x_4.0.1': {
     '<': '.armv6_4.x',
     '#kern': {
         'vram_baseaddr': [0xca8d5000],

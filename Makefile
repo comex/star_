@@ -9,7 +9,7 @@ all:
 	#make -C mail
 
 clean:
-	rm -f i*.pdf i*.pdf_FAILED
+	rm -rf staged
 	make -C install clean
 	make -C installui clean
 	make -C misc clean
