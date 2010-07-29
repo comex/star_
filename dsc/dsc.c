@@ -155,6 +155,13 @@ static struct fuse_operations dc_oper = {
 
 int main(int argc, char **argv) {
     assert(argc > 1);
+    bool verbose = false;
+    if(!strcmp(argv[1], "-v")) {
+        verbose = true;
+        memcpy(argv + 1, argv + 2, (argc - 2) * sizeof(char *));
+        argc--;
+        assert(argc > 1);
+    }
     fd = open(argv[1], O_RDONLY);
     cache_size = lseek(fd, 0, SEEK_END);
     lseek(fd, 0, SEEK_SET);
@@ -165,17 +172,17 @@ int main(int argc, char **argv) {
         ch.imagesOffset, ch.imagesCount, ch.dyldBaseAddress);
 
     argv[1] = argv[0];
+    if(verbose) {
+        lseek(fd, ch.imagesOffset, SEEK_SET);
+        int i;
+        for(i = 0; i < ch.imagesCount; i++) {
+            struct dyld_cache_image_info ii;
+            assert(read(fd, &ii, sizeof(ii)) == sizeof(ii));
+            char stuff[128];
+            pread(fd, &stuff, sizeof(stuff), ii.pathFileOffset);
+            printf("%llx %.128s\n", ii.address, stuff);
+        }
+    }
     return fuse_main(argc - 1, argv + 1, &dc_oper, NULL);
-  /* 
-    lseek(fd, ch.imagesOffset, SEEK_SET);
-   int i;
-    for(i = 0; i < ch.imagesCount; i++) {
-        struct dyld_cache_image_info ii;
-        assert(read(fd, &ii, sizeof(ii)) == sizeof(ii));
-        printf("address:%llx modTime:%llu inode:%llu pathFileOffset:%x pad:%u\n", ii.address, ii.modTime, ii.inode, ii.pathFileOffset, ii.pad);
-        char stuff[128];
-        pread(fd, &stuff, sizeof(stuff), ii.pathFileOffset);
-        printf("name: %.128s\n", stuff);
-    }*/
     //return 0;
 }

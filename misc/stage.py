@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import os, sys, shutil
+import os, sys, shutil, time
 os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])) + '/..')
 os.system('rm -f i*.pdf i*.pdf_FAILED')
 os.system('make clean')
@@ -14,3 +14,4 @@ for plat in eval('{%s}' % open('config/configdata.py').read()).keys():
         open(outfn + '_FAILED', 'w')
     else:
         shutil.copy('cff/out.pdf', outfn)
+    time.sleep(1)

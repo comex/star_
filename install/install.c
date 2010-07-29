@@ -372,11 +372,15 @@ static void remount() {
 
 static void do_stash(const char *from, const char *to) {
     struct stat st;
-    bool noexist = lstat(from, &st) && errno == ENOENT;
-    if(noexist) {
+    int ret = lstat(from, &st);
+    AST(stash_doesnt_fail, !ret || errno == ENOENT);
+    if(ret) {
         I("do_stash: mkdir %s", to);
         TRY(stash2_mkdir, mkdir(to, 0755));
         TRY(stash2_symlink, symlink(to, from));
+    } else if((st.st_mode & S_IFMT) != S_IFDIR) {
+        AST(stash_is_a_link, (st.st_mode & S_IFMT) == S_IFLNK);
+        I("do_stash: already a symlink: %s", from);
     } else {
         char *from2 = NULL;
         asprintf(&from2, "%s.old", from);
@@ -457,7 +461,7 @@ void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(floa
     TIME(remount());
     //I("S1"); sleep(5);
     TIME(lol_mkdir()); 
-    //TIME(stash());
+    TIME(stash());
     TIME(write_gmalloc(one, one_len));
     TIME(dok48());
     //I("S2"); sleep(5);

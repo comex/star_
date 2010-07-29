@@ -47,7 +47,11 @@
         'ipc_kobject_server_start': '!bof:<ipc_kobject_server_end>',
     
     },
-    'strange_1x_mode': 0,
+    '#cache': {
+        # for installui.m
+        'ft_path_builder_create_path_for_glyph': '-_ft_path_builder_create_path_for_glyph',
+        'get_glyph_bboxes': '-_get_glyph_bboxes',
+    },
 },
 
 '.armv6': {
@@ -119,9 +123,6 @@
 
         # ldr r0, [r4]; pop {r4, r7, pc}
         'k16': '@ - 00 00 94 e5 90 80 bd e8',
-
-        # for installui.m
-        'ft_path_builder_create_path_for_glyph': '-_ft_path_builder_create_path_for_glyph',
     },
 
     '#kern': {
@@ -149,6 +150,7 @@
 
 '.armv6_4.x': {
     '<': '.armv6',
+    'progress_bar_style': 2,
     '#cache': {
         'magic_offset': -960,
     }
@@ -156,6 +158,7 @@
 
 '.armv6_3.1.x': {
     '<': '.armv6',
+    'progress_bar_style': 1,
     '#cache': {
         'magic_offset': -956,
     }
@@ -222,9 +225,6 @@
 
         # ldr r0, [r4]; pop {r4, r7, pc}
         'k16': '@ + 20 68 90 bd',
-
-        # for installui.m
-        'ft_path_builder_create_path_for_glyph': '+_ft_path_builder_create_path_for_glyph',
     },
 
     '#kern': {
@@ -254,6 +254,7 @@
 
 '.armv7_4.x': {
     '<': '.armv7',
+    'progress_bar_style': 2,
     '#cache': {
         #...
         'magic_offset': -964,
@@ -262,6 +263,7 @@
 
 '.armv7_3.1.x': {
     '<': '.armv7',
+    'progress_bar_style': 1,
     '#kern': {
         'patch1':       '- 02 0f 40 f0 .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93',
         'patch1_to':    0xf0400f00,
@@ -275,9 +277,10 @@
 
 'iPad1,1_3.2': {
     '<': '.armv7',
+    'progress_bar_style': 2,
     '#kern': {
-        'vram_baseaddr': 0xed6ed000 + 1024*768*4*2,
-        'vram_baseaddr_atboot': 0xed6ed000 + 1024*768*4,
+        'vram_baseaddr': [0xed6ed000 + 1024*768*4*2],
+        'vram_baseaddr_atboot': [0xed6ed000 + 1024*768*4],
     },
     '#cache': {
         'magic_offset': -960,
@@ -297,10 +300,10 @@
 'iPhone3,1_4.0': {
     '<': '.armv7_4.x',
     '#kern': {
-        #'vram_baseaddr': 0xd28cd000,
-        #'vram_baseaddr_atboot': 0xd2d7d000,
-        'vram_baseaddr': 0xd35e9000 + 640*960*4*3,
-        'vram_baseaddr_atboot': 0xd35e9000 + 640*960*4,
+        #'vram_baseaddr': [0xd28cd000],
+        #'vram_baseaddr_atboot': [0xd2d7d000],
+        'vram_baseaddr': [0xd35e9000 + 640*960*4*3],
+        'vram_baseaddr_atboot': [0xd35e9000 + 640*960*4],
 
         # ???
         'patch3':       '70 46 13 22 .. 4b 98 47 00 .. -',
@@ -312,77 +315,74 @@
 'iPhone1,2_4.0': {
     '<': '.armv6_4.x',
     '#kern': {
-        'vram_baseaddr': 0xca8d5000,
-        'vram_baseaddr_atboot': 0xca713000,
+        'vram_baseaddr': [0xca8d5000],
+        'vram_baseaddr_atboot': [0xca713000],
     },
 },
 'iPhone1,2_4.0.1': {
     '<': '.armv6_4.x',
     '#kern': {
-        'vram_baseaddr': 0xca8d5000,
-        'vram_baseaddr_atboot': 0xca713000,
+        'vram_baseaddr': [0xca8d5000],
+        'vram_baseaddr_atboot': [0xca713000],
     },
 },
 'iPhone2,1_4.0': {
     '<': '.armv7_4.x',
     '#kern': {
-        'vram_baseaddr_atboot': 0xcd3c3000,
-        'vram_baseaddr': 0xcd585000, # SUSPICIOUS
+        'vram_baseaddr_atboot': [0xcd3c3000],
+        'vram_baseaddr': [0xcd585000], # SUSPICIOUS
     },
 },
 'iPhone2,1_4.0.1': {
     '<': '.armv7_4.x',
     '#kern': {
-        'vram_baseaddr_atboot': 0xcd3c3000, 
-        'vram_baseaddr': 0xcd4ef000, # SUSPICIOUS
+        'vram_baseaddr_atboot': [0xcd3c3000], 
+        'vram_baseaddr': [0xcd4ef000], # SUSPICIOUS
     },
 },
 'iPod2,1_4.0': {
     '<': '.armv6_4.x',
     '#kern': {
-        'vram_baseaddr': 0xca8e5000,
-        'vram_baseaddr_atboot': 0xca723000,
+        'vram_baseaddr': [0xca8e5000],
+        'vram_baseaddr_atboot': [0xca723000],
     
     },
 },
 'iPhone2,1_3.1.3': {
     '<': '.armv7_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0xed8f3000,
-        'vram_baseaddr_atboot': 0xed8f3000,
+        'vram_baseaddr': [0xed8f3000],
+        'vram_baseaddr_atboot': [0xed8f3000],
     },
 },
 'iPhone2,1_3.1.2': {
     '<': '.armv7_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0xed8f3000,
-        'vram_baseaddr_atboot': 0xed8f3000,
+        'vram_baseaddr': [0xed8f3000],
+        'vram_baseaddr_atboot': [0xed8f3000],
     },
 },
 'iPod2,1_3.1.2': {
     '<': '.armv6_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0xeba0b000,
-        'vram_baseaddr_atboot': 0xeba0b000,
+        'vram_baseaddr': [0xeba0b000],
+        'vram_baseaddr_atboot': [0xeba0b000],
     
     },
 },
 'iPod2,1_3.1.3': {
     '<': '.armv6_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0xeba0b000,
-        'vram_baseaddr_atboot': 0xeba0b000,
+        'vram_baseaddr': [0xeba0b000],
+        'vram_baseaddr_atboot': [0xeba0b000],
     
     },
 },
 'iPhone1,x_3.1.3': {
     '<': '.armv6_3.1.x',
-    'strange_1x_mode': 1,
     '#kern': {
-        'vram_baseaddr': 0xeb9d3000,
-        'vram_baseaddr_atboot': 0xeb9cb000,
-        'adjusted_vram_baseaddr': (0x100000, 0xeba429f4),
-        'adjusted_vram_baseaddr_atboot': (0x100000, 0xeba429f4),
+        'vram_baseaddr': [0xeb9d3000, 0xeb9cb000],
+        'vram_baseaddr_atboot': [0xeb9d3000, 0xeb9cb000],
     },
 },
 'iPhone1,x_3.1.2': {
@@ -391,38 +391,37 @@
 'iPod3,1_3.1.3': {
     '<': '.armv7_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0xed7db000,
-        'vram_baseaddr_atboot': 0xed7db000,
+        'vram_baseaddr': [0xed7db000],
+        'vram_baseaddr_atboot': [0xed7db000],
     },
 },
 'iPod3,1_3.1.2': {
     '<': '.armv7_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0xed7d7000,
-        'vram_baseaddr_atboot': 0xed7d7000,
-    
+        'vram_baseaddr': [0xed7d7000],
+        'vram_baseaddr_atboot': [0xed7d7000],
     },
 },
 'iPod1,1_3.1.2': {
     '<': '.armv6_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0xebadb000,
-        'vram_baseaddr_atboot': 0xebadb000,
+        'vram_baseaddr': [0xebadb000],
+        'vram_baseaddr_atboot': [0xebadb000],
     
     },
 },
 'iPod1,1_3.1.3': {
     '<': '.armv6_3.1.x',
     '#kern': {
-        'vram_baseaddr': 0xebadb000,
-        'vram_baseaddr_atboot': 0xebadb000,
+        'vram_baseaddr': [0xebadb000],
+        'vram_baseaddr_atboot': [0xebadb000],
 
     },
 },
 'iPod3,1_4.0': {
     '<': '.armv7_4.x',
     '#kern': {
-        'vram_baseaddr': 0xcd4ff000,
-        'vram_baseaddr_atboot': 0xcd3d3000,
+        'vram_baseaddr': [0xcd4ff000, 0xcd595000],
+        'vram_baseaddr_atboot': [0xcd3d3000],
     },
 },

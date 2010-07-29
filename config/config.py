@@ -300,16 +300,18 @@ def do_adjusted_vram_baseaddr(d, k):
     if not d.has_key(k): return
     r7_key, pc_key = d[k]
     if not isinstance(r7_key, basestring): return
-    r7 = d[r7_key]
+    r7s = d[r7_key]
+    r7s_max = max(r7s)
+    r7s_min = min(r7s)
     pc = d[pc_key]
-    cachekey = 'vram' + struct.pack('II', r7, pc)
+    cachekey = 'vram' + struct.pack('II', r7s_max, pc)
     if cache_has_key(cachekey):
         d[k] = cache[cachekey]
     else:
-        r7 = (r7 + 3) & ~3
-        size, dr7 = min((max((pc * (i + r7) * 4) & 0xffffffff, i + 0x1000), i) for i in xrange(0, 1000000, 4))
-        r7_ = r7 + dr7
-        #print 'well', k, size, (r7_ - r7)
+        assert not any(r7 & 1 for r7 in r7s)
+        size, dr7 = min((max((pc * (i + r7s_max) * 4) & 0xffffffff, r7s_max - r7s_min + i + 0x1000), i) for i in xrange(0, 1000000, 4))
+        r7_ = r7s_max + dr7
+        #print 'well', k, size, hex(r7_), map(hex, r7s)
         cache[cachekey] = d[k] = (size, r7_)
 
 def do_binary(name, d):
