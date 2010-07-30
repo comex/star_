@@ -34,7 +34,7 @@ static void (*set_progress)(float);
 
 static void wrote_bytes(ssize_t bytes) {
     written_bytes += bytes;
-    set_progress(written_bytes / 15759544.0);
+    set_progress(written_bytes / 77909037.0);
 }
 
 ssize_t my_write(int fd, const void *buf, size_t len) {
@@ -425,8 +425,61 @@ static void dok48() {
     CFRelease(outdata);
 }
 
-static void kill_installd() {
+// add AFC2 service
+// by phoenix3200
+
+void add_afc2() {
+	const void *programArgs[] = {
+		CFSTR("/usr/libexec/afcd"),
+		CFSTR("--lockdown"),
+		CFSTR("-d"),
+		CFSTR("/")
+	};
+	
+	CFArrayRef arrProgramArgs = CFArrayCreate(kCFAllocatorDefault, programArgs, 4, NULL);
+	
+	const void* keys[] = {
+		CFSTR("AllowUnactivatedService"),
+		CFSTR("Label"),
+		CFSTR("ProgramArguments")
+	};
+	
+	const void* vals[] = {
+		kCFBooleanTrue,
+		CFSTR("com.apple.afc2"),
+		arrProgramArgs
+	};
+	
+	CFDictionaryRef afc2 = CFDictionaryCreate(kCFAllocatorDefault, keys, vals, 3, NULL, NULL);
+	CFURLRef fileURL = CFURLCreateWithFileSystemPath(kCFAllocatorDefault, CFSTR("/System/Library/Lockdown/Services.plist"), kCFURLPOSIXPathStyle, false );
+	
+	CFDataRef origPlist;
+	if(CFURLCreateDataAndPropertiesFromResource(kCFAllocatorDefault, fileURL, &origPlist, NULL, NULL, NULL)==TRUE)
+	{
+		CFMutableDictionaryRef propertyList = (CFMutableDictionaryRef) CFPropertyListCreateFromXMLData(kCFAllocatorDefault, origPlist, kCFPropertyListMutableContainersAndLeaves, NULL);
+		if(propertyList)
+		{
+			CFDictionarySetValue(propertyList, CFSTR("com.apple.afc2"), afc2);
+			// save in xml format
+			CFDataRef xmlData = CFPropertyListCreateXMLData(kCFAllocatorDefault, propertyList);
+			if(xmlData)
+			{
+				CFURLWriteDataAndPropertiesToResource(fileURL, xmlData, NULL, NULL);
+				CFRelease(xmlData);
+			}
+			CFRelease(propertyList);
+		}
+	}
+		
+	CFRelease(fileURL);
+	CFRelease(afc2);
+	CFRelease(arrProgramArgs);
+}
+
+
+static void kill_installd_and_lockdownd() {
     killall("installd");
+    killall("lockdownd");
     notify_post("com.apple.mobile.application_installed");
     sleep(1);
     notify_post("com.apple.mobile.application_installed");
@@ -464,12 +517,13 @@ void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(floa
     TIME(stash());
     TIME(write_gmalloc(one, one_len));
     TIME(dok48());
+    TIME(add_afc2());
     //I("S2"); sleep(5);
     TIME(extract());
     //I("S3"); sleep(5);
     I("extract out.");
     //I("S4"); sleep(5);
-    TIME(kill_installd());
+    TIME(kill_installd_and_lockdownd());
     //I("S5"); sleep(5);
     TIME(sync());
     I("written_bytes = %d", written_bytes);

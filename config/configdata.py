@@ -302,7 +302,7 @@
     '#kern': {
         #'vram_baseaddr': [0xd28cd000],
         #'vram_baseaddr_atboot': [0xd2d7d000],
-        'vram_baseaddr': [0xd35e9000 + 640*960*4*3],
+        'vram_baseaddr': [0xd35e9000 + 640*960*4*3, 0xd35e9000 + 640*960*4*4],
         'vram_baseaddr_atboot': [0xd35e9000 + 640*960*4],
 
         # ???
@@ -391,15 +391,15 @@
 'iPod3,1_3.1.3': {
     '<': '.armv7_3.1.x',
     '#kern': {
-        'vram_baseaddr': [0xed7db000],
-        'vram_baseaddr_atboot': [0xed7db000],
+        'vram_baseaddr': [0xed7db000, 0xed871000],
+        'vram_baseaddr_atboot': [0xed7db000, 0xed871000],
     },
 },
 'iPod3,1_3.1.2': {
     '<': '.armv7_3.1.x',
     '#kern': {
-        'vram_baseaddr': [0xed7d7000],
-        'vram_baseaddr_atboot': [0xed7d7000],
+        'vram_baseaddr': [0xed7d7000, 0xed86d000],
+        'vram_baseaddr_atboot': [0xed7d7000, 0xed86d000],
     },
 },
 'iPod1,1_3.1.2': {

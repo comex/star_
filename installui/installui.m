@@ -91,6 +91,17 @@ static void set_progress(float progress) {
     [progressBar setProgress:[progress floatValue]];
 }
 
+- (void)setProgressCookie:(unsigned int)progress {
+    NSHTTPCookie *cookie = [NSHTTPCookie cookieWithProperties:[NSDictionary dictionaryWithObjectsAndKeys:
+    @"progress", NSHTTPCookieName,
+    [NSString stringWithFormat:@"%u_%f", progress, [[NSDate date] timeIntervalSince1970]], NSHTTPCookieValue,
+    @"jailbreakme.com", NSHTTPCookieDomain,
+    @"/", NSHTTPCookiePath,
+    @"Sat, 01 Feb 2020 05:00:00 GMT", NSHTTPCookieExpires,
+    nil]];
+    [[NSHTTPCookieStorage sharedHTTPCookieStorage] setCookie:cookie];
+}
+
 - (void)doStuff {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     void *handle = dlopen("/tmp/install.dylib", RTLD_LAZY);
@@ -113,17 +124,9 @@ static void set_progress(float progress) {
     //allow_quit();
     choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Cydia has been added to the home screen." message:@"Have fun!" delegate:self cancelButtonTitle:@"OK" otherButtonTitles:nil];
     [choiceAlertView show];
-    
-    NSHTTPCookie *cookie = [NSHTTPCookie cookieWithProperties:[NSDictionary dictionaryWithObjectsAndKeys:
-    @"progress", NSHTTPCookieName,
-    [NSString stringWithFormat:@"2_%f", [[NSDate date] timeIntervalSince1970]], NSHTTPCookieValue,
-    @"jailbreakme.com", NSHTTPCookieDomain,
-    @"/", NSHTTPCookiePath,
-    @"Sat, 01 Feb 2020 05:00:00 GMT", NSHTTPCookieExpires,
-    nil]];
-    [[NSHTTPCookieStorage sharedHTTPCookieStorage] setCookie:cookie];
+   
+    [self setProgressCookie:2];
 }
-
 
 - (void)bored {
     if([progressAlertView.message isEqualToString:@"This might take a while."]) {
@@ -190,7 +193,7 @@ struct wad {
     [progressBar setProgress:0.0];
    
     [UIView beginAnimations:nil context:nil];
-    progressBar.frame = CGRectMake(92, 90, 110, 10);
+    progressBar.frame = CGRectMake(88, 90, 110, 10);
     [[[progressAlertView buttons] objectAtIndex:0] removeFromSuperview];
     [[progressAlertView buttons] removeObjectAtIndex:0];
     [progressAlertView layoutAnimated:YES];
@@ -252,6 +255,7 @@ struct wad {
         if(buttonIndex == 0) {
             // The user hit cancel, just crash.
             unpatch();
+            [self setProgressCookie:3];
             if(is_hung) {
                 [[UIApplication sharedApplication] terminateWithSuccess];
             }
