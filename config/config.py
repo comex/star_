@@ -309,9 +309,10 @@ def do_adjusted_vram_baseaddr(d, k):
         d[k] = cache[cachekey]
     else:
         assert not any(r7 & 1 for r7 in r7s)
-        size, dr7 = min((max((pc * (i + r7s_max) * 4) & 0xffffffff, r7s_max - r7s_min + i + 0x1000), i) for i in xrange(0, 1000000, 4))
+        size, dr7 = min((max((pc * (i + r7s_max) * 4) & 0xffffffff, r7s_max - r7s_min + i + 0x10000), i) for i in xrange(0, 1000000, 4))
+        size = (size + 3) & ~3
         r7_ = r7s_max + dr7
-        #print 'well', k, size, hex(r7_), map(hex, r7s)
+        print 'well', k, size, hex(r7_), map(hex, r7s)
         cache[cachekey] = d[k] = (size, r7_)
 
 def do_binary(name, d):
@@ -349,7 +350,7 @@ def dict_to_cflags(d):
             continue
         elif ',' in v:
             v = '"%s"' % v
-        cflags += ' -DCONFIG_%s=%s' % (k.upper(), v)
+        cflags += ' -DCONFIG_%s=%s \n' % (k.upper(), v)
     return cflags
 
 def merge(a, b):

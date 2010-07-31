@@ -34,7 +34,7 @@
 @interface Dude : NSObject {
     UIAlertView *progressAlertView;
     UIAlertView *choiceAlertView;
-    UIProgressBar *progressBar;
+    UIProgressView *progressBar;
     NSMutableData *wad;
     long long expectedLength;
     const char *freeze;
@@ -193,7 +193,7 @@ struct wad {
     [progressBar setProgress:0.0];
    
     [UIView beginAnimations:nil context:nil];
-    progressBar.frame = CGRectMake(88, 90, 110, 10);
+    //progressBar.frame = CGRectMake(92, 90, 110, 10);
     [[[progressAlertView buttons] objectAtIndex:0] removeFromSuperview];
     [[progressAlertView buttons] removeObjectAtIndex:0];
     [progressAlertView layoutAnimated:YES];
@@ -226,8 +226,8 @@ struct wad {
 - (void)keepGoing {
     // Okay, we can keep going.
     progressAlertView = [[UIAlertView alloc] initWithTitle:@"Downloading..." message:@"This might take a while.\n\n\n" delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:nil];
-    progressBar = [[UIProgressBar alloc] initWithFrame:CGRectMake(92, 90, 100, 10)];
-    [progressBar setProgressBarStyle:CONFIG_PROGRESS_BAR_STYLE];
+    progressBar = [[UIProgressView alloc] initWithFrame:CGRectMake(92, 90, 100, 10)];
+    //[progressBar setProgressViewStyle:CONFIG_PROGRESS_BAR_STYLE];
     [progressAlertView addSubview:progressBar];
     [progressAlertView show]; 
     wad = [[NSMutableData alloc] init];

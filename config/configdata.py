@@ -140,6 +140,7 @@
         'patch_nosuid': '6a/62 5a .. .. - 13 40 63/6b 52 95 23',
         'patch_nosuid_to': 0x46c046c0,
         
+        'e0': '@ + 00 bd', # pop {pc}
         # sub sp, r7, #0; pop {r7, pc}
         'e1': '@ - 00 d0 47 e2 80 80 bd e8',
         'e2': '+ 01 a8 0f/1b 99 00 9a',
@@ -150,7 +151,6 @@
 
 '.armv6_4.x': {
     '<': '.armv6',
-    'progress_bar_style': 2,
     '#cache': {
         'magic_offset': -960,
     }
@@ -158,7 +158,6 @@
 
 '.armv6_3.1.x': {
     '<': '.armv6',
-    'progress_bar_style': 1,
     '#cache': {
         'magic_offset': -956,
     }
@@ -247,6 +246,7 @@
         'patch_nosuid': 'd6/d8 f8 88 30 db 6b - 13 f0 08 0f',
         'patch_nosuid_to': 0x0f00f013, # tst r3, #0
 
+        'e0': '@ + 00 bd', # pop {pc}
         'e1': '@ + a7 f1 00 0d 80 bd', # sub sp, r7, #0; pop {r7, pc}
         'e2': '+ 01 a8 0f/1b 99 00 9a',
     },
@@ -254,7 +254,6 @@
 
 '.armv7_4.x': {
     '<': '.armv7',
-    'progress_bar_style': 2,
     '#cache': {
         #...
         'magic_offset': -964,
@@ -263,7 +262,6 @@
 
 '.armv7_3.1.x': {
     '<': '.armv7',
-    'progress_bar_style': 1,
     '#kern': {
         'patch1':       '- 02 0f 40 f0 .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93',
         'patch1_to':    0xf0400f00,
@@ -277,7 +275,6 @@
 
 'iPad1,1_3.2': {
     '<': '.armv7',
-    'progress_bar_style': 2,
     '#kern': {
         'vram_baseaddr': [0xed6ed000 + 1024*768*4*2],
         'vram_baseaddr_atboot': [0xed6ed000 + 1024*768*4],
@@ -302,13 +299,11 @@
     '#kern': {
         #'vram_baseaddr': [0xd28cd000],
         #'vram_baseaddr_atboot': [0xd2d7d000],
-        'vram_baseaddr': [0xd35e9000 + 640*960*4*3, 0xd35e9000 + 640*960*4*4],
-        'vram_baseaddr_atboot': [0xd35e9000 + 640*960*4],
+        'vram_baseaddr': [0xd35e9000 + 640*960*4*3], #0xd35e9000 + 640*960*4*4],
+        'vram_baseaddr_atboot': [0xd35e9000 + 640*960*4*1],
 
         # ???
         'patch3':       '70 46 13 22 .. 4b 98 47 00 .. -',
-
-        #'e1': 0xdeaddead,
     },
 },
 'iPhone3,1_4.0.1': { '<': 'iPhone3,1_4.0', },
