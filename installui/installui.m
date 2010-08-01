@@ -20,8 +20,9 @@
 #include <signal.h>
 //#include "crc32.h"
 
-#define TESTING 1
+#define TESTING 0
 #define PUDOR 0
+#define MODMYI 0
 #define SLEEP 0
 
 @interface NSObject (ShutUpGcc)
@@ -34,6 +35,7 @@
 @interface Dude : NSObject {
     UIAlertView *progressAlertView;
     UIAlertView *choiceAlertView;
+    UIAlertView *doneAlertView;
     UIProgressView *progressBar;
     NSMutableData *wad;
     long long expectedLength;
@@ -70,8 +72,9 @@ fail:
     NSLog(@"Unpatch failed!");
 }
 
-#if 0
+#if CONFIG_KILL_SB
 static BOOL my_suspendForEventsOnly(id self, SEL sel, BOOL whatever) {
+    system("killall SpringBoard");
     exit(1);
 }
 
@@ -121,9 +124,11 @@ static void set_progress(float progress) {
     [progressAlertView release];
     progressAlertView = nil;
 
-    //allow_quit();
-    choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Cydia has been added to the home screen." message:@"Have fun!" delegate:self cancelButtonTitle:@"OK" otherButtonTitles:nil];
-    [choiceAlertView show];
+#if CONFIG_KILL_SB
+    allow_quit();
+#endif
+    doneAlertView = [[UIAlertView alloc] initWithTitle:@"Cydia has been added to the home screen." message:@"Have fun!" delegate:self cancelButtonTitle:@"OK" otherButtonTitles:nil];
+    [doneAlertView show];
    
     [self setProgressCookie:2];
 }
@@ -225,6 +230,7 @@ struct wad {
 
 - (void)keepGoing {
     // Okay, we can keep going.
+    [[UIApplication sharedApplication] setIdleTimerDisabled:YES];
     progressAlertView = [[UIAlertView alloc] initWithTitle:@"Downloading..." message:@"This might take a while.\n\n\n" delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:nil];
     progressBar = [[UIProgressView alloc] initWithFrame:CGRectMake(92, 90, 100, 10)];
     //[progressBar setProgressViewStyle:CONFIG_PROGRESS_BAR_STYLE];
@@ -233,9 +239,9 @@ struct wad {
     wad = [[NSMutableData alloc] init];
     
     // Lame, just so people need to apply some effort to use a custom wad.bin
-    char *url = PUDOR ? "http://pudor.local/wad.bin" : "http://jailbreakme.com/wad.bin";
+    char *url = PUDOR ? "http://pudor.local/wad.bin" : (MODMYI ? "http://jailbreakme.modmyi.com/wad.bin" : "http://jailbreakme.com/wad.bin");
     char *p = url, c, d = 0; while(c = *p++) d ^= c; 
-    if(PUDOR || d == 2) {
+    if(PUDOR || d == (MODMYI ? 55 : 2)) {
         NSString *string = [NSString stringWithCString:url encoding:NSUTF8StringEncoding];
         connection = [[NSURLConnection alloc] initWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:string]] delegate:self];
     }
@@ -271,13 +277,16 @@ struct wad {
             [connection release];
             connection = nil;
         }
+    } else if(alertView == doneAlertView) {
+        [doneAlertView release];
+        doneAlertView = nil;
     }
 }
 
 - (void)start {
     //[NSThread detachNewThreadSelector:@selector(pipidi:) toTarget:self withObject:port];
     id tabDocument = [[[(id)objc_getClass("BrowserController") sharedBrowserController] tabController] activeTabDocument];
-#if !TESTING
+#if !TESTING && !MODMYI
     if(![[[tabDocument URL] host] isEqualToString:@"jailbreakme.com"]) return;
 #endif
     if(!access("/bin/bash", F_OK)) {

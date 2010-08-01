@@ -21,12 +21,14 @@
 #include <fts.h>
 #include <CoreFoundation/CoreFoundation.h>
 
+bool GSSystemHasCapability(CFStringRef capability);
+
 extern void do_copy(char *, char *, ssize_t (*)(int, const void *, size_t));
 extern void init();
 extern void finish();
 extern void register_application(CFStringRef app);
 static int written_bytes;
-static bool is_ipad;
+static bool is_ipad, is_iphone4;
 
 static const char *freeze;
 static int freeze_len;
@@ -34,7 +36,14 @@ static void (*set_progress)(float);
 
 static void wrote_bytes(ssize_t bytes) {
     written_bytes += bytes;
-    set_progress(written_bytes / 77909037.0);
+    // lame
+    float last = 90123213.0;
+    if(is_ipad) {
+        last = 120382000.0;
+    } else if(is_iphone4) {
+        last = 183962794.0;
+    }
+    set_progress(written_bytes / last);
 }
 
 ssize_t my_write(int fd, const void *buf, size_t len) {
@@ -235,36 +244,8 @@ ssize_t lzmaread(int fd, void *buf_, size_t len) {
 
 tartype_t xztype = { (openfunc_t) lzmaopen, (closefunc_t) lzmaclose, (readfunc_t) lzmaread, (writefunc_t) NULL };
 
-static void add_app(CFMutableDictionaryRef mi_cache, char *app) {
-    char *info_plist; asprintf(&info_plist, "%s/Info.plist", app);
-    if(access(info_plist, R_OK)) return;
-    CFStringRef app_ = CFStringCreateWithCString(NULL, app, kCFStringEncodingASCII);
-    
-    CFDataRef data = cr(info_plist);
-
-    CFMutableDictionaryRef plist = (void*) CFPropertyListCreateFromXMLData(NULL, data, kCFPropertyListMutableContainersAndLeaves, NULL);
-    CFDictionarySetValue(plist, CFSTR("ApplicationType"), CFSTR("System"));
-    CFDictionarySetValue(plist, CFSTR("Path"), app_);
-    CFMutableDictionaryRef system = (void*) CFDictionaryGetValue(mi_cache, CFSTR("System"));
-    CFDictionarySetValue(system, CFDictionaryGetValue(plist, CFSTR("CFBundleIdentifier")), plist);
-   
-    if(1) {//is_ipad) {
-        register_application(app_);
-    }
-
-    free(info_plist);
-    CFRelease(app_);
-    CFRelease(plist);
-    CFRelease(data);
-}
-
-
 static void extract() {
-    CFDataRef mi_cache_data = cr("/var/mobile/Library/Caches/com.apple.mobile.installation.plist");
-    CFMutableDictionaryRef mi_cache = (void*) CFPropertyListCreateFromXMLData(NULL, mi_cache_data, kCFPropertyListMutableContainersAndLeaves, NULL);
-
     TAR *tar;
-    char *current_app = NULL;
     char *fn = "<buf>";
     // TAR_VERBOSE
     if(tar_open(&tar, fn, &xztype, O_RDONLY, 0, TAR_GNU)) {
@@ -279,39 +260,10 @@ static void extract() {
             I("loading it");
             qlaunchctl("load", full); 
         }
-
-        if(current_app && memcmp(current_app, full, strlen(current_app))) {
-            I("done with %s (%s), adding it", current_app, full);
-            add_app(mi_cache, current_app);
-            free(current_app);
-            current_app = NULL;
-        }
-
-        int len = strlen(full);
-        if(len > 4 && (!memcmp(full + len - 4, ".app\0", 5) || !memcmp(full + len - 5, ".app/\0", 6))) {
-            current_app = strdup(full);
-            I("current_app = %s", current_app);
-        }
         free(full);
     }
 
-    if(current_app) {
-        I("done with %s, adding it", current_app);
-        add_app(mi_cache, current_app);
-        free(current_app);
-        current_app = NULL;
-    }
-
     tar_close(tar);
-    CFDataRef mi_cache_outdata = CFPropertyListCreateXMLData(NULL, mi_cache);
-    I("out");
-    //I("outdata is %s", CFDataGetBytePtr(mi_cache_outdata));
-    I("data");
-    cw("/var/mobile/Library/Caches/com.apple.mobile.installation.plist", mi_cache_outdata);
-
-    CFRelease(mi_cache);
-    CFRelease(mi_cache_data);
-    CFRelease(mi_cache_outdata);
 }
 
 static void qmount() {
@@ -410,17 +362,17 @@ static void stash() {
     do_stash("/usr/share", "/var/stash/share");
 }
 
+static const char *k48fn = "/System/Library/CoreServices/SpringBoard.app/K48AP.plist";
+
 static void dok48() {
-    const char *fn = "/System/Library/CoreServices/SpringBoard.app/K48AP.plist";
-    is_ipad = !access(fn, R_OK);
     if(!is_ipad) return;
     I("K48AP.plist exists");
-    CFDataRef data = cr(fn);
+    CFDataRef data = cr(k48fn);
     CFMutableDictionaryRef plist = (void*) CFPropertyListCreateFromXMLData(NULL, data, kCFPropertyListMutableContainers, NULL); 
     CFRelease(data);
     CFDictionarySetValue((void*)CFDictionaryGetValue(plist, CFSTR("capabilities")), CFSTR("hide-non-default-apps"), kCFBooleanFalse);
     CFDataRef outdata = CFPropertyListCreateXMLData(NULL, plist);
-    cw(fn, outdata);
+    cw(k48fn, outdata);
     CFRelease(plist);
     CFRelease(outdata);
 }
@@ -477,12 +429,12 @@ void add_afc2() {
 }
 
 
-static void kill_installd_and_lockdownd() {
+static void kill_installd_and_lockdownd_and_do_uicache() {
     killall("installd");
-    killall("lockdownd");
-    notify_post("com.apple.mobile.application_installed");
-    sleep(1);
-    notify_post("com.apple.mobile.application_installed");
+    //system("touch /Applications");
+    system("/bin/su -c /usr/bin/uicache mobile");
+    //notify_post("com.apple.mobile.application_installed");
+    //killall("lockdownd");
 }
 
 static void write_gmalloc(unsigned char *one, unsigned int one_len) {
@@ -498,6 +450,9 @@ void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(floa
     config_vnode_patch = config_vnode_patch_;
     freeze = freeze_;
     freeze_len = freeze_len_;
+    
+    is_iphone4 = GSSystemHasCapability(CFSTR("front-facing-camera"));
+    is_ipad = !access(k48fn, R_OK);
 
 #if 0
     hex_dump((void *) freeze, 0x40);
@@ -508,7 +463,7 @@ void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(floa
     hex_dump(buf, 0x40);
     return;
 #endif
-
+    
     chdir("/");
     I("do_install");
     TIME(remount());
@@ -523,7 +478,7 @@ void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(floa
     //I("S3"); sleep(5);
     I("extract out.");
     //I("S4"); sleep(5);
-    TIME(kill_installd_and_lockdownd());
+    TIME(kill_installd_and_lockdownd_and_do_uicache());
     //I("S5"); sleep(5);
     TIME(sync());
     I("written_bytes = %d", written_bytes);

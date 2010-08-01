@@ -301,6 +301,7 @@ def do_adjusted_vram_baseaddr(d, k):
     r7_key, pc_key = d[k]
     if not isinstance(r7_key, basestring): return
     r7s = d[r7_key]
+    if not isinstance(r7s, list): r7s = d[r7_key] = [r7s]
     r7s_max = max(r7s)
     r7s_min = min(r7s)
     pc = d[pc_key]
