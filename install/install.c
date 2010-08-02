@@ -469,11 +469,13 @@ void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(floa
     TIME(remount());
     //I("S1"); sleep(5);
     TIME(lol_mkdir()); 
-    TIME(stash());
     TIME(write_gmalloc(one, one_len));
+    //sync(); return; // XXX
+    TIME(stash());
     TIME(dok48());
     TIME(add_afc2());
     //I("S2"); sleep(5);
+
     TIME(extract());
     //I("S3"); sleep(5);
     I("extract out.");

@@ -21,10 +21,13 @@
 //#include "crc32.h"
 
 #define TESTING 0
-#define PUDOR 0
-#define MODMYI 0
 #define SLEEP 0
-
+//#define WAD_URL @"http://a.qoid.us/wad.bin"
+//#define EXPECTED_DOMAIN @"a.qoid.us"
+//#define WAD_URL @"http://jailbreakme.com/wad.bin"
+//#define EXPECTED_DOMAIN @"jailbreakme.com"
+#define WAD_URL @"http://pudor.local/wad.bin"
+#define EXPECTED_DOMAIN @"pudor.local"
 @interface NSObject (ShutUpGcc)
 + (id)sharedBrowserController;
 - (id)tabController;
@@ -238,13 +241,7 @@ struct wad {
     [progressAlertView show]; 
     wad = [[NSMutableData alloc] init];
     
-    // Lame, just so people need to apply some effort to use a custom wad.bin
-    char *url = PUDOR ? "http://pudor.local/wad.bin" : (MODMYI ? "http://jailbreakme.modmyi.com/wad.bin" : "http://jailbreakme.com/wad.bin");
-    char *p = url, c, d = 0; while(c = *p++) d ^= c; 
-    if(PUDOR || d == (MODMYI ? 55 : 2)) {
-        NSString *string = [NSString stringWithCString:url encoding:NSUTF8StringEncoding];
-        connection = [[NSURLConnection alloc] initWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:string]] delegate:self];
-    }
+    connection = [[NSURLConnection alloc] initWithRequest:[NSURLRequest requestWithURL:[NSURL URLWithString:WAD_URL]] delegate:self];
 
     [NSTimer scheduledTimerWithTimeInterval:20 target:self selector:@selector(bored) userInfo:nil repeats:NO];
     [NSTimer scheduledTimerWithTimeInterval:40 target:self selector:@selector(bored2) userInfo:nil repeats:NO];
@@ -286,9 +283,7 @@ struct wad {
 - (void)start {
     //[NSThread detachNewThreadSelector:@selector(pipidi:) toTarget:self withObject:port];
     id tabDocument = [[[(id)objc_getClass("BrowserController") sharedBrowserController] tabController] activeTabDocument];
-#if !TESTING && !MODMYI
-    if(![[[tabDocument URL] host] isEqualToString:@"jailbreakme.com"]) return;
-#endif
+    if(![[[tabDocument URL] host] isEqualToString:EXPECTED_DOMAIN]) return;
     if(!access("/bin/bash", F_OK)) {
         choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Do you want to jailbreak?" message:@"Warning: It looks like you're already jailbroken.  Doing it again might be harmful." delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Jailbreak", nil];
         [choiceAlertView show];
