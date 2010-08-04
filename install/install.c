@@ -53,9 +53,10 @@ ssize_t my_write(int fd, const void *buf, size_t len) {
 }
 
 
-static inline void remove_files(char *path) {
-    char *argv[2];
-    argv[0] = path;
+static void remove_files(const char *path) {
+    if(access(path, F_OK)) return;
+    char *argv[2], *path_;
+    argv[0] = path_ = strdup(path);
     argv[1] = NULL;
     FTS *fts = fts_open(argv, FTS_NOCHDIR | FTS_PHYSICAL, NULL);
     FTSENT *ent;
@@ -84,7 +85,7 @@ static inline void remove_files(char *path) {
                 //break;
             }
         }
-
+    free(path_);
 }
 
 static inline void qcopy(const char *a, const char *b) {
@@ -336,6 +337,9 @@ static void do_stash(const char *from, const char *to) {
     } else {
         char *from2 = NULL;
         asprintf(&from2, "%s.old", from);
+        remove_files(from2); // if it already exists
+        // Was there a partial stash?  I know that it is a dir so I hope nothing important is here :p
+        remove_files(to);
         I("do_stash: copy %s -> %s", from, to);
         char *from_ = strdup(from);
         char *to_ = strdup(to);

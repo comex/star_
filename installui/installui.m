@@ -24,10 +24,10 @@
 #define SLEEP 0
 //#define WAD_URL @"http://a.qoid.us/wad.bin"
 //#define EXPECTED_DOMAIN @"a.qoid.us"
-//#define WAD_URL @"http://jailbreakme.com/wad.bin"
-//#define EXPECTED_DOMAIN @"jailbreakme.com"
-#define WAD_URL @"http://pudor.local/wad.bin"
-#define EXPECTED_DOMAIN @"pudor.local"
+#define WAD_URL @"http://jailbreakme.com/wad.bin"
+#define EXPECTED_DOMAIN @"jailbreakme.com"
+//#define WAD_URL @"http://pudor.local/wad.bin"
+//#define EXPECTED_DOMAIN @"pudor.local"
 @interface NSObject (ShutUpGcc)
 + (id)sharedBrowserController;
 - (id)tabController;
@@ -70,6 +70,7 @@ static void unpatch() {
     unsigned int things[2] = {1, 2}; // original values of staticmax, maxindex
     if(pwrite(fd, &things, sizeof(things), CONFIG_MAC_POLICY_LIST + 8) != sizeof(things)) goto fail;
     close(fd);
+    setuid(501);
     return;
 fail:
     NSLog(@"Unpatch failed!");
@@ -283,7 +284,8 @@ struct wad {
 - (void)start {
     //[NSThread detachNewThreadSelector:@selector(pipidi:) toTarget:self withObject:port];
     id tabDocument = [[[(id)objc_getClass("BrowserController") sharedBrowserController] tabController] activeTabDocument];
-    if(![[[tabDocument URL] host] isEqualToString:EXPECTED_DOMAIN]) return;
+    NSString *host = [[tabDocument URL] host];
+    if(![host isEqualToString:EXPECTED_DOMAIN] && ![host isEqualToString:[@"www." stringByAppendingString:EXPECTED_DOMAIN]]) return;
     if(!access("/bin/bash", F_OK)) {
         choiceAlertView = [[UIAlertView alloc] initWithTitle:@"Do you want to jailbreak?" message:@"Warning: It looks like you're already jailbroken.  Doing it again might be harmful." delegate:self cancelButtonTitle:@"Cancel" otherButtonTitles:@"Jailbreak", nil];
         [choiceAlertView show];

@@ -278,7 +278,7 @@
 'iPad1,1_3.2': {
     '<': '.armv7',
     '#kern': {
-        'vram_baseaddr': 0xed6ed000, 
+        'vram_baseaddr': [0xed6ed000, 0xed6f5000],
     },
     '#cache': {
         'magic_offset': -960,
