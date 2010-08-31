@@ -8,7 +8,6 @@ except:
 if __name__ == '__main__':
     basepath = os.path.realpath(os.path.dirname(sys.argv[0]))
     os.chdir(basepath)
-    data = eval('{%s}' % open('configdata.py').read())
 else:
     basepath = os.path.realpath(os.path.dirname(__file__))
 
@@ -399,9 +398,12 @@ if __name__ == '__main__':
     parser = optparse.OptionParser()
     parser.add_option('-v', '--verbose', action='store_true', dest='verbose', default=False)
     parser.add_option('-u', '--uncached', action='store_true', dest='uncached', default=False)
+    parser.add_option('-w', '--world', action='store', dest='world', default='1')
     (options, args) = parser.parse_args()
+    world = options.world
     verbose = options.verbose
     uncached = options.uncached
+    data = eval('{%s}' % (open('configdata.py').read() + open('configdata_world%s.py' % options.world).read()))
     make_config(args[0])
 else:
     verbose = False
