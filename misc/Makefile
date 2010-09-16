@@ -1,5 +1,5 @@
 include ../env.mk
-all: machdump pmap
+all: machdump pmap shelltester
 essential: machdump
 machdump: machdump.c
 	$(GCC_NATIVE) -o machdump machdump.c
@@ -13,6 +13,9 @@ pmap2: pmap2.c ../config/config.cflags
 pmaparb: pmaparb.c ../config/config.cflags
 	$(GCC_UNIVERSAL) -o pmaparb pmaparb.c -I../cry/headers -std=gnu99 -framework IOKit -framework CoreFoundation -framework IOSurface
 	ldid -S pmaparb
+
+shelltester: shelltester.c
+	$(GCC_UNIVERSAL) -o shelltester shelltester.c -std=gnu99
 
 clean:
 	rm -f machdump pmap

@@ -91,7 +91,7 @@ def funcall(funcname, *args, **kwargs):
         load_r0_r0()
         del kwargs['load_r0']
     assert kwargs == {}
-    if len(args) <= 7:
+    if len(args) <= 7 and cache.has_key('k12'):
         set_fwd('PC', cache['k12'])
         set_fwd('R4', funcaddr)
         exhaust_fwd('R5', 'R7')
@@ -102,6 +102,15 @@ def funcall(funcname, *args, **kwargs):
             set_fwd('R5', args[5])
         if len(args) > 6:
             set_fwd('R7', args[6])
+    elif len(args) <= 6 and cache.has_key('k22'):
+        set_fwd('PC', cache['k22'])
+        set_fwd('R4', funcaddr)
+        exhaust_fwd('R7')
+        heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
+        if len(args) > 4:
+            set_fwd('R4', args[4])
+        if len(args) > 5:
+            set_fwd('R7', args[7])
     else:
         die
         #set_fwd('PC', cache['k17'])

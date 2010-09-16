@@ -1,1 +1,1 @@
-../install/common.h
+../misc/common.h

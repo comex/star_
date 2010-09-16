@@ -25,7 +25,6 @@ def finalize(heapaddr_=None):
     heapaddr = heapaddr_
     if heapaddr is not None:
         sheapaddr = heapaddr + 4*len(heapstuff)
-        print 'sheapaddr = %x'% sheapaddr
     sheap = ''
     for pass_num in xrange(2):
         for hidx in xrange(len(heapstuff)):
@@ -80,7 +79,7 @@ class car:
     def __int__(self):
         if not hasattr(self, '_val'):
             self._val = int(self.val())
-        return self._val
+        return int(self._val)
     def __add__(self, other):
         return later(lambda: (int(self) + int(other)) % (2**32))
     def __sub__(self, other):
