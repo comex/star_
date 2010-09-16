@@ -65,8 +65,8 @@ def installui():
         
     files = ['dddata.o', 'installui.o']
     for o in files:
-        run(GCC_UNIVERSAL, '-I', HEADERS, '-I', '.', '-std=gnu99', '-c', '-o', o, chext(o, '.m'))
-    run(GCC_UNIVERSAL, '-dynamiclib', '-o', 'installui.dylib', files, F('Foundation', 'UIKit', 'IOKit', 'CoreGraphics'), '-lz')
+        run(GCC, '-I', HEADERS, '-I', '.', '-std=gnu99', '-c', '-o', o, chext(o, '.m'))
+    run(GCC, '-dynamiclib', '-o', 'installui.dylib', files, F('Foundation', 'UIKit', 'IOKit', 'CoreGraphics'), '-lz')
 
 def sandbox():
     machdump()
@@ -90,8 +90,8 @@ def goo_iosurface():
 def cff():
     goo_iosurface()
     goto('cff')
-    run('python', 'mkpdf.py')
     run('python', 'outcff.py')
+    run('python', 'mkpdf.py')
 
 def star():
     install()
