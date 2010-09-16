@@ -11,8 +11,11 @@ if __name__ == '__main__':
 else:
     basepath = os.path.realpath(os.path.dirname(__file__))
 
-cache = shelve.open(basepath + '/config.cache')
+cache = None
 def cache_has_key(cachekey):
+    global cache
+    if cache is None:
+        cache = shelve.open(basepath + '/config.cache')
     if uncached: return False
     return cache.has_key(cachekey)
 
@@ -337,12 +340,12 @@ def do_binary(name, d):
     do_adjusted_vram_baseaddr(d, 'adjusted_vram_baseaddr_atboot')
 
 
-def dict_to_cflags(d):
-    cflags = ''
+def dict_to_header(d):
+    header = ''
     for k, v in d.iteritems():
         if not isinstance(k, basestring) or '-' in k or k.startswith('@'): continue
         if isinstance(v, dict):
-            cflags += dict_to_cflags(v)
+            header += dict_to_header(v)
             continue
         elif isinstance(v, (int, long)):
             v = hex(v)
@@ -350,8 +353,8 @@ def dict_to_cflags(d):
             continue
         elif ',' in v:
             v = '"%s"' % v
-        cflags += ' -DCONFIG_%s=%s \n' % (k.upper(), v)
-    return cflags
+        header += '#define CONFIG_%s %s\n' % (k.upper(), v)
+    return header
 
 def merge(a, b):
     if isinstance(a, dict):
@@ -391,8 +394,8 @@ def make_config(platform_):
     if verbose:
         pretty_print(d)
     open('config.json', 'w').write(json.dumps(d)+'\n')
-    cflags = dict_to_cflags(d) + '\n'
-    open('config.cflags', 'w').write(cflags)
+    h = dict_to_header(d) + '\n'
+    open('config.h', 'w').write(h)
 
 if __name__ == '__main__':
     parser = optparse.OptionParser()

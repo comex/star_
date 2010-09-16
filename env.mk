@@ -18,5 +18,9 @@ GCC_UNIVERSAL = $(GCC_BASE) -arch armv6 -arch armv7
 GCC_NATIVE = gcc
 endif
 
+SDK = /var/sdkj
+
 CFLAGS = `cat $(ROOT)/config/config.cflags` 
-GCC_BASE = $(GCC_BIN) -Os $(CFLAGS) -Wimplicit -isysroot /var/sdk -F/var/sdk/System/Library/Frameworks -F/var/sdk/System/Library/PrivateFrameworks
+GCC_BASE = $(GCC_BIN) -Os $(CFLAGS) -Wimplicit -isysroot $(SDK) -F($SDK)/System/Library/Frameworks -F$(SDK)/System/Library/PrivateFrameworks
+
+GCC_WITH_IOKIT = $(GCC_UNIVERSAL) -I$(ROOT)/headers -std=gnu99 -framework IOKit -framework CoreFoundation -framework IOSurface

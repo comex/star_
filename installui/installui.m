@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <config/config.h>
 #import <dumpedUIKit/UIAlertView.h>
 #import <dumpedUIKit/UIApplication.h>
 #import <dumpedUIKit/UIImageView.h>
@@ -14,7 +15,7 @@
 #include <CommonCrypto/CommonDigest.h>
 #include <CoreGraphics/CoreGraphics.h>
 #include <fcntl.h>
-#include "common.h"
+#include <common/common.h>
 #include "dddata.h"
 #include <objc/runtime.h>
 #include <signal.h>

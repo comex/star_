@@ -1,6 +1,6 @@
 #define CFCOMMON
 //#define LOG_FP
-#include "common.h"
+#include <common/common.h>
 #include <libtar.h>
 #include <lzma.h>
 #include <pthread.h>
@@ -26,7 +26,6 @@ bool GSSystemHasCapability(CFStringRef capability);
 extern void do_copy(char *, char *, ssize_t (*)(int, const void *, size_t));
 extern void init();
 extern void finish();
-extern void register_application(CFStringRef app);
 static int written_bytes;
 static bool is_ipad, is_iphone4;
 

@@ -35,8 +35,11 @@ baseaddr = heapaddr - beforesize
 relocs = []
 dontcare = 0
 
-import zero
-heap = zero.make_stage2(['R4', 'R5', 'R6', 'R7', 'PC'], True, heapaddr)
+if len(sys.argv) <= 1:
+    print 'Usage: one.py <heapfile>'
+    sys.exit(1)
+
+heap = open(sys.argv[1], 'rb').read()
 
 assert len(heap) < 0x1654
 heap += '\0' * (0x1654 - len(heap))
