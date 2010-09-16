@@ -1,5 +1,5 @@
 # Usage: python ipsw.py [the ipsw to import]
-import zipfile, plistlib, shutil, sys, os, tempfile, atexit
+import zipfile, plistlib, shutil, sys, os, tempfile, atexit, re
 
 def system(x):
     print x
@@ -31,6 +31,19 @@ identifier = '%s_%s_%s' % (pl['ProductType'], pl['ProductVersion'], pl['ProductB
 short_identifier = '%s_%s' % (pl['ProductType'], pl['ProductVersion'])
 output = os.path.join(out_root, short_identifier)
 os.mkdir(output)
+
+kc_key = kc_iv = fs_key = None
+for line in open('keyz.txt'):
+    bits = re.split(':? ', line)
+    if bits[0] == short_identifier + '.KernelCache':
+        kc_key = bits[1]
+        kc_iv = bits[2]
+    elif bits[0] == short_identifier + '.fs':
+        fs_key = bits[1]
+
+if kc_key is None or kc_iv is None or fs_key is None:
+    raise ValueError('Couldn\'t get keys for %s' % short_identifier)
+
 pwnage_pl_fn = '%s/%s.bundle/Info.plist' % (fbs, identifier)
 
 stuff = iDeviceKeys.get(pl['ProductType'], {}).get(pl['ProductVersion'])
