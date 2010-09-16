@@ -1,7 +1,7 @@
 *.db
 *.cache
 *.swp
-headers
+bs
 f
 out
 config.cflags
