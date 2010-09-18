@@ -14,6 +14,7 @@ GCC_BIN = BIN + '/gcc-4.2'
 GCC_BASE = [GCC_BIN, '-Werror', '-Os', '-Wimplicit', '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fno-blocks']
 GCC = [GCC_BASE, '-arch', cfg['arch']]
 GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7']
+GCC_SUMMONED = ['/Users/comex/arm-none-eabi/bin/arm-none-eabi-gcc', '-mthumb', '-march='+cfg['arch'], '-Os']
 GCC_NATIVE = 'gcc'
 GCC_FLAGS = ['-std=gnu99']
 HEADERS = ROOT + '/headers'
@@ -92,6 +93,13 @@ def cff():
     goto('cff')
     run('python', 'outcff.py')
     run('python', 'mkpdf.py')
+
+def mm():
+    goto('mm')
+    run(GCC, '-o', 'loader', 'loader.c')
+    run('python', 'nm.py')
+    run(GCC_SUMMONED, '-o', 'kcode_.elf', 'kcode.c', 'kasm.S', '-fwhole-program', '-combine', '-nostdlib', '-nodefaultlibs', '-lgcc', '-T', 'nm.ld')
+    run('sh', '-c', 'cp kcode_.elf kcode.elf; gstrip kcode.elf') 
 
 def star():
     install()

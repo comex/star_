@@ -26,8 +26,8 @@
         'mac_policy_list': '*(-_mac_label_get-4)',
 
         # for pmap.c
-        'kernel_pmap':  '-_kernel_pmap',
-        'mem_size':     '-_mem_size',
+        #'kernel_pmap':  '-_kernel_pmap',
+        #'mem_size':     '-_mem_size',
 
         'strncmp': '+_strncmp',
         'vn_getpath': '+_vn_getpath',
@@ -37,20 +37,7 @@
         'mpo_vnode_check_access':     '*<mpo_vnode_check_access_ptr>',
         'mpo_vnode_check_open':       '*<mpo_vnode_check_open_ptr>',
 
-        'rgbout': '!rgbout',
-        
-        'adjusted_vram_baseaddr': ('vram_baseaddr', 'e1'),
-
-        'current_thread': '+_current_thread',
-        'ipc_kobject_server_end': '!stringref:"ipc_kobject_server: strange destination rights',
-        'ipc_kobject_server_start': '!bof:<ipc_kobject_server_end>',
-        
-        'root_ios_id': 1,
-    },
-    '#cache': {
-        # for installui.m
-        'ft_path_builder_create_path_for_glyph': '-_ft_path_builder_create_path_for_glyph',
-        'get_glyph_bboxes': '-_get_glyph_bboxes',
+        'sysent': '21 00 00 00 00 10 86 00 -',
     },
 
     'kill_sb': 0,
@@ -132,12 +119,6 @@
         'patch1_to':    0x46c046c0,
         'patch3':       '13 20 a0 e3 .. .. .. .. 33 ff 2f e1 00 00 50 e3 00 00 00 0a .. 40 a0 e3 - 04 00 a0 e1 90 80 bd e8',
         'patch3_to':    0xe3a00001,
-
-        'patchkmem0': '- 1b 68 00 2b .. .. .. .. .. .. a5 68 e6 68 00 23',
-        'patchkmem0_to': 0x46c02301,
-
-        'patchkmem1': '1b 68 - 00 2b .. .. a3 68 .. .. .. .. 5b 18 93 42 cc',
-        'patchkmem1_to': 0x46c046c0,
 
         'patch_nosuid': '6a/62 5a .. .. - 13 40 63/6b 52 95 23',
         'patch_nosuid_to': 0x46c046c0,
