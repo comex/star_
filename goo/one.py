@@ -9,7 +9,7 @@ arch = cfg['arch']
 assert arch in ['armv6', 'armv7', 'i386']
 
 beforesize = 0x8000
-heapaddr = 0x10000000
+heapaddr = 0x11000000
 baseaddr = heapaddr - beforesize
 
 dontcare = 0

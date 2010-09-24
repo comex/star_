@@ -22,10 +22,10 @@ def store_r0_to(address):
     exhaust_fwd('R7')
     heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
 
-def store_val(val, address):
+def store_val(val, to):
     set_fwd('PC', cache['k17'])
     set_fwd('R5', val)
-    set_fwd('R4', address)
+    set_fwd('R4', to)
     exhaust_fwd('R7')
     heapadd(fwd('R4'), fwd('R5'), fwd('R7'), fwd('PC'))
 
@@ -60,7 +60,7 @@ def make_r4_avail():
      heapadd(fwd('R4'), fwd('PC'))
 
 def funcall(funcname, *args, **kwargs):
-    # this should be better specified
+    # This wastes a lot of space!  I should make the old behavior an option.
     if isinstance(funcname, basestring):
         funcaddr = syms[funcname]
     else:
@@ -75,13 +75,10 @@ def funcall(funcname, *args, **kwargs):
         del kwargs['load_r0']
     assert kwargs == {}
     mynewstackbase = heapaddr - 0x20
-    # mynewstackbase [R7] [PC=k12] <- dirty zone <- [R4/arg4] [R5/arg5] ([R7/arg6] [PC=k18]) [R7=addr to go back to] [PC=k10]
+    # real stack: ... [PC=k10] marker-> [R7] [PC=next] ...
+    # func stack: mynewstackbase [R7] [PC=k12] <- dirty zone <- [R4/arg4] [R5/arg5] ([R7/arg6] [PC=k18]) [R7=addr to go back to] [PC=k10]
     #                                                                   
     if len(args) <= 7 and cache.has_key('k12'):
-        set_fwd('R4', funcaddr)
-        set_fwd('R7', mynewstackbase)
-        set_fwd('PC', cache['k10'])
-        exhaust_fwd('R5', 'R7')
         store_val(cache['k12'], to=(mynewstackbase + 1*4))
         marker, markeroff = stackunkpair()
         if len(args) > 4:
@@ -90,12 +87,17 @@ def funcall(funcname, *args, **kwargs):
             store_val(args[5], to=(mynewstackbase + 3*4))
         if len(args) > 6:
             store_val(args[6], to=(mynewstackbase + 4*4))
-            store_val(cache['k18'], to=(mynewstackbase + 5*4)
+            store_val(cache['k18'], to=(mynewstackbase + 5*4))
             store_val(markeroff, to=(mynewstackbase + 6*4))
-            store_val(cache['k10'], to=(mynewtackbase + 7*4)
+            store_val(cache['k10'], to=(mynewstackbase + 7*4))
         else:
             store_val(markeroff, to=(mynewstackbase + 4*4))
-            store_val(cache['k10'], to=(mynewtackbase + 5*4)
+            store_val(cache['k10'], to=(mynewstackbase + 5*4))
+        # okay, time to actually go
+        set_fwd('R4', funcaddr)
+        set_fwd('R7', mynewstackbase)
+        set_fwd('PC', cache['k10'])
+        exhaust_fwd('R5', 'R7')
         # this is from k10
         heapadd(marker*0 + fwd('R7'), fwd('PC'))
     elif len(args) <= 6 and cache.has_key('k22'):
@@ -103,6 +105,8 @@ def funcall(funcname, *args, **kwargs):
         assert False
     else:
         assert False
+    # may as well add a free make_avail, since {R7, PC} is pretty bad
+    make_avail()
 
 def store_to_r0(value):
     set_fwd('R4', value)
