@@ -32,12 +32,20 @@
         'strncmp': '+_strncmp',
         'vn_getpath': '+_vn_getpath',
         'mpo_base': '!mpo_base',
-        'mpo_vnode_check_access_ptr': '<mpo_base>+(252<<2)',
-        'mpo_vnode_check_open_ptr':   '<mpo_base>+(267<<2)',
-        'mpo_vnode_check_access':     '*<mpo_vnode_check_access_ptr>',
-        'mpo_vnode_check_open':       '*<mpo_vnode_check_open_ptr>',
+        'mpo_vnode_check_access_ptr':  '<mpo_base>+(252<<2)',
+        'mpo_vnode_check_open_ptr':    '<mpo_base>+(267<<2)',
+        'mpo_proc_check_get_task_ptr': '<mpo_base>+(160<<2)',
+        'mpo_vnode_check_access':      '*<mpo_vnode_check_access_ptr>',
+        'mpo_vnode_check_open':        '*<mpo_vnode_check_open_ptr>',
 
+        'mpo_proc_check_get_task':     '*<mpo_proc_check_get_task_ptr>',
+        'mpo_proc_check_get_task_to':  0, # MAC_CHECK doesn't call a null pointer
+
+        'kernel_pmap_nx_enabled': '*(-_kernel_pmap)+0x420',
+        'kernel_pmap_nx_enabled_to': 1,
         'sysent': '21 00 00 00 00 10 86 00 -',
+        'sysent_8': '*(<sysent>+(8*0x18)+4)',
+        'sysent_8_patch': '<sysent>+(8*0x18)+4+3',
     },
 
     'kill_sb': 0,
@@ -49,37 +57,6 @@
 
     'is_armv7': 0,
     
-    '#launchd': {
-        # mov r0, #1; bx lr
-       -1:              '@ - 01 00 a0 e3 1e ff 2f e1',
-        # ldr r0, [r0] -> _launch_data_new_errno
-        0:              '- 00 00 90 e5 .. .. .. .. 04 20 a0 e1',
-        # lsr r0, r0, #2 -> _setrlimit
-        1:              '05 10 a0 e1 - 20 01 a0 e1 .. .. .. .. 01 00 70 e3 .. .. .. .. .. .. .. .. 04 10 a0 e3',
-        # add r0, #3 -> __exit
-        2:              '01 00 00 .. - 03 00 80 e2',
-        # ldmia r0, {r0-r3} -> _audit_token_to_au32
-        3:              '14 00 8c e2 - 0f 00 90 e8',
-        # str r2, [sp, #4] -> _launch_data_unpack
-        4:              '02 30 a0 e1 - 04 20 8d e5',
-        # str r3, [sp, #8] -> _launch_data_dict_iterate
-        5:              '0d 20 a0 e1 - 08 30 8d e5',
-        # pop {r4, r7, pc}
-        6:              '@ - 90 80 bd e8',
-        # sub.w sp, r7, #0xc; pop {r4-r7, pc}
-        7:              '@ - 0c d0 47 e2 f0 80 bd e8',
-
-        # mov r0, r4; mov r1, r6; mov r2, r5;
-        # blx _strlcpy; pop {r4-r7, pc}
-       -8:              '- 04 00 a0 e1 06 10 a0 e1 05 20 a0 e1 .. .. .. .. f0 80 bd e8',
-        # str r0, [r5]; pop {r4-r7, pc}
-       -9:              '@ - 00 00 85 e5 b0 80 bd e8',
-        # ldr r0, [r4]; blx _pthread_detach
-       10:              '00 00 50 e3 .. .. .. .. - 00 00 94 e5 .. .. .. .. 00 10 50 e2',
-        # mov r0, r6; pop {r4-r7, pc}
-       11:              '@ - 06 00 a0 e1 f0 80 bd e8',
-    },
-
     '#cache': {
         # ldr r0, [r0]; pop {r4, r5, r7, pc}
         'k4': '@ - 00 00 90 e5 b0 80 bd e8',
@@ -195,8 +172,6 @@
         # blx r4; pop {r4, r5, r7, pc}
         'k12': '@ + a0 47 b0 bd',
 
-        # add r0, sp, #600; pop {r1, r7, pc}
-        'k13': '@ + 96 a8 82 bd',
         # ldr r0, [r4, r0]; pop {r4, r7, pc}
         'k14': '@ + 20 58 90 bd',
 
@@ -205,6 +180,16 @@
 
         # ldr r0, [r4]; pop {r4, r7, pc}
         'k16': '@ + 20 68 90 bd',
+        
+        # str r5, [r4]; pop {r4, r5, r7, pc} 
+        'k17': '@ + 25 60 b0 bd',
+        
+        # pop {r7, pc}
+        'k18': '@ + 80 bd',
+
+        # ldmibmi r12, {sp, pc}
+        # actually the tail half of a ldr.w r12, [r1, r0] + ldr r1, [pc, #620] 
+        'k-1': '@ % - 00 a0 9b 49',
     },
 
     '#kern': {
@@ -214,18 +199,14 @@
         'patch1_to':    0x46c00f02,
         'patch3':       '23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -',
         'patch3_to':    0x1c201c20,
-        
-        # It would be better to patch setup_kmem itself but this is easier.
-        'patchkmem0':   '1b 68 00 2b - .. .. .. .. .. .. 04 f1 08 05',
-        'patchkmem0_to': 0x46c046c0,
-        # Note: the 1a 68 in tense3 is only because it was already patched
-        # It is actually 1b 68, but I'm going to be lazy here
-        'patchkmem1':   '.. 68 - 00 2b .. .. a3 68 2a/2b/2f 4a/49',
-        'patchkmem1_to': 0x46c046c0,
 
         # search for bic.*0xc00, or vnode_authorize
         'patch_nosuid': 'd6/d8 f8 88 30 db 6b - 13 f0 08 0f',
         'patch_nosuid_to': 0x0f00f013, # tst r3, #0
+
+        # the actual check for 0
+        'patch_tfp0': '85 68 00 23 .. 93 .. 93 - 5c b9',
+        'patch_tfp0_to': 0x46c0e00b,
 
         'e0': '@ + 00 bd', # pop {pc}
         'e1': '@ + a7 f1 00 0d 80 bd', # sub sp, r7, #0; pop {r7, pc}

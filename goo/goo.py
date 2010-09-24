@@ -1,4 +1,3 @@
-#!/opt/local/bin/python2.6
 import struct, sys, os, re, anydbm, traceback
 import warnings
 warnings.simplefilter('error')
@@ -22,9 +21,9 @@ def heapadd(*stuff):
 def finalize(heapaddr_=None):
     global heapstuff, hidx, sheap, sheapaddr, heapaddr
     clear_fwd()
-    heapaddr = heapaddr_
-    if heapaddr is not None:
-        sheapaddr = heapaddr + 4*len(heapstuff)
+    heapaddr._val = heapaddr_
+    if heapaddr_ is not None:
+        sheapaddr = heapaddr_ + 4*len(heapstuff)
     sheap = ''
     for pass_num in xrange(2):
         for hidx in xrange(len(heapstuff)):
@@ -96,21 +95,18 @@ class car:
         return later(lambda: (int(self) & int(other)) % (2**32))
     def __len__(self):
         return int(self)
-class sp_off(car):
-    def val(self):
-        return 4*hidx
 
-class stackunkwrapper(car):
-    def __init__(self, wrapped):
-        self.wrapped = wrapped
+class later(car):
+    def __init__(self, func):
+        self.func = func
     def val(self):
-        global heapaddr
-        self.addr = heapaddr + 4*hidx
-        return int(self.wrapped)
+        return self.func()
+
+sp_off = lambda: later(lambda: 4*hidx)
+
 class stackunk(car):
     def val(self):
-        global heapaddr
-        self.addr = heapaddr + 4*hidx
+        self.addr = int(heapaddr) + 4*hidx
         return 0
 class stackunkptr(car):
     def __init__(self, unk):
@@ -118,7 +114,7 @@ class stackunkptr(car):
     def val(self):
         if not hasattr(self.unk, 'addr'): raise NotYetError
         return self.unk.addr
-# [0] evaluates to 0, [1] evaluates to the address of [0]
+# [0] evaluates to 0 (initially), [1] evaluates to the address of [0]
 def stackunkpair():
     unk = stackunk()
     unkptr = stackunkptr(unk)
@@ -150,11 +146,4 @@ class ptr(car):
         while len(sheap) % 4 != 0: sheap += '\0'
         return ret
 
-class later(car):
-    def __init__(self, func):
-        self.func = func
-    def val(self):
-        return self.func()
-
-
-
+heapaddr = car() # finalize fills this in

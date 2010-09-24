@@ -66,7 +66,7 @@ def find_rgbout(binary):
 
 def do_binary_kv(binary, mtime, d, k, v):
     if ' ' not in v or '"' in v:
-        v = v.replace('*', 'binary.deref')
+        v = re.sub('\*(?=\(|<)', 'binary.deref', v)
         v = re.sub('([\-\+]_[a-zA-Z0-9_]+)', 'do_symstring(binary, "\\1")', v)
         v = re.sub('!sysctl:([a-zA-Z0-9_]+)', 'find_sysctl(binary, "\\1")', v)
         v = v.replace('!scratch', 'find_scratch(binary)')
@@ -97,6 +97,8 @@ def do_binary_kv(binary, mtime, d, k, v):
             soff = n
         elif bit == '~':
             align = 1
+        elif bit == '%':
+            align = 4
         elif bit == '..':
             sstr += '.'
             nonexact = True

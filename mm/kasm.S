@@ -1,6 +1,7 @@
-.thumb
-.syntax unified
 .section .init
+.thumb
 stub:
-    b mysyscall
+    push {lr}
+    blx mem_init
+    pop {pc}
 

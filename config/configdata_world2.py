@@ -7,6 +7,8 @@
        'k11': '@ + f0 bd',
        # str r4, [r0]; pop {r4, r7, pc}
        'k15': '@ + 04 60 90 bd',
+       # pop {r7, pc}
+       'k18': '@ + 80 bd',
        # mov r12, r0; pop {r0-r3, r7, lr}; add sp, #8; bx r12
        'k20': '@ - 00 c0 a0 e1 8f 40 bd e8 08 d0 8d e2 1c ff 2f e1',
        # mov r0, r4; pop {r4, r7, pc}

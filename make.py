@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 from fabricate import *
+import fabricate
+fabricate.default_builder.deps # do this before we chdir
 import sys, os
 ROOT = os.path.realpath(os.path.dirname(sys.argv[0]))
 sys.path.append(ROOT + '/config')
@@ -15,6 +17,7 @@ GCC_BASE = [GCC_BIN, '-Werror', '-Os', '-Wimplicit', '-isysroot', SDK, '-F'+SDK+
 GCC = [GCC_BASE, '-arch', cfg['arch']]
 GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7']
 GCC_SUMMONED = ['/Users/comex/arm-none-eabi/bin/arm-none-eabi-gcc', '-mthumb', '-march='+cfg['arch'], '-Os']
+STRIP_SUMMONED = '/Users/comex/arm-none-eabi/bin/arm-none-eabi-strip'
 GCC_NATIVE = 'gcc'
 GCC_FLAGS = ['-std=gnu99']
 HEADERS = ROOT + '/headers'
@@ -88,6 +91,12 @@ def goo_iosurface():
     run('python', '../one.py', 'stage2boot.txt')
     run('python', 'zero.py', '--initial')
 
+def goo_pf():
+    goo()
+    goto('goo/pf')
+    run('python', 'transe.py')
+    run('python', '../one.py', 'transeboot.txt')
+
 def cff():
     goo_iosurface()
     goto('cff')
@@ -98,8 +107,9 @@ def mm():
     goto('mm')
     run(GCC, '-o', 'loader', 'loader.c')
     run('python', 'nm.py')
-    run(GCC_SUMMONED, '-o', 'kcode_.elf', 'kcode.c', 'kasm.S', '-fwhole-program', '-combine', '-nostdlib', '-nodefaultlibs', '-lgcc', '-T', 'nm.ld')
-    run('sh', '-c', 'cp kcode_.elf kcode.elf; gstrip kcode.elf') 
+    # Not actually i386... obviously.
+    run(GCC_SUMMONED, '-o', 'kcode_.elf', 'kasm.S', 'mem.c', '-fwhole-program', '-combine', '-nostdlib', '-nostdinc', '-nodefaultlibs', '-lgcc', '-T', 'nm.ld', '-Wimplicit', '-Ixnu', '-Ixnu/bsd', '-Ixnu/libkern', '-Ixnu/osfmk', '-Ixnu/bsd/i386', '-Ixnu/bsd/sys', '-Ixnu/EXTERNAL_HEADERS', '-Ixnu/osfmk/libsa', '-D__i386__', '-DKERNEL', '-DKERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE')
+    run('sh', '-c', 'cp kcode_.elf kcode.elf; '+STRIP_SUMMONED+' kcode.elf') 
 
 def star():
     install()

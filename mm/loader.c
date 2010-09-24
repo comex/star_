@@ -53,7 +53,7 @@ int main() {
     while(phnum--) {
         assert(read(fd, &phdr, sizeof(phdr)) == sizeof(phdr));
         if(phdr.p_type == PT_LOAD) {
-            if(!my_sysent.sy_call) my_sysent.sy_call = (void *) (phdr.p_vaddr | 1);
+            if(!my_sysent.sy_call) my_sysent.sy_call = (void *) (phdr.p_vaddr);
             void *buf = malloc(phdr.p_filesz);
             assert(pread(fd, buf, phdr.p_filesz, phdr.p_offset) == phdr.p_filesz);
             vm_address_t address = (vm_address_t) phdr.p_vaddr;
