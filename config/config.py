@@ -408,7 +408,9 @@ if __name__ == '__main__':
     world = options.world
     verbose = options.verbose
     uncached = options.uncached
-    data = eval('{%s}' % (open('configdata.py').read() + open('configdata_world%s.py' % options.world).read()))
+    stuff = eval('{%s}' % (open('configdata.py').read()))
+    data = stuff['all'].copy()
+    data.update(stuff['world%s' % world])
     make_config(args[0])
 else:
     verbose = False

@@ -76,7 +76,7 @@ def funcall(funcname, *args, **kwargs):
     assert kwargs == {}
     mynewstackbase = heapaddr - 0x20
     # real stack: ... [PC=k10] marker-> [R7] [PC=next] ...
-    # func stack: mynewstackbase [R7] [PC=k12] <- dirty zone <- [R4/arg4] [R5/arg5] ([R7/arg6] [PC=k18]) [R7=addr to go back to] [PC=k10]
+    # func stack: mynewstackbase [R7] [PC=k12] <- dirty zone <- [R4/arg4] [R5/arg5] ([R7/arg6] [PC=k19]) [R7=addr to go back to] [PC=k10]
     #                                                                   
     if len(args) <= 7 and cache.has_key('k12'):
         store_val(cache['k12'], to=(mynewstackbase + 1*4))
@@ -87,7 +87,7 @@ def funcall(funcname, *args, **kwargs):
             store_val(args[5], to=(mynewstackbase + 3*4))
         if len(args) > 6:
             store_val(args[6], to=(mynewstackbase + 4*4))
-            store_val(cache['k18'], to=(mynewstackbase + 5*4))
+            store_val(cache['k19'], to=(mynewstackbase + 5*4))
             store_val(markeroff, to=(mynewstackbase + 6*4))
             store_val(cache['k10'], to=(mynewstackbase + 7*4))
         else:
