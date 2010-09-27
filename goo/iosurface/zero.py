@@ -269,7 +269,7 @@ def make_stage1():
     add_r0_const(0xdeadbeef) # Not a placeholder.  This is the length of the original program, which we want to skip. outcff handles this
 
     funcall('_bcopy', None, mmap_addr + stackspace, len(stage2))
-    set_sp(mmap_addr + stackspace)
+    set_sp_to(mmap_addr + stackspace)
     heapadd(0xf00df00d) # searched for
 
     return finalize()

@@ -5,30 +5,31 @@ warnings.simplefilter('error')
 #os.chdir(os.path.dirname(os.path.abspath(sys.argv[0])))
 dontcare = 0
 
-heapdbg = False
-
 def init(*regs):
     global fwds, heapstuff
     fwds = {}
     heapstuff = map(fwd, regs)
 
+dbginfo = []
+
 def heapadd(*stuff):
     global heapstuff
-    if heapdbg:
-        heapstuff.append(''.join(traceback.format_stack()))
+    # so we know where we came from
+    dbginfo.append((len(heapstuff), sys._getframe().f_back.f_code.co_name))
+    
     heapstuff += list(stuff)
 
 def finalize(heapaddr_=None):
-    global heapstuff, hidx, sheap, sheapaddr, heapaddr
+    global heapstuff, hidx, sheap, sheapaddr, heapaddr, heapdbgnames
     clear_fwd()
     heapaddr._val = heapaddr_
     if heapaddr_ is not None:
         sheapaddr = heapaddr_ + 4*len(heapstuff)
     sheap = ''
+    heapdbgnames = [(obj.name if hasattr(obj, 'name') else None) for obj in heapstuff]
     for pass_num in xrange(2):
         for hidx in xrange(len(heapstuff)):
             thing = heapstuff[hidx]
-            if heapdbg and isinstance(thing, basestring): continue
             if not isinstance(thing, int):
                 try:
                     thing = int(thing)
@@ -36,15 +37,30 @@ def finalize(heapaddr_=None):
                     pass
                 else:
                     heapstuff[hidx] = thing
-    if heapdbg:
-        for i in heapstuff:
-            if isinstance(i, basestring):
-                print i
-            else:
-                print hex(i)
-        sys.exit(1)
 
     return struct.pack('<'+'I'*len(heapstuff), *heapstuff) + sheap
+
+def heapdump(cache):
+    dbginfo.append((10000, '?'))
+    reverse = dict((v, k) for (k, v) in cache.iteritems())
+    stackunktargets = set()
+    for i, entry in enumerate(heapstuff):
+        if i >= dbginfo[0][0]:
+            print
+            print '%08x %s:' % (heapaddr._val + 4*i, dbginfo.pop(0)[1].ljust(15)),
+        if heapdbgnames[i] is not None:
+            sys.stdout.write(' %s=' % heapdbgnames[i])
+        if heapaddr._val <= entry <= heapaddr._val + 4*len(heapstuff):
+            stackunktargets.add((entry - heapaddr._val)/4)
+            print hex(entry),
+        elif i in stackunktargets:
+            print '\x1b[34m\x1b[1m%s\x1b[0m' % hex(entry),
+        elif reverse.has_key(entry):
+            print '\x1b[31m%s\x1b[0m' % reverse[entry],
+        else:
+            print '\x1b[34m%s\x1b[0m' % hex(entry),
+    print
+    
 
 def clear_fwd():
     global fwds
@@ -67,6 +83,7 @@ class fwd:
         else:
             assert not fwds.has_key(name)
         fwds[name] = self
+        self.name = name
         self.val = None
     def __int__(self):
         assert self.val is not None
@@ -145,5 +162,12 @@ class ptr(car):
         if self.null_terminate: sheap += '\0'
         while len(sheap) % 4 != 0: sheap += '\0'
         return ret
+
+class marker(car):
+    def mark(self):
+        self._val = 4 * len(heapstuff)
+        return self
+    def val(self):
+        raise ValueError("marker didn't mark")
 
 heapaddr = car() # finalize fills this in

@@ -43,7 +43,7 @@ def set_r1to3(r1, r2, r3):
     set_fwd('PC', cache['k9'])
     heapadd(r1, r2, r3, fwd('PC'))
 
-def set_sp(sp):
+def set_sp_to(sp):
     set_fwd('PC', cache['k10'])
     set_fwd('R7', sp)
     clear_fwd() # pop {r7, pc} but that's not in this stack
@@ -73,38 +73,60 @@ def funcall(funcname, *args, **kwargs):
     if kwargs.get('load_r0'):
         load_r0_r0()
         del kwargs['load_r0']
-    assert kwargs == {}
-    mynewstackbase = heapaddr - 0x20
-    # real stack: ... [PC=k10] marker-> [R7] [PC=next] ...
-    # func stack: mynewstackbase [R7] [PC=k12] <- dirty zone <- [R4/arg4] [R5/arg5] ([R7/arg6] [PC=k19]) [R7=addr to go back to] [PC=k10]
-    #                                                                   
-    if len(args) <= 7 and cache.has_key('k12'):
-        store_val(cache['k12'], to=(mynewstackbase + 1*4))
-        marker, markeroff = stackunkpair()
-        if len(args) > 4:
-            store_val(args[4], to=(mynewstackbase + 2*4))
-        if len(args) > 5:
-            store_val(args[5], to=(mynewstackbase + 3*4))
-        if len(args) > 6:
-            store_val(args[6], to=(mynewstackbase + 4*4))
-            store_val(cache['k19'], to=(mynewstackbase + 5*4))
-            store_val(markeroff, to=(mynewstackbase + 6*4))
-            store_val(cache['k10'], to=(mynewstackbase + 7*4))
-        else:
-            store_val(markeroff, to=(mynewstackbase + 4*4))
-            store_val(cache['k10'], to=(mynewstackbase + 5*4))
-        # okay, time to actually go
-        set_fwd('R4', funcaddr)
-        set_fwd('R7', mynewstackbase)
-        set_fwd('PC', cache['k10'])
-        exhaust_fwd('R5', 'R7')
-        # this is from k10
-        heapadd(marker*0 + fwd('R7'), fwd('PC'))
-    elif len(args) <= 6 and cache.has_key('k22'):
-        # xxx this is identical but with no R5
-        assert False
+    if kwargs.get('norecur'): # we can trash the stack, yay
+        may_recur = False
+        del kwargs['norecur']
     else:
-        assert False
+        may_recur = True
+    assert kwargs == {}
+
+    if not may_recur:
+        if len(args) <= 7 and cache.has_key('k12'):
+            set_fwd('PC', cache['k12'])
+            set_fwd('R4', funcaddr)
+            exhaust_fwd('R5', 'R7')
+            heapadd(fwd('R4'), fwd('R5'), fwd('R7'), fwd('PC'))
+            if len(args) > 4:
+                set_fwd('R4', args[4])
+            if len(args) > 5:
+                set_fwd('R5', args[5])
+            if len(args) > 6:
+                set_fwd('R7', args[6])
+        else:
+            assert False
+        
+    else:
+        mynewstackbase = heapaddr - 0x20
+        # real stack: ... [PC=k10] marker-> [R7] [PC=next] ...
+        # func stack: mynewstackbase [R7] [PC=k12] <- dirty zone <- [R4/arg4] [R5/arg5] ([R7/arg6] [PC=k19]) [R7=addr to go back to] [PC=k10]
+        #                                                                   
+        if len(args) <= 7 and cache.has_key('k12'):
+            store_val(cache['k12'], to=(mynewstackbase + 1*4))
+            markerval, markeroff = stackunkpair()
+            if len(args) > 4:
+                store_val(args[4], to=(mynewstackbase + 2*4))
+            if len(args) > 5:
+                store_val(args[5], to=(mynewstackbase + 3*4))
+            if len(args) > 6:
+                store_val(args[6], to=(mynewstackbase + 4*4))
+                store_val(cache['k19'], to=(mynewstackbase + 5*4))
+                store_val(markeroff, to=(mynewstackbase + 6*4))
+                store_val(cache['k10'], to=(mynewstackbase + 7*4))
+            else:
+                store_val(markeroff, to=(mynewstackbase + 4*4))
+                store_val(cache['k10'], to=(mynewstackbase + 5*4))
+            # okay, time to actually go
+            set_fwd('R4', funcaddr)
+            set_fwd('R7', mynewstackbase)
+            set_fwd('PC', cache['k10'])
+            exhaust_fwd('R5', 'R7')
+            # this is from k10
+            heapadd(markerval*0 + fwd('R7'), fwd('PC'))
+        elif len(args) <= 6 and cache.has_key('k22'):
+            # xxx this is identical but with no R5
+            assert False
+        else:
+            assert False
     # may as well add a free make_avail, since {R7, PC} is pretty bad
     make_avail()
 
@@ -120,3 +142,28 @@ def store_deref_plus_offset(deref, offset, value):
     load_r0_from(deref)
     add_r0_const(offset)
     store_to_r0(value)
+
+def and_r0_1():
+    set_fwd('PC', cache['k3'])
+    exhaust_fwd('R7')
+    heapadd(fwd('R7'), fwd('PC'))
+
+def load_r0_base_r0_lsl2(base):
+    set_fwd('PC', cache['k2'])
+    set_fwd('R4', base)
+    exhaust_fwd('R5', 'R7')
+    heapadd(fwd('R4'), fwd('R5'), fwd('R7'), fwd('PC'))
+
+# This is inefficient, but doesn't require a lot of support.
+def condbranch_r0(eq, ne): # may be None
+    m = marker()
+    if eq is None:
+        eq = m
+    elif ne is None:
+        ne = m
+    and_r0_1()
+    load_r0_base_r0_lsl2(ptrI(eq, ne))
+    sp, spaddr = stackunkpair()
+    store_r0_to(spaddr)
+    set_sp_to(sp)
+    m.mark()

