@@ -234,7 +234,8 @@ class macho(basebin):
         syms = {}
         for off in xrange(self.symoff, self.symoff + 12*self.nsyms, 12):
             n_strx, n_type, n_sect, n_desc, n_value = struct.unpack('IBBhI', self.stuff[off:off+12])
-            if n_value == 0: continue
+            if n_value == 0 or n_strx == 0: continue
+            if n_strx > self.strsize: break # wtf
             n_strx += self.stroff
             psym = self.stuff[n_strx:self.stuff.find('\0', n_strx)]
             if n_desc & 8:
