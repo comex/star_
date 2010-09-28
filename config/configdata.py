@@ -161,7 +161,6 @@
             #'kernel_pmap':  '-_kernel_pmap',
             #'mem_size':     '-_mem_size',
 
-            'strncmp': '+_strncmp',
             'vn_getpath': '+_vn_getpath',
             'mpo_base': '!mpo_base',
             'mpo_vnode_check_access_ptr':  '<mpo_base>+(252<<2)',
