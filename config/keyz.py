@@ -59,7 +59,7 @@ def importGenpass(data, string):
         line = line.lower()
         for k, v in thingsICareAbout.items():
             if k in line:
-                print string + '.' + v + ': ' + ' '.join(re.search('-key ([a-zA-Z0-9]*)\s*-iv ([a-zA-Z0-9]*)', line).groups())
+                print string + '.' + v + ': ' + re.search('-k ([a-zA-Z0-9]*)', line).group(1) + ' ' + re.search('-iv ([a-zA-Z0-9]*)', line).group(1)
 
 if sys.argv[1] == 'wiki':
     importWiki(sys.stdin.read(), sys.argv[2])
