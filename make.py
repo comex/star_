@@ -99,7 +99,8 @@ def goo_pf():
 
 def pf2():
     goto('pf2')
-    run(GCC, '-dynamiclib', '-o', 'libpf2.dylib', 'pf2.c')
+    run(GCC, '-dynamiclib', '-o', 'libpf2_.dylib', 'pf2.c')
+    run('bash', '-c', 'ldid -S libpf2_.dylib; cp libpf2_.dylib libpf2.dylib')
 
 def cff():
     goo_iosurface()
