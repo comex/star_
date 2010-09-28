@@ -18,26 +18,26 @@ def importOldStuff():
             if not hasattr(data3, 'has_key') or not data3.has_key('IV'): continue
             print string + '.' + img3 + ': ' + data3['Key'] + ' ' + data3['IV']
         print
+thingsICareAbout = {
+    'applelogo': 'AppleLogo',
+    'batterycharging0': 'BatteryCharging0',
+    'batterycharging1': 'BatteryCharging1',
+    'batteryfull': 'BatteryFull',
+    'batterylow0': 'BatteryLow0',
+    'batterylow1': 'BatteryLow1',
+    'devicetree': 'DeviceTree',
+    'glyphcharging': 'GlyphCharging',
+    'glyphplugin': 'GlyphPlugin',
+    'ibec': 'iBEC',
+    'iboot': 'iBoot',
+    'ibss': 'iBSS',
+    'kernelcache': 'KernelCache',
+    'llb': 'LLB',
+    'recoverymode': 'RecoveryMode',
+    'devicetree': 'DeviceTree',
+}
 def importWiki(data, string):
     # I don't know if these capitalizations mean anything, but "KernelCache" is used by the other plists and I need to normalize
-    thingsICareAbout = {
-        'applelogo': 'AppleLogo',
-        'batterycharging0': 'BatteryCharging0',
-        'batterycharging1': 'BatteryCharging1',
-        'batteryfull': 'BatteryFull',
-        'batterylow0': 'BatteryLow0',
-        'batterylow1': 'BatteryLow1',
-        'devicetree': 'DeviceTree',
-        'glyphcharging': 'GlyphCharging',
-        'glyphplugin': 'GlyphPlugin',
-        'ibec': 'iBEC',
-        'iboot': 'iBoot',
-        'ibss': 'iBSS',
-        'kernelcache': 'KernelCache',
-        'llb': 'LLB',
-        'recoverymode': 'RecoveryMode',
-        'devicetree': 'DeviceTree',
-    }
     f = StringIO.StringIO(data.strip())
     while True:
         line = f.readline().lower()
@@ -54,7 +54,15 @@ def importWiki(data, string):
                 break
     print
 
+def importGenpass(data, string):
+    for line in data.split('\n'):
+        line = line.lower()
+        for k, v in thingsICareAbout.items():
+            if k in line:
+                print string + '.' + v + ': ' + ' '.join(re.search('-key ([a-zA-Z0-9]*)\s*-iv ([a-zA-Z0-9]*)', line).groups())
 
 if sys.argv[1] == 'wiki':
     importWiki(sys.stdin.read(), sys.argv[2])
+elif sys.argv[1] == 'genpass':
+    importGenpass(sys.stdin.read(), sys.argv[2])
 #importOldStuff()
