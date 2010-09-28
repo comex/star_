@@ -44,7 +44,7 @@ def importWiki(data, string):
         if line == '': break
         if 'root filesystem' in line:
             line2 = f.readline()
-            print string + '.fs: ' + re.search('VFDecrypt:\s*([a-zA-Z0-9]*)', line2).group(1)
+            print string + '.fs: ' + re.search('VFDecrypt( Key)?:\s*([a-zA-Z0-9]*)', line2).group(2)
             continue
         for k, v in thingsICareAbout.items():
             if k in line:
