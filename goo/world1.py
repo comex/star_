@@ -59,6 +59,8 @@ def make_r4_avail():
      exhaust_fwd('R4')
      heapadd(fwd('R4'), fwd('PC'))
 
+turing_complete = False
+
 def funcall(funcname, *args, **kwargs):
     # This wastes a lot of space!  I should make the old behavior an option.
     if isinstance(funcname, basestring):
@@ -73,14 +75,9 @@ def funcall(funcname, *args, **kwargs):
     if kwargs.get('load_r0'):
         load_r0_r0()
         del kwargs['load_r0']
-    if kwargs.get('norecur'): # we can trash the stack, yay
-        may_recur = False
-        del kwargs['norecur']
-    else:
-        may_recur = True
     assert kwargs == {}
 
-    if not may_recur:
+    if not turing_complete:
         if len(args) <= 7 and cache.has_key('k12'):
             set_fwd('PC', cache['k12'])
             set_fwd('R4', funcaddr)
@@ -95,7 +92,7 @@ def funcall(funcname, *args, **kwargs):
         else:
             assert False
         
-    else:
+    else: #I haven't actually tested this...
         mynewstackbase = heapaddr - 0x20
         # real stack: ... [PC=k10] marker-> [R7] [PC=next] ...
         # func stack: mynewstackbase [R7] [PC=k12] <- dirty zone <- [R4/arg4] [R5/arg5] ([R7/arg6] [PC=k19]) [R7=addr to go back to] [PC=k10]

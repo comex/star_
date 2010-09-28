@@ -161,6 +161,8 @@
             'patch_suser_to': 0x47702000,
             'patch_suser_orig': '*<patch_suser>',
 
+            'patch_vnode_enforce': '!sysctl:vnode_enforce',
+
             'patch_proc_enforce': '!sysctl:proc_enforce',
             'patch_proc_enforce_to': 0,
 
@@ -192,8 +194,8 @@
             'kernel_pmap_nx_enabled': '*(-_kernel_pmap)+0x420',
             'kernel_pmap_nx_enabled_to': 1,
             'sysent': '21 00 00 00 00 10 86 00 -',
-            'sysent_8': '*(<sysent>+(8*0x18)+4)',
-            'sysent_8_patch': '<sysent>+(8*0x18)+4+3',
+            'sysent_patch': '<sysent>+4',
+            'sysent_patch_orig': '*<sysent_patch>',
         },
 
         'kill_sb': 0,
@@ -416,11 +418,8 @@
     '.armv7_4.x': {
         '<': '.armv7',
     },
-}
+},
 'world3': {
-    '.armv7': {
-        '#cache': {
-            'zomg': '@ - 0f f9 db e9',
-        },
-    },
+    '.armv7': { '#cache': {} },
+    '.armv7_4.x': { '<': '.armv7', },
 },
