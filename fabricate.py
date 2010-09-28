@@ -850,7 +850,7 @@ class Builder(object):
         else:
             self.runner = SmartRunner(self)
         if dirs is None:
-            dirs = ['.']
+            dirs = [os.path.abspath('.')]
         self.dirs = dirs
         self.dirdepth = dirdepth
         self.ignoreprefix = ignoreprefix
