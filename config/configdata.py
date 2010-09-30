@@ -178,7 +178,14 @@
             'sysent_patch_orig': '*<sysent_patch>',
 
             'derive_vnode_path': r'!bof:!stringref:path',
-            'strcmp': '+_strcmp',
+            'derive_vnode_path_orig1': '*<derive_vnode_path>',
+            'derive_vnode_path_orig2': '*(<derive_vnode_path>+4)',
+            'derive_vnode_path_jumpto': '<derive_vnode_path>+9', # xxx thumb on armv6?
+            
+            'strncmp': '+_strncmp',
+            'flush_dcache': '+_flush_dcache',
+            'invalidate_icache': '+_invalidate_icache',
+            'copyin': '+_copyin',
 
             'scratch': '!scratch',
         },

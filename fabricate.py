@@ -918,12 +918,12 @@ class Builder(object):
         # use runner to run command and collect dependencies
         deps = set()
         outputs = set()
-        for command in commands:
+        for command, arglist in zip(commands, arglists):
             self.echo_command(command)
             cdeps, coutputs = self.runner(*arglist, **kwargs)
             deps.update(cdeps)
             outputs.update(coutputs)
-
+        
         if deps or outputs:
             deps_dict = {}
             # hash the dependency inputs and outputs
@@ -935,7 +935,7 @@ class Builder(object):
                 hashed = self.hasher(output)
                 if hashed is not None:
                     deps_dict[output] = "output-" + hashed
-            self.deps[command] = deps_dict
+            self.deps[command_key] = deps_dict
 
     def memoize(self, command, **kwargs):
         """ Run the given command, but only if its dependencies have changed --

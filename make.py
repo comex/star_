@@ -83,8 +83,7 @@ def goo_pf():
 
 def pf2():
     goto('pf2')
-    compile_to_bin('sandbox.S')
-    run(GCC, '-dynamiclib', '-o', 'libpf2_.dylib', 'pf2.c')
+    run(GCC, '-dynamiclib', '-o', 'libpf2_.dylib', 'pf2.c', 'sandbox.S')
     run_multiple(['cp', 'libpf2_.dylib', 'libpf2.dylib'],
                  ['strip', '-Sx', 'libpf2.dylib'],
                  ['ldid', '-S', 'libpf2.dylib'])
