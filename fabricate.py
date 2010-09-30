@@ -894,7 +894,7 @@ class Builder(object):
     def run(self, *args, **kwargs):
         """ Run command given in args with kwargs per shell(), but only if its
             dependencies or outputs have changed or don't exist. """
-        return self.runMultiple(args, **kwargs)
+        return self.run_multiple(args, **kwargs)
 
     def run_multiple(self, *arglists, **kwargs):
         """ Run each list given in args as per shell(), but only if
