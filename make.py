@@ -72,24 +72,8 @@ def installui():
         run(GCC, '-I', HEADERS, '-I', '.', '-std=gnu99', '-c', '-o', o, chext(o, '.m'))
     run(GCC, '-dynamiclib', '-o', 'installui.dylib', files, F('Foundation', 'UIKit', 'IOKit', 'CoreGraphics'), '-lz')
 
-def sandbox():
-    machdump()
-    goto('sandbox')
-    compile_to_bin('sandbox-mac-replace.s')
-
 def goo():
     pass
-
-def goo_iosurface():
-    sandbox()
-    installui()
-    goo()
-    machdump()
-    goto('goo/iosurface')
-    compile_to_bin('goop.s')
-    run('python', 'zero.py', '--boot')
-    run('python', '../one.py', 'stage2boot.txt')
-    run('python', 'zero.py', '--initial')
 
 def goo_pf():
     goo()
@@ -99,26 +83,20 @@ def goo_pf():
 
 def pf2():
     goto('pf2')
+    compile_to_bin('sandbox.S')
     run(GCC, '-dynamiclib', '-o', 'libpf2_.dylib', 'pf2.c')
-    run('bash', '-c', 'ldid -S libpf2_.dylib; cp libpf2_.dylib libpf2.dylib')
-
-def cff():
-    goo_iosurface()
-    goto('cff')
-    run('python', 'outcff.py')
-    run('python', 'mkpdf.py')
+    run_multiple(['cp', 'libpf2_.dylib', 'libpf2.dylib'],
+                 ['strip', '-Sx', 'libpf2.dylib'],
+                 ['ldid', '-S', 'libpf2.dylib'])
 
 def mm():
     goto('mm')
     run(GCC, '-o', 'loader', 'loader.c')
     run('python', 'nm.py')
     # Not actually i386... obviously.
-    run(GCC_SUMMONED, '-o', 'kcode_.elf', 'kasm.S', 'mem.c', '-fwhole-program', '-combine', '-nostdlib', '-nostdinc', '-nodefaultlibs', '-lgcc', '-T', 'nm.ld', '-Wimplicit', '-Ixnu', '-Ixnu/bsd', '-Ixnu/libkern', '-Ixnu/osfmk', '-Ixnu/bsd/i386', '-Ixnu/bsd/sys', '-Ixnu/EXTERNAL_HEADERS', '-Ixnu/osfmk/libsa', '-D__i386__', '-DKERNEL', '-DKERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE')
+    run(GCC_SUMMONED, '-o', 'kcode_.elf', 'kasm.S', 'mem.c', '-fwhole-program', '-combine', '-nostdlib', '-nostdinc', '-nodefaultlibs', '-lgcc', '-T', 'nm.ld', '-Wimplicit', '-Ixnu', '-Ixnu/bsd', '-Ixnu/libkern', '-Ixnu/osfmk', '-Ixnu/bsd/i386', '-Ixnu/bsd/sys', '-Ixnu/EXTERNAL_HEADERS', '-Ixnu/osfmk/libsa', '-D__i386__', '-DKERNEL', '-DKERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE', '-D__APPLE_API_PRIVATE', '-DXNU_KERNEL_PRIVATE')
     run('sh', '-c', 'cp kcode_.elf kcode.elf; '+STRIP_SUMMONED+' kcode.elf') 
 
-def star():
-    install()
-    cff()
 
 def pf():
     goo_pf()

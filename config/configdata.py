@@ -101,9 +101,6 @@
         '#kern': {
             'vram_baseaddr': [0xed6ed000, 0xed6f5000],
         },
-        '#cache': {
-            'magic_offset': -960,
-        },
         'kill_sb': 1,
     },
     'iPad1,1_3.2.1': {
@@ -169,32 +166,21 @@
             'patch_cs_enforcement_disable': '~ @ 00 00 00 00 00 00 00 - 00 00 00 00 01 00 00 00 80',
             'patch_cs_enforcement_disable_to': 1,
 
-            #'patch_sandbox': '- f0 b5 03 af 2d e9 00 0d c1 b0 82 46',
-            #'patch_sandbox_to': 0x47702000,
-            #'patch_sandbox_orig': 0xaf03b5f0,
-
-            'mac_policy_list': '*(-_mac_label_get-4)',
-
             # for pmap.c
             #'kernel_pmap':  '-_kernel_pmap',
             #'mem_size':     '-_mem_size',
 
-            'vn_getpath': '+_vn_getpath',
-            'mpo_base': '!mpo_base',
-            'mpo_vnode_check_access_ptr':  '<mpo_base>+(252<<2)',
-            'mpo_vnode_check_open_ptr':    '<mpo_base>+(267<<2)',
-            'mpo_proc_check_get_task_ptr': '<mpo_base>+(160<<2)',
-            'mpo_vnode_check_access':      '*<mpo_vnode_check_access_ptr>',
-            'mpo_vnode_check_open':        '*<mpo_vnode_check_open_ptr>',
-
-            'mpo_proc_check_get_task':     '*<mpo_proc_check_get_task_ptr>',
-            'mpo_proc_check_get_task_to':  0, # MAC_CHECK doesn't call a null pointer
-
             'patch_kernel_pmap_nx_enabled': '*(-_kernel_pmap)+0x420',
             'patch_kernel_pmap_nx_enabled_to': 0,
+
             'sysent': '21 00 00 00 00 10 86 00 -',
             'sysent_patch': '<sysent>+4',
             'sysent_patch_orig': '*<sysent_patch>',
+
+            'derive_vnode_path': r'!bof:!stringref:path',
+            'strcmp': '+_strcmp',
+
+            'scratch': '!scratch',
         },
 
         'kill_sb': 0,
@@ -205,27 +191,6 @@
         'arch':         'armv7',
         
         'is_armv7': 1,
-
-        '#launchd': {
-            # mov r0, #1; bx lr
-           -1:              '@ + 01 20 70 47',
-            # ldr r0, [r0] -> _launch_data_new_errno
-            0:              '+ 00 68 .. .. .. .. 22 46 01 34',
-            # lsr r0, r0, #2 -> _setrlimit
-            1:              '60 69 29 46 + 80 08',
-            # add r0, #3 -> __exit
-            2:              'b0 f1 ff 3f .. .. + 03 30 16 f0',
-            # ldmia r0, {r0-r3} -> _audit_token_to_au32
-            3:              '8d e8 0f 00 0c f1 14 00 + 0f c8',
-            # str r2, [sp, #4] -> _launch_data_unpack
-            4:              '02 98 00 93 59 46 13 46 + 01 92',
-            # str r3, [sp, #8] -> _launch_data_dict_iterate
-            5:              '6a 46 01 93 01 33 + 02 93',
-            # pop {r4, r7, pc}
-            6:              '@ + 90 bd',
-            # sub.w sp, r7, #0xc; pop {r4-r7, pc}
-            7:              '@ + a7 f1 0c 0d f0 bd',
-        },
         
         '#cache': {
             # ldr r0, [r0]; pop {r4, r5, r7, pc}
@@ -276,6 +241,7 @@
         },
 
         '#kern': {
+            # vm_map and AMFI
             'patch1':       '- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93',
             'patch1_to':    0x46c00f02,
             'patch3':       '23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -',
@@ -293,10 +259,6 @@
 
     '.armv7_4.x': {
         '<': '.armv7',
-        '#cache': {
-            #...
-            'magic_offset': -964,
-        },
     },
 
     '.armv7_3.1.x': {
@@ -306,9 +268,6 @@
             'patch1_to':    0xf0400f00,
             'patch3':       '61 1c 70 46 13 22 05 4b 98 47 - 00 ..',
             'patch3_to':    0x46c046c0,
-        },
-        '#cache': {
-           'magic_offset': -960, 
         },
     },
 },

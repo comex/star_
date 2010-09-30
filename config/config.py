@@ -31,7 +31,11 @@ def find_sysctl(binary, name):
     return struct.unpack('I', binary.stuff[off:off+4])[0]
 
 def find_stringref(binary, string):
-    return binary.lookup_addr(binary.stuff.find(struct.pack('I', binary.lookup_addr(binary.stuff.find(string)))))
+    stringpos = binary.stuff.find('\0' + string + '\0')
+    assert stringpos != -1
+    refpos = binary.stuff.find(struct.pack('I', binary.lookup_addr(stringpos) + 1))
+    assert refpos != -1
+    return binary.lookup_addr(refpos)
 
 def find_bof(binary, eof):
     # push instruction including lr:
@@ -58,12 +62,6 @@ def find_mpo(binary):
     off = binary.stuff.find(struct.pack('I', binary.lookup_addr(found))) + 12
     return struct.unpack('I', binary.stuff[off:off+4])[0]
 
-def find_rgbout(binary):
-    m = re.search('Apple(|H1|M2)RGBOUT\0', binary.stuff)
-    if m: return m.group(0)[:-1]
-    m = re.search('Apple(|H1|M2)CLCD\0', binary.stuff)
-    return m.group(0)[:-1]
-
 def do_binary_kv(binary, mtime, d, k, v):
     if ' ' not in v or '"' in v:
         v = re.sub('\*(?=\(|<)', 'binary.deref', v)
@@ -71,7 +69,6 @@ def do_binary_kv(binary, mtime, d, k, v):
         v = re.sub('!sysctl:([a-zA-Z0-9_]+)', 'find_sysctl(binary, "\\1")', v)
         v = v.replace('!scratch', 'find_scratch(binary)')
         v = v.replace('!mpo_base', 'find_mpo(binary)')
-        v = v.replace('!rgbout', 'find_rgbout(binary)')
         v = re.sub('!stringref:(.*)', 'find_stringref(binary, \'\\1\')', v)
         v = re.sub('!bof:(.*)', 'find_bof(binary, \\1)', v)
         v = re.sub('<([^>]*)>', '(do_binary_k_cached(binary, mtime, d, "\\1"))', v)
