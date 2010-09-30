@@ -39,7 +39,7 @@ import tempfile
 import time
 
 # so you can do "from fabricate import *" to simplify your build script
-__all__ = ['setup', 'run', 'autoclean', 'main', 'shell', 'fabricate_version',
+__all__ = ['setup', 'run', 'run_multiple', 'autoclean', 'main', 'shell', 'fabricate_version',
            'memoize', 'outofdate', 
            'ExecutionError', 'md5_hasher', 'mtime_hasher',
            'Runner', 'AtimesRunner', 'StraceRunner', 'AlwaysRunner',
@@ -159,8 +159,14 @@ def _shell(args, input=None, silent=True, shell=False):
         command = subprocess.list2cmdline(arglist)
     else:
         command = arglist
-    proc = subprocess.Popen(command, stdin=stdin, stdout=stdout,
-                            stderr=subprocess.STDOUT, shell=shell)
+    try:
+        proc = subprocess.Popen(command, stdin=stdin, stdout=stdout,
+                                stderr=subprocess.STDOUT, shell=shell)
+    except WindowsError, e:
+        # Work around the problem that windows Popen doesn't say what file it couldn't find
+        if e.errno==2 and e.filename==None:
+            e.filename = arglist[0]
+        raise e
     output, stderr = proc.communicate(input)
     status = proc.wait()
     if status:
@@ -195,12 +201,13 @@ class RunnerUnsupportedException(Exception):
     pass
 
 class Runner(object):
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         """ Run command and return (dependencies, outputs), where
             dependencies is a list of the filenames of files that the
             command depended on, and output is a list of the filenames
-            of files that the command modified."""
-        raise NotImplementedError()
+            of files that the command modified. The input is passed
+            to shell()"""
+        raise NotImplementedError("Runner subclass called but subclass didn't define __call__")
     def ignore(self, name):
         return self._builder.ignore.search(name)
 
@@ -361,7 +368,7 @@ class AtimesRunner(Runner):
             adjusted[filename] = entry
         return adjusted
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         """ Run command and return its dependencies and outputs, using before
             and after access times to determine dependencies. """
 
@@ -378,10 +385,12 @@ class AtimesRunner(Runner):
             befores = self._age_atimes(originals)
             atime_resolution = FAT_atime_resolution
             mtime_resolution = FAT_mtime_resolution
-        shell(*args, **dict(silent=False))
+        shell_keywords = dict(silent=False)
+        shell_keywords.update(kwargs)
+        shell(*args, **shell_keywords)
         afters = self.file_times()
-        deps = []
-        outputs = []
+        deps = set()
+        outputs = set()
         for name in afters:
             if name in befores:
                 # if file exists before+after && mtime changed, add to outputs
@@ -392,15 +401,15 @@ class AtimesRunner(Runner):
                 #       resolution.  This will work for anything with a
                 #       resolution better than FAT.
                 if afters[name][1]-mtime_resolution/2 > befores[name][1]:
-                    outputs.append(name)
+                    outputs.add(name)
                 elif afters[name][0]-atime_resolution/2 > befores[name][0]:
                     # otherwise add to deps if atime changed
                     if not self.ignore(name):
-                        deps.append(name)
+                        deps.add(name)
             else:
                 # file created (in afters but not befores), add as output
                 if not self.ignore(name):
-                    outputs.append(name)
+                    outputs.add(name)
 
         if self.atimes < 2:
             # Restore atimes of files we didn't access: not for any functional
@@ -483,12 +492,14 @@ class StraceRunner(Runner):
     _unfinished_start_re = re.compile(r'(?P<pid>\d+)(?P<body>.*)<unfinished ...>$')
     _unfinished_end_re   = re.compile(r'(?P<pid>\d+)\s+\<\.\.\..*\>(?P<body>.*)')
 
-    def _do_strace(self, args, outfile, outname):
-        """ Run strace on given command args, sending output to file.
+    def _do_strace(self, args, kwargs, outfile, outname):
+        """ Run strace on given command args/kwargs, sending output to file.
             Return (status code, list of dependencies, list of outputs). """
+        shell_keywords = dict(silent=False)
+        shell_keywords.update(kwargs)
         shell('strace', '-fo', outname, '-e',
               'trace=open,%s,execve,exit_group,chdir,mkdir,rename,clone,vfork,fork' % self._stat_func,
-              args, silent=False)
+              args, **shell_keywords)
         cwd = '.' 
         status = 0
         processes  = {}  # dictionary of processes (key = pid)
@@ -577,9 +588,9 @@ class StraceRunner(Runner):
             deps = deps.union(process.deps)
             outputs = outputs.union(process.outputs)
 
-        return status, list(deps), list(outputs)
+        return status, deps, outputs
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         """ Run command and return its dependencies and outputs, using strace
             to determine dependencies (by looking at what files are opened or
             modified). """
@@ -597,7 +608,7 @@ class StraceRunner(Runner):
                 os.close(handle)
                 raise
             try:
-                status, deps, outputs = self._do_strace(args, outfile, outname)
+                status, deps, outputs = self._do_strace(args, kwargs, outfile, outname)
                 if status is None:
                     raise ExecutionError(
                         '%r was killed unexpectedly' % args[0], '', -1)
@@ -611,7 +622,7 @@ class StraceRunner(Runner):
             raise ExecutionError('%r exited with status %d'
                                  % (os.path.basename(args[0]), status),
                                  '', status)
-        return list(deps), list(outputs)
+        return deps, outputs
 
 class InterposingRunner(Runner):
     keep_temps = False
@@ -757,17 +768,19 @@ DYLD_INTERPOSE(my_rename, rename)
             if not self.keep_temps:
                 os.remove(outname)
         
-        return list(deps), list(outputs)
+        return deps, outputs
         
 
 class AlwaysRunner(Runner):
     def __init__(self, builder):
         pass
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         """ Runner that always runs given command, used as a backup in case
             a system doesn't have strace or atimes. """
-        shell(*args, **dict(silent=False))
+        shell_keywords = dict(silent=False)
+        shell_keywords.update(kwargs)
+        shell(*args, **shell_keywords)
         return None, None
 
 class SmartRunner(Runner):
@@ -775,7 +788,7 @@ class SmartRunner(Runner):
         self._builder = builder
         self._runner = None
 
-    def __call__(self, *args):
+    def __call__(self, *args, **kwargs):
         """ Smart command runner that uses StraceRunner if it can,
             otherwise AtimesRunner if available, otherwise AlwaysRunner.
             When first called, it caches which runner it used for next time."""
@@ -792,7 +805,7 @@ class SmartRunner(Runner):
                 except RunnerUnsupportedException:
                     self._runner = AlwaysRunner(self._builder)
 
-        return self._runner(*args)
+        return self._runner(*args, **kwargs)
 
 class Builder(object):
     """ The Builder.
@@ -878,15 +891,23 @@ class Builder(object):
         if error is None:
             self.echo('deleting %s' % filename)
 
-    def run(self, *args):
-        """ Run command given in args as per shell(), but only if its
+    def run(self, *args, **kwargs):
+        """ Run command given in args with kwargs per shell(), but only if its
             dependencies or outputs have changed or don't exist. """
-        arglist = args_to_list(args)
-        if not arglist:
-            raise TypeError('run() takes at least 1 argument (0 given)')
+        return self.runMultiple(args, **kwargs)
+
+    def run_multiple(self, *arglists, **kwargs):
+        """ Run each list given in args as per shell(), but only if
+            its dependencies or outputs have changed or don't exist. """
+        if not arglists:
+            raise TypeError('run_multiple() takes at least 1 argument (0 given)')
+        
+        arglists = map(args_to_list, arglists)
         # we want a command line string for the .deps file key and for display
-        command = subprocess.list2cmdline(arglist)
-        if not self.cmdline_outofdate(command):
+        commands = [subprocess.list2cmdline(arglist) for arglist in arglists]
+        command_key = '; '.join(commands)
+
+        if not self.cmdline_outofdate(command_key):
             return
 
         # if just checking up-to-date-ness, set flag and do nothing more
@@ -895,9 +916,15 @@ class Builder(object):
             return
 
         # use runner to run command and collect dependencies
-        self.echo_command(command)
-        deps, outputs = self.runner(*arglist)
-        if deps is not None or outputs is not None:
+        deps = set()
+        outputs = set()
+        for command in commands:
+            self.echo_command(command)
+            cdeps, coutputs = self.runner(*arglist, **kwargs)
+            deps.update(cdeps)
+            outputs.update(coutputs)
+
+        if deps or outputs:
             deps_dict = {}
             # hash the dependency inputs and outputs
             for dep in deps:
@@ -910,7 +937,7 @@ class Builder(object):
                     deps_dict[output] = "output-" + hashed
             self.deps[command] = deps_dict
 
-    def memoize(self, command):
+    def memoize(self, command, **kwargs):
         """ Run the given command, but only if its dependencies have changed --
             like run(), but returns the status code instead of raising an
             exception on error. If "command" is a string (as per memoize.py)
@@ -924,7 +951,7 @@ class Builder(object):
         else:
             args = args_to_list(command)
         try:
-            self.run(args)
+            self.run(args, **kwargs)
             return 0
         except ExecutionError, exc:
             message, data, status = exc
@@ -1073,17 +1100,22 @@ def setup(builder=None, default=None, **kwargs):
     default_builder.__init__(**kwargs)
 setup.__doc__ += '\n\n' + Builder.__init__.__doc__
 
-def run(*args):
+def run(*args, **kwargs):
     """ Run the given command, but only if its dependencies have changed. Uses
         the default Builder. """
-    default_builder.run(*args)
+    default_builder.run(*args, **kwargs)
+
+def run_multiple(*args, **kwargs):
+    """ Run the given commands, but only if their dependencies have changed.
+        Uses the default Builder. """
+    default_builder.run_multiple(*args, **kwargs)
 
 def autoclean():
     """ Automatically delete all outputs of the default build. """
     default_builder.autoclean()
 
-def memoize(command):
-    return default_builder.memoize(command)
+def memoize(command, **kwargs):
+    return default_builder.memoize(command, **kwargs)
 
 memoize.__doc__ = Builder.memoize.__doc__
 
