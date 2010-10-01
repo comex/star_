@@ -4,27 +4,46 @@
 .globl _patch_start, _patch_end
 _patch_start:
 // <- 
-    push {r4, lr}
-    adr lr, next+1
-    .long CONFIG_DERIVE_VNODE_PATH_ORIG1
-    .long CONFIG_DERIVE_VNODE_PATH_ORIG2
-    ldr pc, orig_addr
-next:
-    mov r4, r0
-    ldr r0, [r0, #0x20]
+    push {r0-r3, lr}
+
+    ldrb r0, [r3]
+    cmp r0, #0x2f ;#'/'
+    bne actually_match
+    
+    mov r0, r3
+    mov r2, #20 ;# len('/private/var/mobile/')
     adr r1, private_var
-    mov r2, #13
     ldr r3, strncmp
     blx r3
     cmp r0, #0
-    beq done
-    adr r0, dev_zero
-    str r0, [r4, #0x20]
-done:
-    mov r0, r4
-    pop {r0, pc}
-private_var: .asciz "/private/var/"
-dev_zero: .asciz "/dev/zero"
-orig_addr: .long CONFIG_DERIVE_VNODE_PATH_JUMPTO
+    beq actually_match
+
+    #ldr r1, [sp, #12]
+    #adr r0, fmt
+    #ldr r2, IOLog
+    #blx r2
+
+    # rude, dude
+    pop {r0-r3, lr}
+    mov r0, #0
+    str r0, [r10]
+    strb r0, [r10, #4]
+    mov r0, r10
+    sub sp, r7, #0x18
+    pop {r8, r10, r11}
+    pop {r4-r7, pc}
+
+actually_match:
+    pop {r0-r3, lr}
+    .long CONFIG_MATCH_STRING_ORIG1
+    .long CONFIG_MATCH_STRING_ORIG2
+    ldr pc, orig_addr
+
+private_var: .asciz "/private/var/mobile/"
+.align 2
+orig_addr: .long CONFIG_MATCH_STRING_JUMPTO
 strncmp: .long CONFIG_STRNCMP
+
+#IOLog: .long CONFIG_IOLOG
+#fmt: .asciz "-> %s\n"
 _patch_end:

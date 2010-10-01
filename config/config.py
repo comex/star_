@@ -63,7 +63,7 @@ def find_mpo(binary):
     return struct.unpack('I', binary.stuff[off:off+4])[0]
 
 def do_binary_kv(binary, mtime, d, k, v):
-    if ' ' not in v or '"' in v:
+    if ' ' not in v or '"' in v or v.startswith('!'):
         v = re.sub('\*(?=\(|<)', 'binary.deref', v)
         v = re.sub('([\-\+]_[a-zA-Z0-9_]+)', 'do_symstring(binary, "\\1")', v)
         v = re.sub('!sysctl:([a-zA-Z0-9_]+)', 'find_sysctl(binary, "\\1")', v)
