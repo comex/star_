@@ -1,5 +1,5 @@
 #!/opt/local/bin/python2.6
-import struct, re, subprocess, time, shelve, hashlib, cPickle, os, sys, plistlib, optparse, mmap, anydbm
+import struct, re, subprocess, time, shelve, hashlib, cPickle, os, sys, plistlib, optparse, mmap, anydbm, marshal
 try:
     import json
 except:
@@ -19,64 +19,74 @@ def cache_has_key(cachekey):
     if uncached: return False
     return cache.has_key(cachekey)
 
-def do_symstring(binary, v):
+def sym_(binary, v):
+    assert v[0] in '-+'
     name = v[1:]
     addr = binary.get_sym(name)
     # Data, so even a thumb symbol shouldn't be &1
     if v[0] == '-': addr &= ~1
     return addr
 
-def find_sysctl(binary, name):
-    off = binary.stuff.find(struct.pack('I', binary.lookup_addr(binary.stuff.find(name + '\0')))) - 8
-    return struct.unpack('I', binary.stuff[off:off+4])[0]
+def exeggcute(binary, mtime, d, v):
+    class a:
+        def sysctl(name):
+            off = binary.stuff.find(struct.pack('I', binary.lookup_addr(binary.stuff.find(name + '\0')))) - 8
+            return struct.unpack('I', binary.stuff[off:off+4])[0]
 
-def find_stringref(binary, string):
-    stringpos = binary.stuff.find('\0' + string + '\0')
-    assert stringpos != -1
-    refpos = binary.stuff.find(struct.pack('I', binary.lookup_addr(stringpos) + 1))
-    assert refpos != -1
-    return binary.lookup_addr(refpos)
+        def stringref(string):
+            stringpos = binary.stuff.find('\0' + string + '\0')
+            assert stringpos != -1
+            refpos = binary.stuff.find(struct.pack('I', binary.lookup_addr(stringpos) + 1))
+            assert refpos != -1
+            return binary.lookup_addr(refpos)
 
-def find_bof(binary, eof, is_thumb=True):
-    # push {..., lr}; add r7, sp, ...
-    # thumb: xx b5 xx af
-    # arm: xx xx 2d e9 xx xx 8d e2
-    eoff = binary.lookup_off(eof)
-    if is_thumb:
-        b5 = binary.stuff.rfind('\xb5', 0, eoff)
-        while 0 == (b5 & 1) or binary.stuff[b5+2] != '\xaf': b5 = binary.stuff.rfind('\xb5', 0, b5)
-        r = b5 - 1
-    else:
-        _2de9 = binary.stuff.rfind('\x2d\xe9', 0, eoff)
-        while 2 != (_2de9 & 3) or binary.stuff[_2de9+4:_2de9+6] != '\x8d\xe2': _2de9 = binary.stuff.rfind('\x2d\xe9', 0, _2de9)
-        r = _2de9 - 2
-    return binary.lookup_addr(r)
-        
+        def bof(eof, is_thumb=True):
+            # push {..., lr}; add r7, sp, ...
+            # thumb: xx b5 xx af
+            # arm: xx xx 2d e9 xx xx 8d e2
+            eoff = binary.lookup_off(eof)
+            if is_thumb:
+                b5 = binary.stuff.rfind('\xb5', 0, eoff)
+                while 0 == (b5 & 1) or binary.stuff[b5+2] != '\xaf': b5 = binary.stuff.rfind('\xb5', 0, b5)
+                r = b5 - 1
+            else:
+                _2de9 = binary.stuff.rfind('\x2d\xe9', 0, eoff)
+                while 2 != (_2de9 & 3) or binary.stuff[_2de9+4:_2de9+6] != '\x8d\xe2': _2de9 = binary.stuff.rfind('\x2d\xe9', 0, _2de9)
+                r = _2de9 - 2
+            return binary.lookup_addr(r)
+                
 
-def find_scratch(binary):
-    off = re.search('\x14[\x14\x00]{256}', binary.stuff).start()
-    val = binary.lookup_addr(off)
-    return (val + 4) & ~3
+        def scratch():
+            off = re.search('\x14[\x14\x00]{256}', binary.stuff).start()
+            val = binary.lookup_addr(off)
+            return (val + 4) & ~3
 
-def find_mpo(binary):
-    found = binary.stuff.find('Seatbelt sandbox policy\0')
-    if found == -1: # 3.1.x
-        found = binary.stuff.find('Seatbelt Policy\0')
-    assert found != -1
-    off = binary.stuff.find(struct.pack('I', binary.lookup_addr(found))) + 12
-    return struct.unpack('I', binary.stuff[off:off+4])[0]
+        def mpo():
+            found = binary.stuff.find('Seatbelt sandbox policy\0')
+            if found == -1: # 3.1.x
+                found = binary.stuff.find('Seatbelt Policy\0')
+            assert found != -1
+            off = binary.stuff.find(struct.pack('I', binary.lookup_addr(found))) + 12
+            return struct.unpack('I', binary.stuff[off:off+4])[0]
+
+        def sym(v):
+            return sym_(binary, v)
+
+        def deref(addr):
+            return binary.deref(addr)
+
+        def k(the_k):
+            return do_binary_k_cached(binary, mtime, d, the_k)
+
+    return eval(v.func_code, a.__dict__)
 
 def do_binary_kv(binary, mtime, d, k, v):
-    if ' ' not in v or '"' in v or v.startswith('!'):
-        v = re.sub('\*(?=\(|<)', 'binary.deref', v)
-        v = re.sub('([\-\+]_[a-zA-Z0-9_]+)', 'do_symstring(binary, "\\1")', v)
-        v = re.sub('!sysctl:([a-zA-Z0-9_]+)', 'find_sysctl(binary, "\\1")', v)
-        v = v.replace('!scratch', 'find_scratch(binary)')
-        v = v.replace('!mpo_base', 'find_mpo(binary)')
-        v = re.sub('!stringref:(.*)', 'find_stringref(binary, \'\\1\')', v)
-        v = re.sub('!bof:(.*)', 'find_bof(binary, \\1)', v)
-        v = re.sub('<([^>]*)>', '(do_binary_k_cached(binary, mtime, d, "\\1"))', v)
-        return eval(v)
+    if callable(v):
+        return exeggcute(binary, mtime, d, v)
+    elif isinstance(v, list):
+        return v
+    elif (v.startswith('-') or v.startswith('+')) and v[1] != ' ':
+        return sym_(binary, v)
 
     bits = v.split(' ')
     xstr = ''
@@ -89,7 +99,7 @@ def do_binary_kv(binary, mtime, d, k, v):
     n = 0
     for bit in bits:
         if bit.startswith('='):
-            startoff = binary.lookup_off(binary.get_sym(bit[1:]) & ~1)
+            startoff = binary.lookup_off(do_binary_k_cached(binary, mtime, d, bit[1:]))
         elif bit == '@':
             loose = True
         elif bit == '+':
@@ -134,8 +144,8 @@ def do_binary_kv(binary, mtime, d, k, v):
                 raise ValueError('I couldn\'t find (loose, exact) %s' % v)
     else:
         if startoff is not None:
-            print binary.stuff[startoff:startoff+64].encode('hex')
-            offs = list(re.compile(sstr).finditer(binary.stuff, startoff, startoff+64))
+            #print binary.stuff[startoff:startoff+256].encode('hex')
+            offs = list(re.finditer(sstr, binary.stuff[startoff:startoff+256]))
         else:
             offs = list(re.finditer(sstr, binary.stuff))
         offs = [i for i in offs if i.start() % align == 0]
@@ -144,15 +154,22 @@ def do_binary_kv(binary, mtime, d, k, v):
             raise ValueError('I couldn\'t find %s' % v)
         elif len(offs) >= 2:
             raise ValueError('I found multiple (%d) %s' % (len(offs), v))
-        off = offs[0].start()
+        off = offs[0].start() + (0 if startoff is None else startoff)
     val = binary.lookup_addr(off + soff)
     #print 'for', k, 'off=%x soff=%x addr=%x' % (off, soff, val)
     return val
 
+def my_str(v):
+    # like str, but in the case of a lambda, does something useful
+    if hasattr(v, 'func_code'):
+        return marshal.dumps(v.func_code)
+    else:
+        return str(v)
+
 def do_binary_k_cached(binary, mtime, d, k):
     v = d[k]
-    if k == '@binary' or not isinstance(v, basestring): return v
-    cachekey = mtime + str(k) + str(v)
+    if k == '@binary' or isinstance(v, (int, long)): return v
+    cachekey = mtime + str(k) + my_str(v)
     if not cache_has_key(cachekey):
         cache[cachekey] = do_binary_kv(binary, mtime, d, k, v)
     return cache[cachekey]

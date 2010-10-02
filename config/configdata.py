@@ -170,29 +170,31 @@
             #'kernel_pmap':  '-_kernel_pmap',
             #'mem_size':     '-_mem_size',
 
-            'patch_kernel_pmap_nx_enabled': '*(-_kernel_pmap)+0x420',
+            'patch_kernel_pmap_nx_enabled': lambda: sym('-_kernel_pmap')+0x420,
             'patch_kernel_pmap_nx_enabled_to': 0,
 
             'sysent': '21 00 00 00 00 10 86 00 -',
-            'sysent_patch': '<sysent>+4',
-            'sysent_patch_orig': '*<sysent_patch>',
+            'sysent_patch': lambda: k('sysent') + 4,
+            'sysent_patch_orig': lambda: deref(k('sysent_patch')),
 
             # for sandbox
             'memcmp': '+_memcmp',
             'IOLog': '+_IOLog',
-            'IOMalloc': '+_IOMalloc',
-            'IOFree': '+_IOFree',
             'vn_getpath_fsenter': '+_vn_getpath_fsenter',
-            'sb_evaluate': r'!bof:!stringref:bad opcode',
-            'sb_evaluate_orig1': '*<sb_evaluate>',
-            'sb_evaluate_orig2': '*(<sb_evaluate>+4)',
-            'sb_evaluate_jumpto': '<sb_evaluate>+9', # xxx thumb on armv6?
+            'sb_evaluate': lambda: bof(stringref('bad opcode')),
+            'sb_evaluate_orig1': lambda: deref(k('sb_evaluate')),
+            'sb_evaluate_orig2': lambda: deref(k('sb_evaluate')+4),
+            'sb_evaluate_jumpto': lambda: k('sb_evaluate')+9, # xxx thumb on armv6?
+            'derive_vnode_path': lambda: bof(stringref('path')),
+            'dvp_load_vn': '=derive_vnode_path - .. 68/69 6a 46',
+            'dvp_struct_offset': lambda: {0x466a6920: 0x10, 0x466a6960: 0x14}[deref(k('dvp_load_vn'))],
+
 
             'flush_dcache': '+_flush_dcache',
             'invalidate_icache': '+_invalidate_icache',
             'copyin': '+_copyin',
 
-            'scratch': '!scratch',
+            'scratch': lambda: scratch(),
         },
 
         'kill_sb': 0,
