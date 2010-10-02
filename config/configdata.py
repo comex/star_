@@ -176,11 +176,13 @@
             'sysent': '21 00 00 00 00 10 86 00 -',
             'sysent_patch': lambda: k('sysent') + 4,
             'sysent_patch_orig': lambda: deref(k('sysent_patch')),
+            'target_addr': lambda: (k('sysent_patch_orig') & 0x00ffffff) | 0x2f000000,
+            'lots_of_nops': lambda: '"' + '; '.join(['nop'] * ((k('target_addr') & 0xfff) / 2)) + '"',
 
             # for sandbox
             'memcmp': '+_memcmp',
             'IOLog': '+_IOLog',
-            'vn_getpath_fsenter': '+_vn_getpath_fsenter',
+            'vn_getpath_fsenter': '+_vn_getpath',
             'sb_evaluate': lambda: bof(stringref('bad opcode')),
             'sb_evaluate_orig1': lambda: deref(k('sb_evaluate')),
             'sb_evaluate_orig2': lambda: deref(k('sb_evaluate')+4),

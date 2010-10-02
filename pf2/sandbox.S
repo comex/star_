@@ -5,7 +5,7 @@
 _patch_start:
 // <- 
     push {r0-r4, lr}
-    ldr r4, [r3, #DVP_STRUCT_OFFSET]
+    ldr r4, [r3, #CONFIG_DVP_STRUCT_OFFSET]
     cmp r4, #0
     beq actually_eval
     ldr r3, vn_getpath_fsenter
@@ -14,7 +14,9 @@ _patch_start:
     sub r2, sp, #4
     str r0, [r2]
     mov r0, r4
+    sub sp, #0x50
     blx r3
+    add sp, #0x50
     cmp r0, #0
     beq actually_eval
 
