@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/sysctl.h>
+#include <net/if.h>
 
 #define DEBUG
 
@@ -115,16 +116,49 @@ static int ok_go(void *p, void *uap, unsigned int *retval) {
     flush((void *) CONFIG_SCRATCH, copysize);
     
     // *this* won't work on thumb-1...
-    *((unsigned int *) CONFIG_MATCH_STRING) = 0xf000f8df; // ldr pc, [pc]
-    *((unsigned int *) (CONFIG_MATCH_STRING + 4)) = CONFIG_SCRATCH | 1;
-    flush((void *) CONFIG_MATCH_STRING, 8);
+    *((unsigned int *) CONFIG_SB_EVALUATE) = 0xf000f8df; // ldr pc, [pc]
+    *((unsigned int *) (CONFIG_SB_EVALUATE + 4)) = CONFIG_SCRATCH | 1;
+    flush((void *) CONFIG_SB_EVALUATE, 8);
     
     return 0;
 
 }
 
+void loopback_setup_ipv4() {
+    struct ifaliasreq ifra;
+    struct ifreq ifr;
+    int s;
+
+    memset(&ifr, 0, sizeof(ifr));
+    strcpy(ifr.ifr_name, "lo0");
+
+    if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+        return;
+
+    if ((ioctl(s, SIOCGIFFLAGS, &ifr) != -1)) {
+        ifr.ifr_flags |= IFF_UP;
+        (ioctl(s, SIOCSIFFLAGS, &ifr) != -1);
+    }
+
+    memset(&ifra, 0, sizeof(ifra));
+    strcpy(ifra.ifra_name, "lo0");
+    ((struct sockaddr_in *)&ifra.ifra_addr)->sin_family = AF_INET;
+    ((struct sockaddr_in *)&ifra.ifra_addr)->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ((struct sockaddr_in *)&ifra.ifra_addr)->sin_len = sizeof(struct sockaddr_in);
+    ((struct sockaddr_in *)&ifra.ifra_mask)->sin_family = AF_INET;
+    ((struct sockaddr_in *)&ifra.ifra_mask)->sin_addr.s_addr = htonl(IN_CLASSA_NET);
+    ((struct sockaddr_in *)&ifra.ifra_mask)->sin_len = sizeof(struct sockaddr_in);
+
+    ioctl(s, SIOCAIFADDR, &ifra);
+
+    close(s);
+}
+
+
 __attribute__((constructor))
 static void go() {
+    if(0) loopback_setup_ipv4();
+
     unsigned int target_addr = (CONFIG_SYSENT_PATCH_ORIG & 0x00ffffff) | 0x2f000000;
     unsigned int num_decs = (CONFIG_SYSENT_PATCH_ORIG - target_addr) >> 24;
     

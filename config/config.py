@@ -37,16 +37,20 @@ def find_stringref(binary, string):
     assert refpos != -1
     return binary.lookup_addr(refpos)
 
-def find_bof(binary, eof):
-    # push instruction including lr:
-    # thumb: xx b5
-    # thumb-2: 2d e9
-    # arm: xx xx 2d e9
+def find_bof(binary, eof, is_thumb=True):
+    # push {..., lr}; add r7, sp, ...
+    # thumb: xx b5 xx af
+    # arm: xx xx 2d e9 xx xx 8d e2
     eoff = binary.lookup_off(eof)
-    b5 = binary.stuff.rfind('\xb5', 0, eoff)
-    while 0 == (b5 & 1): b5 = binary.stuff.rfind('\xb5', 0, b5)
-    _2de9 = binary.stuff.rfind('\x2d\xe9', 0, eoff)
-    return binary.lookup_addr(max(b5 - 1, _2de9 - 2)) # not quite right for thumb-2
+    if is_thumb:
+        b5 = binary.stuff.rfind('\xb5', 0, eoff)
+        while 0 == (b5 & 1) or binary.stuff[b5+2] != '\xaf': b5 = binary.stuff.rfind('\xb5', 0, b5)
+        r = b5 - 1
+    else:
+        _2de9 = binary.stuff.rfind('\x2d\xe9', 0, eoff)
+        while 2 != (_2de9 & 3) or binary.stuff[_2de9+4:_2de9+6] != '\x8d\xe2': _2de9 = binary.stuff.rfind('\x2d\xe9', 0, _2de9)
+        r = _2de9 - 2
+    return binary.lookup_addr(r)
         
 
 def find_scratch(binary):

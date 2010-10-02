@@ -177,17 +177,20 @@
             'sysent_patch': '<sysent>+4',
             'sysent_patch_orig': '*<sysent_patch>',
 
-            'match_string': r'!bof:!stringref:bad regex index',
-            'match_string_orig1': '*<match_string>',
-            'match_string_orig2': '*(<match_string>+4)',
-            'match_string_jumpto': '<match_string>+9', # xxx thumb on armv6?
-            
-            'strncmp': '+_strncmp',
+            # for sandbox
+            'memcmp': '+_memcmp',
+            'IOLog': '+_IOLog',
+            'IOMalloc': '+_IOMalloc',
+            'IOFree': '+_IOFree',
+            'vn_getpath_fsenter': '+_vn_getpath_fsenter',
+            'sb_evaluate': r'!bof:!stringref:bad opcode',
+            'sb_evaluate_orig1': '*<sb_evaluate>',
+            'sb_evaluate_orig2': '*(<sb_evaluate>+4)',
+            'sb_evaluate_jumpto': '<sb_evaluate>+9', # xxx thumb on armv6?
+
             'flush_dcache': '+_flush_dcache',
             'invalidate_icache': '+_invalidate_icache',
             'copyin': '+_copyin',
-            'IOLog': '+_IOLog',
-            'memcpy': '+_memcpy',
 
             'scratch': '!scratch',
         },
@@ -311,4 +314,10 @@
 'world3': {
     '.armv7': { '#cache': {} },
     '.armv7_4.x': { '<': '.armv7', },
+},
+'iPad1,1_3.2': {
+    '<': '.armv7',
+    '#kern': {
+    
+    },
 },
