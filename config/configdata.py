@@ -182,7 +182,7 @@
             # for sandbox
             'memcmp': '+_memcmp',
             'IOLog': '+_IOLog',
-            'vn_getpath_fsenter': '+_vn_getpath',
+            'vn_getpath': '+_vn_getpath',
             'sb_evaluate': lambda: bof(stringref('bad opcode')),
             'sb_evaluate_orig1': lambda: deref(k('sb_evaluate')),
             'sb_evaluate_orig2': lambda: deref(k('sb_evaluate')+4),
