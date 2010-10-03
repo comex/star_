@@ -61,8 +61,15 @@ def importGenpass(data, string):
             if k in line:
                 print string + '.' + v + ': ' + re.search('-k ([a-zA-Z0-9]*)', line).group(1) + ' ' + re.search('-iv ([a-zA-Z0-9]*)', line).group(1)
 
-if sys.argv[1] == 'wiki':
-    importWiki(sys.stdin.read(), sys.argv[2])
-elif sys.argv[1] == 'genpass':
-    importGenpass(sys.stdin.read(), sys.argv[2])
+def importMultilineGenpass(data, string):
+    m = None
+    for line in data.split('\n'):
+        line = line.lower()
+        if m:
+            print string + '.' + m + ': ' + re.search('-k ([a-zA-Z0-9]*)', line).group(1) + ' ' + re.search('-iv ([a-zA-Z0-9]*)', line).group(1)
+            m = None
+        for k, v in thingsICareAbout.items():
+            if k in line:
+                m = v
+{'wiki': importWiki, 'genpass': importGenpass, 'multiline_genpass': importMultilineGenpass}[sys.argv[1]](sys.stdin.read(), sys.argv[2])
 #importOldStuff()
