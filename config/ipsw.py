@@ -27,22 +27,24 @@ nl = z.namelist()
 #print nl
 pl = plistlib.readPlistFromString(z.read('Restore.plist'))
 identifier = '%s_%s_%s' % (pl['ProductType'], pl['ProductVersion'], pl['ProductBuildVersion'])
-short_identifier = '%s_%s' % (pl['ProductType'], pl['ProductVersion'])
-output = os.path.join(out_root, short_identifier)
+output = os.path.join(out_root, identifier)
 os.mkdir(output)
 
 kc_key = kc_iv = fs_key = None
 for line in open(keyz):
     bits = re.split(':? ', line.strip())
-    if bits[0] == short_identifier + '.KernelCache':
+    if bits[0] == identifier + '.KernelCache':
         kc_key = bits[1]
         kc_iv = bits[2]
-    elif bits[0] == short_identifier + '.fs':
+    elif bits[0] == identifier + '.fs':
         fs_key = bits[1]
 
-if kc_key is None or kc_iv is None or fs_key is None:
-    print 'Couldn\'t get keys for %s' % short_identifier
+if kc_key is None or kc_iv is None:
+    print 'Couldn\'t get keys for %s' % identifier
     sys.exit(1)
+
+if fs_key is None:
+    print 'Couldn\'t get a FS key for %s, just doing kernelcache' % identifier
 
 print 'kernelcache...'
 kc_name = pl.get('KernelCachesByTarget', pl.get('KernelCachesByPlatform')).values()[0]['Release']
@@ -52,39 +54,43 @@ os.unlink(kc_name)
 system('~/xpwnbin/xpwntool tempkc.e %s/kern' % output) #!
 os.unlink('tempkc.e')
 
-print 'root filesystem...'
-fs_name = pl['SystemRestoreImages']['User']
-system('unzip -q -o -j "%s" %s' % (input_path, fs_name)) # 'unzip' used for speed
-system('~/xpwnbin/dmg extract %s temproot.img -k %s' % (fs_name, fs_key))
-try:
-    system('~/xpwnbin/hfsplus temproot.img extract /System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv7 %s/cache || true' % output)
-except:
-    system('~/xpwnbin/hfsplus temproot.img extract /System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv6 %s/cache || true' % output)
-    arch = 'armv6'
+if fs_key is not None:
+    print 'root filesystem...'
+    fs_name = pl['SystemRestoreImages']['User']
+    system('unzip -q -o -j "%s" %s' % (input_path, fs_name)) # 'unzip' used for speed
+    system('~/xpwnbin/dmg extract %s temproot.img -k %s' % (fs_name, fs_key))
+    try:
+        system('~/xpwnbin/hfsplus temproot.img extract /System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv7 %s/cache || true' % output)
+    except:
+        system('~/xpwnbin/hfsplus temproot.img extract /System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv6 %s/cache || true' % output)
+        arch = 'armv6'
+    else:
+        arch = 'armv7'
+    system('~/xpwnbin/hfsplus temproot.img extract /sbin/launchd %s/launchd' % output)
+
+    os.chmod('%s/launchd' % output, 0755)
+    os.unlink('temproot.img')
+    os.unlink(fs_name)
 else:
+    print 'assuming armv7'
     arch = 'armv7'
-system('~/xpwnbin/hfsplus temproot.img extract /sbin/launchd %s/launchd' % output)
 
-os.chmod('%s/launchd' % output, 0755)
-os.unlink('temproot.img')
-os.unlink(fs_name)
-
-if '3.1.' in short_identifier:
+if '3.1.' in identifier:
     arch += '_3.1.x'
 #else:
 #    arch += '_3.2+'
 
 # allow for customization.
-if not eval('{%s}' % open(configdata).read()).has_key(short_identifier):
+if not eval('{%s}' % open(configdata).read())['all'].has_key(identifier):
+    print 'Add this to configdata.py:'
     new = '''
-'*X*': {
-    '<': '.*A*',
-    '#kern': {
-    
+    '*X*': {
+        '<': '.*A*',
+        '#kern': {
+        },
     },
-},
-    '''.strip().replace('*A*', arch).replace('*X*', short_identifier)
-    open(configdata, 'a').write(new + '\n')
+    '''.strip().replace('*A*', arch).replace('*X*', identifier)
+    print new
 
 # clean up
 os.chdir('/')

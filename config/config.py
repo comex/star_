@@ -11,6 +11,10 @@ if __name__ == '__main__':
 else:
     basepath = os.path.realpath(os.path.dirname(__file__))
 
+VM_PROT_READ = 1
+VM_PROT_WRITE = 2
+VM_PROT_EXECUTE = 4
+
 cache = None
 def cache_has_key(cachekey):
     global cache
@@ -94,18 +98,24 @@ def do_binary_kv(binary, mtime, d, k, v):
     soff = None
     loose = False
     align = 2
-    startoff = None
+    startoff = 0
     nonexact = False
+    thumb = False
+    exec_required = True
     n = 0
     for bit in bits:
         if bit.startswith('='):
             startoff = binary.lookup_off(do_binary_k_cached(binary, mtime, d, bit[1:]))
         elif bit == '@':
             loose = True
-        elif bit == '+':
-            soff = n + 1
-        elif bit == '-': # ARM or data
+        elif bit == '+': # Thumb
             soff = n
+            thumb = True
+        elif bit == '-': # ARM
+            soff = n
+        elif bit == '/': # data
+            soff = n
+            exec_required = False
         elif bit == '~':
             align = 1
         elif bit == '%':
@@ -125,12 +135,25 @@ def do_binary_kv(binary, mtime, d, k, v):
             n += 1
     if soff is None:
         raise ValueError('No offset in %s' % (v,))
+    def addrok(off):
+        # returns the address, or None if it's not suitable
+        try:
+            addr, prot = binary.lookup_addr_and_prot(startoff + off + soff)
+        except ValueError:
+            return None
+        if addr & (align - 1):
+            return None
+        if exec_required and not (prot & VM_PROT_EXECUTE):
+            return None
+        if thumb: addr |= 1
+        return addr
     if loose:
-        assert startoff is None
+        assert startoff == 0
         if nonexact:
             m = re.search(sstr, binary.stuff)
             while m:
-                if m.start() % align == 0: break
+                val = addrok(m.start())
+                if val is not None: break
                 m = re.search(sstr, binary.stuff, m.start() + 1)
             else:
                 raise ValueError('I couldn\'t find (loose) %s' % v)
@@ -138,24 +161,24 @@ def do_binary_kv(binary, mtime, d, k, v):
         else:
             off = binary.stuff.find(xstr, 0)
             while off != -1:
-                if off % align == 0: break
+                val = addrok(off)
+                if val is not None: break
                 off = binary.stuff.find(xstr, off + 1)
             else:
                 raise ValueError('I couldn\'t find (loose, exact) %s' % v)
     else:
-        if startoff is not None:
+        if startoff:
             #print binary.stuff[startoff:startoff+256].encode('hex')
             offs = list(re.finditer(sstr, binary.stuff[startoff:startoff+256]))
         else:
             offs = list(re.finditer(sstr, binary.stuff))
-        offs = [i for i in offs if i.start() % align == 0]
-        if len(offs) == 0:
+        vals = filter(lambda a: a is not None, [addrok(m.start()) for m in offs])
+        if len(vals) == 0:
             print repr(sstr)
             raise ValueError('I couldn\'t find %s' % v)
-        elif len(offs) >= 2:
-            raise ValueError('I found multiple (%d) %s' % (len(offs), v))
-        off = offs[0].start() + (0 if startoff is None else startoff)
-    val = binary.lookup_addr(off + soff)
+        elif len(vals) >= 2:
+            raise ValueError('I found multiple (%d) %s' % (len(vals), v))
+        val = vals[0]
     #print 'for', k, 'off=%x soff=%x addr=%x' % (off, soff, val)
     return val
 
@@ -176,22 +199,22 @@ def do_binary_k_cached(binary, mtime, d, k):
 
 class basebin:
     def lookup_addr(self, off):
-        for startaddr, startoff, size in self.sects:
+        for startaddr, startoff, size, prot in self.sects:
             if off >= startoff and off < (startoff + size):
-                val = startaddr + (off - startoff)
-                break
-        else:
-            raise ValueError('No address for offset %x' % off)
-        return val
+                return startaddr + (off - startoff)
+        raise ValueError('No address for offset %x' % off)
+    
+    def lookup_addr_and_prot(self, off):
+        for startaddr, startoff, size, prot in self.sects:
+            if off >= startoff and off < (startoff + size):
+                return (startaddr + (off - startoff), prot)
+        raise ValueError('No address for offset %x' % off)
 
     def lookup_off(self, addr):
-        for startaddr, startoff, size in self.sects:
+        for startaddr, startoff, size, prot in self.sects:
             if addr >= startaddr and addr < (startaddr + size):
-                val = startoff + (addr - startaddr)
-                break
-        else:
-            raise ValueError('No offset for address %x' % addr)
-        return val
+                return startoff + (addr - startaddr)
+        raise ValueError('No offset for address %x' % addr)
     
     def deref(self, addr):
         off = self.lookup_off(addr)
@@ -227,8 +250,10 @@ class macho(basebin):
             cmd, clen = struct.unpack('II', stuff.read(8))
             if cmd == 1: # LC_SEGMENT
                 name = stuff.read(16).rstrip('\0')
-                vmaddr, vmsize, foff, fsiz = struct.unpack('IIII', stuff.read(16))
-                sects.append((vmaddr, foff, fsiz))
+                vmaddr, vmsize, foff, fsiz, maxprot, initprot = struct.unpack('IIIIii', stuff.read(24))
+                # why is the prot wrong in the file?
+                if name == '__PRELINK_TEXT': initprot = 5
+                sects.append((vmaddr, foff, fsiz, initprot))
             elif cmd == 2: # LC_SYMTAB
                 self.symoff, self.nsyms, self.stroff, self.strsize = struct.unpack('IIII', stuff.read(16))
             elif cmd == 11: # LC_DYSYMTAB
@@ -286,7 +311,7 @@ class dyldcache(basebin):
         self.sects = []
         for i in xrange(mappingCount):
             sfm_address, sfm_size, sfm_file_offset, sfm_max_prot, sfm_init_prot = struct.unpack('QQQII', stuff.read(32))
-            self.sects.append((sfm_address, sfm_file_offset, sfm_size))
+            self.sects.append((sfm_address, sfm_file_offset, sfm_size, sfm_init_prot))
         
         self.files = {}
         for i in xrange(imagesCount):
@@ -406,6 +431,10 @@ def pretty_print(d):
 def make_config(platform_):
     global platform
     platform = platform_
+    for k in data.keys():
+        if k.startswith(platform + '_'):
+            platform = k
+            break
     d = get_data(platform)
     d['platform'] = platform
     for k, v in d.iteritems():

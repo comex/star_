@@ -1,5 +1,5 @@
 'all': {
-    'iPhone3,1_4.0.1': { '<': 'iPhone3,1_4.0', },
+    'iPhone3,1_4.0.1_8A306': { '<': 'iPhone3,1_4.0_8A293', },
     'iPhone1,x_4.0': {
         '<': '.armv6_4.x',
         '#kern': {
@@ -12,43 +12,43 @@
             'vram_baseaddr': 0xca67d000, 
         },
     },
-    'iPhone2,1_4.0': {
+    'iPhone2,1_4.0_8A293': {
         '<': '.armv7_4.x',
         '#kern': {
             'vram_baseaddr': 0xcd32d000, 
         },
     },
-    'iPhone2,1_4.0.1': {
+    'iPhone2,1_4.0.1_8A306': {
         '<': '.armv7_4.x',
         '#kern': {
             'vram_baseaddr': 0xcd32d000,    
         },
     },
-    'iPod2,1_4.0': {
+    'iPod2,1_4.0_8A293': {
         '<': '.armv6_4.x',
         '#kern': {
             'vram_baseaddr': 0xca68d000, 
         },
     },
-    'iPhone2,1_3.1.3': {
+    'iPhone2,1_3.1.3_7E18': {
         '<': '.armv7_3.1.x',
         '#kern': {
             'vram_baseaddr': 0xed731000,       
         },
     },
-    'iPhone2,1_3.1.2': {
+    'iPhone2,1_3.1.2_7D11': {
         '<': '.armv7_3.1.x',
         '#kern': {
             'vram_baseaddr': 0xed731000,       
         },
     },
-    'iPod2,1_3.1.2': {
+    'iPod2,1_3.1.2_7D11': {
         '<': '.armv6_3.1.x',
         '#kern': {
             'vram_baseaddr': 0xeb849000,
         },
     },
-    'iPod2,1_3.1.3': {
+    'iPod2,1_3.1.3_7E18': {
         '<': '.armv6_3.1.x',
         '#kern': {
             'vram_baseaddr': 0xed731000,
@@ -66,37 +66,37 @@
             'vram_baseaddr': [0xeb811000, 0xeb809000],
         },
     },
-    'iPod3,1_3.1.3': {
+    'iPod3,1_3.1.3_7E18': {
         '<': '.armv7_3.1.x',
         '#kern': {
             'vram_baseaddr': 0xed615000, 
         },
     },
-    'iPod3,1_3.1.2': {
+    'iPod3,1_3.1.2_7D11': {
         '<': '.armv7_3.1.x',
         '#kern': {
             'vram_baseaddr': 0xed615000,       
         },
     },
-    'iPod1,1_3.1.2': {
+    'iPod1,1_3.1.2_7D11': {
         '<': '.armv6_3.1.x',
         '#kern': {
             'vram_baseaddr': 0xeb919000,   
         },
     },
-    'iPod1,1_3.1.3': {
+    'iPod1,1_3.1.3_7E18': {
         '<': '.armv6_3.1.x',
         '#kern': {
             'vram_baseaddr': 0xeb919000,   
         },
     },
-    'iPod3,1_4.0': {
+    'iPod3,1_4.0_8A293': {
         '<': '.armv7_4.x',
         '#kern': {
             'vram_baseaddr': 0xcd33d000, 
         },
     },
-    'iPad1,1_3.2': {
+    'iPad1,1_3.2_7B367': {
         '<': '.armv7',
         '#kern': {
             'vram_baseaddr': [0xed6ed000, 0xed6f5000],
@@ -104,17 +104,17 @@
         'kill_sb': 1,
     },
     'iPad1,1_3.2.1': {
-        '<': 'iPad1,1_3.2',
+        '<': 'iPad1,1_3.2_7B367',
     },
 
     'iPad1,1_3.2_self': {
-        '<': 'iPad1,1_3.2',
+        '<': 'iPad1,1_3.2_7B367',
         '#cache': { '@binary': '/System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv7', },
         '#kern': { '@binary': '/var/mobile/ipadkern', },
         '#launchd': { '@binary': '/sbin/launchd', },
     },
 
-    'iPhone3,1_4.0': {
+    'iPhone3,1_4.0_8A293': {
         '<': '.armv7_4.x',
         '#kern': {
             'vram_baseaddr': 0xd2675000,
@@ -123,37 +123,37 @@
             'root_ios_id': 2,
         },
     },
-    'iPod2,1_4.1': {
+    'iPod2,1_4.1_8B117': {
         '<': '.armv7',
         '#kern': {
         
         },
     },
-    'iPhone2,1_4.1': {
+    'iPhone2,1_4.1_8B117': {
         '<': '.armv7',
         '#kern': {
         
         },
     },
-    'iPhone1,2_4.1': {
+    'iPhone1,2_4.1_8B117': {
         '<': '.armv7',
         '#kern': {
         
         },
     },
-    'iPod3,1_4.1': {
+    'iPod3,1_4.1_8B117': {
         '<': '.armv7',
         '#kern': {
         
         },
     },
-    'iPhone3,1_4.1': {
+    'iPhone3,1_4.1_8B117': {
         '<': '.armv7',
         '#kern': {
         
         },
     },
-    'iPod4,1_4.1': {
+    'iPod4,1_4.1_8B118': {
         '<': '.armv7',
         '#kern': {
         
@@ -173,7 +173,7 @@
             'patch_kernel_pmap_nx_enabled': lambda: sym('-_kernel_pmap')+0x420,
             'patch_kernel_pmap_nx_enabled_to': 0,
 
-            'sysent': '21 00 00 00 00 10 86 00 -',
+            'sysent': '21 00 00 00 00 10 86 00 /',
             'sysent_patch': lambda: k('sysent') + 4,
             'sysent_patch_orig': lambda: deref(k('sysent_patch')),
             'target_addr': lambda: (k('sysent_patch_orig') & 0x00ffffff) | 0x2f000000,
@@ -260,7 +260,7 @@
             # vm_map and AMFI
             'patch1':       '- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93',
             'patch1_to':    0x46c00f02,
-            'patch3':       '23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -',
+            'patch3':       '~ 23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -',
             'patch3_to':    0x1c201c20,
 
             # search for bic.*0xc00, or vnode_authorize
@@ -319,7 +319,7 @@
     '.armv7': { '#cache': {} },
     '.armv7_4.x': { '<': '.armv7', },
 },
-'iPad1,1_3.2': {
+'iPad1,1_3.2_7B367': {
     '<': '.armv7',
     '#kern': {
     
