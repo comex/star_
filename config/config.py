@@ -341,7 +341,7 @@ def binary_open(filename):
     elif magic == struct.pack('I', 0xfeedface):
         binary = macho(filename, stuff)
     else:
-        raise Exception('Unknown magic %r' % magic)
+        raise Exception('Unknown magic %r in %s' % (magic, filename))
     return binary
    
 def do_adjusted_vram_baseaddr(d, k):
@@ -430,11 +430,14 @@ def pretty_print(d):
 
 def make_config(platform_):
     global platform
-    platform = platform_
+    platform = None
     for k in data.keys():
-        if k.startswith(platform + '_'):
+        if k == platform_ or k.startswith(platform_ + '_'):
+            if platform:
+                raise KeyError('Ambiguous platform %s' % platform_)
             platform = k
-            break
+    else:
+        raise KeyError(platform_)
     d = get_data(platform)
     d['platform'] = platform
     for k, v in d.iteritems():

@@ -47,7 +47,10 @@ if fs_key is None:
     print 'Couldn\'t get a FS key for %s, just doing kernelcache' % identifier
 
 print 'kernelcache...'
-kc_name = pl.get('KernelCachesByTarget', pl.get('KernelCachesByPlatform')).values()[0]['Release']
+if pl.get('KernelCachesByPlatform'):
+    kc_name = pl['KernelCachesByPlatform'].values()[0]['Release']
+else:
+    kc_name = pl['KernelCachesByTarget'][pl['DeviceMap']['BoardConfig'][:3]]['Release']
 system('unzip -q -o -j "%s" %s' % (input_path, kc_name))
 system('~/xpwnbin/xpwntool %s tempkc.e -k %s -iv %s -decrypt' % (kc_name, kc_key, kc_iv)) #!
 os.unlink(kc_name)
