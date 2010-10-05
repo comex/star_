@@ -121,6 +121,7 @@ static int ok_go_real(void *p, void *uap, unsigned int *retval) {
     flush((void *) CONFIG_SYSENT_PATCH, 4);
 
     unsigned int copysize = (char *)(&patch_end) - (char *)(&patch_start);
+#define CONFIG_SCRATCH 42
     copyin(&patch_start, (void *) CONFIG_SCRATCH, copysize);
     flush((void *) CONFIG_SCRATCH, copysize);
     
@@ -133,9 +134,9 @@ static int ok_go_real(void *p, void *uap, unsigned int *retval) {
 
 }
 
+// :(
 __attribute__((section("__HIGHROAD,__highroad"), naked, used))
 static int ok_go(void *p, void *uap, unsigned int *retval) {
-    asm(CONFIG_LOTS_OF_NOPS);
     unsigned int ok = ((unsigned int) &ok_go_real) | 1;
     asm("bx %0" :: "r"(ok));
 }

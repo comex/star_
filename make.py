@@ -89,9 +89,14 @@ def pf2():
                  ['strip', '-Sx', 'pf2'],
                  ['ldid', '-S', 'pf2'])
 
-def sandbox2():
-    goto('sandbox2')
-    compile_to_bin('sandbox.S')
+def data():
+    # config for insane first
+    goo_pf()
+    pf2()
+    goto('data')
+    run('bash', '-c', 'cp ../goo/pf/one.dylib one.bin; xxd -i one.bin > one.c')
+    run('bash', '-c', 'cp ../pf2/pf2 pf2.bin; xxd -i pf2.bin > pf2.c')
+    run(GCC, '-std=gnu99', '-o', 'data', 'data.c', 'one.c', 'pf2.c')
 
 def mm():
     goto('mm')

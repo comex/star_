@@ -329,10 +329,16 @@ class dyldcache(basebin):
             else:
                 return result
         raise KeyError, sym
-        
+
+class nullbin(basebin):
+    name = None
+    def get_sym_uncached(self, sym):
+        raise KeyError, sym
 
 ###
 def binary_open(filename):
+    if filename is None:
+        return nullbin()
     fp = open(filename, 'rb')
     magic = fp.read(4)
     stuff = mmap.mmap(fp.fileno(), os.path.getsize(filename), prot=mmap.PROT_READ)
@@ -374,11 +380,13 @@ def do_binary(name, d):
             if not os.path.exists(plat): os.mkdir(plat)
             assert 0 == os.system('curl "http://$BS_HOST/%s.lzma" | lzma -d > "%s"' % (filename[3:], filename))
             assert os.path.exists(filename)
-    d['@binary'] = os.path.realpath(filename)
-
+    if filename is not None:
+        d['@binary'] = os.path.realpath(filename)
+        mtime = str(os.path.getmtime(filename))
+    else:
+        mtime = 0
     binary = binary_open(filename)
-     
-    mtime = str(os.path.getmtime(filename))
+
     for k in d.iterkeys():
         d[k] = do_binary_k_cached(binary, mtime, d, k)
 

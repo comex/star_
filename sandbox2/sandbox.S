@@ -1,23 +1,21 @@
 #include <config/config.h>
-.syntax unified
 .thumb
 .globl _patch_start, _patch_end
 _patch_start:
 // <- 
     push {r0-r4, lr}
+    sub sp, #0x44
     ldr r2, dvp_struct_offset
     ldr r4, [r3, r2]
     cmp r4, #0
     beq actually_eval
     ldr r3, vn_getpath
-    sub r1, sp, #0x44
+    mov r1, sp
     mov r0, #0x40
-    sub r2, sp, #4
+    add r2, sp, #0x40
     str r0, [r2]
     mov r0, r4
-    sub sp, #0x50
     blx r3
-    add sp, #0x50
     cmp r0, #28
     beq enospc
     cmp r0, #0
@@ -25,7 +23,7 @@ _patch_start:
 enospc:
     # that error's okay...
 
-    sub r0, sp, #0x44
+    mov r0, sp
     adr r1, var_mobile
     mov r2, #19 ;# len(var_mobile)
     ldr r3, memcmp
@@ -33,7 +31,7 @@ enospc:
     cmp r0, #0
     bne allow
 
-    sub r0, sp, #0x44
+    mov r0, sp
     adr r1, preferences_com_apple
     mov r2, #49 ;# len(preferences_com_apple)
     ldr r3, memcmp
@@ -41,7 +39,7 @@ enospc:
     cmp r0, #0
     beq actually_eval
 
-    sub r0, sp, #0x44
+    mov r0, sp
     adr r1, preferences
     mov r2, #39 ;# len(preferences)
     ldr r3, memcmp
@@ -51,6 +49,7 @@ enospc:
 
 allow:
     # it's not in /var/mobile but we have a path, let it through
+    add sp, #0x44
     pop {r0}
     mov r1, #0
     str r1, [r0]
@@ -58,13 +57,22 @@ allow:
     pop {r1-r4, pc}
 
 actually_eval:
-    pop {r0-r4, lr}
+    add sp, #0x44
+    ldr r0, [sp, #5*4]
+    mov lr, r0
+    ldr r1, orig_addr
+    mov r9, r1
+    pop {r0-r4}
+    add sp, #4
     .long CONFIG_SB_EVALUATE_ORIG1
     .long CONFIG_SB_EVALUATE_ORIG2
-    ldr pc, orig_addr
+    bx r9
 
+.align 2
 var_mobile: .ascii "/private/var/mobile"
+.align 2
 preferences_com_apple: .ascii "/private/var/mobile/Library/Preferences/com.apple"
+.align 2
 preferences: .ascii "/private/var/mobile/Library/Preferences"
 .align 2
 orig_addr: .long CONFIG_SB_EVALUATE_JUMPTO

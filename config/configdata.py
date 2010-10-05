@@ -167,6 +167,63 @@
     },
 },
 'world1': {
+    'insane': {
+        'arch': 'armv6',
+        '#kern': {
+            '@binary': None,
+            'sb_evaluate_orig1': 0xfeed0001,
+            'sb_evaluate_orig2': 0xfeed0002,
+            'sb_evaluate_jumpto': 0xfeed0003,
+            'memcmp': 0xfeed0004,
+            'vn_getpath': 0xfeed0005,
+            'dvp_struct_offset': 0xfeed0006,
+            
+            # feddit
+            'patch_cs_enforcement_disable': 0xfedd0001,
+            'patch_cs_enforcement_disable_to': 1,
+            'patch_kernel_pmap_nx_enabled': 0xfedd0002,
+            'patch_kernel_pmap_nx_enabled_to': 0,
+            'sysent': 0xfedd0003,
+            'sysent_patch': 0xfedd0004,
+            'sysent_patch_orig': 0xfedd0005,
+            'target_addr': 0xfedd0006,
+            'patch1': 0xfedd0007,
+            'patch1_to':    0x46c00f02,
+            'patch3': 0xfedd0008,
+            'patch3_to':    0x1c201c20,
+            'patch_tfp0': 0xfedd0009,
+            'patch_tfp0_to': 0x46c0e00b,
+            'flush_dcache': 0xfedd0010,
+            'invalidate_icache': 0xfedd0011,
+            'copyin': 0xfedd0012,
+            'IOLog': 0xfedd0013,
+            'sb_evaluate': 0xfedd0014,
+
+        },
+        '#cache': {
+            '@binary': None,
+            'k2': 0xfeed0002,
+            'k3': 0xfeed0003,
+            'k4': 0xfeed0004,
+            'k5': 0xfeed0005,
+            'k6': 0xfeed0006,
+            'k7': 0xfeed0007,
+            'k9': 0xfeed0009,
+            'k10': 0xfeed0010,
+            'k11': 0xfeed0011,
+            'k12': 0xfeed0012,
+            'k14': 0xfeed0014,
+            'k15': 0xfeed0015,
+            'k16': 0xfeed0016,
+            'k17': 0xfeed0017,
+            'k18': 0xfeed0018,
+            'k19': 0xfeed0019,
+            'kinit': 0xdeadfeed,
+            'sysctlbyname': 0xfeed1001,
+            'execve': 0xfeed1002,
+        },
+    },
+
     '.base': {
         '#kern': {
             'patch_cs_enforcement_disable': '~ @ 00 00 00 00 00 00 00 - 00 00 00 00 01 00 00 00 80',
@@ -202,7 +259,12 @@
             'invalidate_icache': '+_invalidate_icache',
             'copyin': '+_copyin',
 
-            'scratch': lambda: scratch(),
+            #'scratch': lambda: scratch(),
+        },
+
+        '#cache': {
+            'sysctlbyname': '+_sysctlbyname',
+            'execve': '+_execve',
         },
 
         'kill_sb': 0,
