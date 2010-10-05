@@ -5,7 +5,8 @@
 _patch_start:
 // <- 
     push {r0-r4, lr}
-    ldr r4, [r3, #CONFIG_DVP_STRUCT_OFFSET]
+    ldr r2, dvp_struct_offset
+    ldr r4, [r3, r2]
     cmp r4, #0
     beq actually_eval
     ldr r3, vn_getpath
@@ -69,4 +70,5 @@ preferences: .ascii "/private/var/mobile/Library/Preferences"
 orig_addr: .long CONFIG_SB_EVALUATE_JUMPTO
 memcmp: .long CONFIG_MEMCMP
 vn_getpath: .long CONFIG_VN_GETPATH
+dvp_struct_offset: .long CONFIG_DVP_STRUCT_OFFSET
 _patch_end:

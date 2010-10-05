@@ -18,8 +18,8 @@ if len(sys.argv) <= 1:
     print 'Usage: one.py <heapfile>'
     sys.exit(1)
 
-# heap: [init function that is actually k-1] [SP] [PC provided by goo] [the rest...]
-heap = struct.pack('II', cfg['#cache']['k-1'], heapaddr + 12)
+# heap: [init function that is actually kinit] [SP] [PC provided by goo] [the rest...]
+heap = struct.pack('II', cfg['#cache']['kinit'], heapaddr + 12)
 heap += open(sys.argv[1], 'rb').read()
 
 heapsize = len(heap)

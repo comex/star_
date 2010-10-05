@@ -436,7 +436,7 @@ def make_config(platform_):
             if platform:
                 raise KeyError('Ambiguous platform %s' % platform_)
             platform = k
-    else:
+    if platform is None:
         raise KeyError(platform_)
     d = get_data(platform)
     d['platform'] = platform

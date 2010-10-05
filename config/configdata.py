@@ -253,13 +253,13 @@
 
             # ldmibmi r12, {sp, pc}
             # actually the tail half of a ldr.w r12, [r1, r0] + ldr r1, [pc, #620] 
-            'k-1': '@ % - 00 a0 9b 49',
+            'kinit': '@ % - 00 a0 9b 49',
 
+            # branch support
             # and.w r0, #1; pop {r7, pc}
-            'k3': '@ + 00 f0 01 00 80 bd',
-
+            #'k3': '@ + 00 f0 01 00 80 bd',
             # ldr.w r0, [r4, r0, lsl #2]; pop {r4, r5, r7, pc}
-            'k2': '@ + 54 f8 20 00',
+            #'k2': '@ + 54 f8 20 00',
         },
 
         '#kern': {

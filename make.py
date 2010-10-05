@@ -84,10 +84,14 @@ def goo_pf():
 def pf2():
     goto('pf2')
     run('python', 'gen-segaddr.py')
-    run(GCC, '-o', 'pf2_', 'pf2.c', 'sandbox.S', '-image_base', '0x10000000', '-segprot', '__HIGHROAD', 'rx', 'rx', '@segaddr.txt')
+    run(GCC, '-o', 'pf2_', 'pf2.c', '../sandbox2/sandbox.S', '-image_base', '0x10000000', '-segprot', '__HIGHROAD', 'rx', 'rx', '@segaddr.txt')
     run_multiple(['cp', 'pf2_', 'pf2'],
                  ['strip', '-Sx', 'pf2'],
                  ['ldid', '-S', 'pf2'])
+
+def sandbox2():
+    goto('sandbox2')
+    compile_to_bin('sandbox.S')
 
 def mm():
     goto('mm')
