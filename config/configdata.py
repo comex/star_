@@ -107,13 +107,6 @@
         '<': 'iPad1,1_3.2_7B367',
     },
 
-    'iPad1,1_3.2_self': {
-        '<': 'iPad1,1_3.2_7B367',
-        '#cache': { '@binary': '/System/Library/Caches/com.apple.dyld/dyld_shared_cache_armv7', },
-        '#kern': { '@binary': '/var/mobile/ipadkern', },
-        '#launchd': { '@binary': '/sbin/launchd', },
-    },
-
     'iPhone3,1_4.0_8A293': {
         '<': '.armv7_4.x',
         '#kern': {
@@ -168,7 +161,7 @@
 },
 'world1': {
     'insane': {
-        'arch': 'armv6',
+        'arch': 'armv7',
         '#kern': {
             '@binary': None,
             'sb_evaluate_orig1': 0xfeed0001,
@@ -183,7 +176,6 @@
             'patch_cs_enforcement_disable_to': 1,
             'patch_kernel_pmap_nx_enabled': 0xfedd0002,
             'patch_kernel_pmap_nx_enabled_to': 0,
-            'sysent': 0xfedd0003,
             'sysent_patch': 0xfedd0004,
             'sysent_patch_orig': 0xfedd0005,
             'target_addr': 0xfedd0006,
@@ -197,7 +189,8 @@
             'invalidate_icache': 0xfedd0011,
             'copyin': 0xfedd0012,
             'IOLog': 0xfedd0013,
-            'sb_evaluate': 0xfedd0014,
+            'kalloc': 0xfedd0014,
+            'sb_evaluate': 0xfedd0015,
 
         },
         '#cache': {
@@ -245,6 +238,7 @@
             # for sandbox
             'memcmp': '+_memcmp',
             'IOLog': '+_IOLog',
+            'kalloc': '+_kalloc',
             'vn_getpath': '+_vn_getpath',
             'sb_evaluate': lambda: bof(stringref('bad opcode')),
             'sb_evaluate_orig1': lambda: deref(k('sb_evaluate')),

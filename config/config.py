@@ -394,21 +394,26 @@ def do_binary(name, d):
     do_adjusted_vram_baseaddr(d, 'adjusted_vram_baseaddr_atboot')
 
 
-def dict_to_header(d):
-    header = ''
+def dict_to_headers(d, volatile):
+    header1 = header2 = ''
     for k, v in d.iteritems():
         if not isinstance(k, basestring) or '-' in k or k.startswith('@'): continue
         if isinstance(v, dict):
-            header += dict_to_header(v)
+            a, b = dict_to_headers(v, volatile)
+            header1 += a
+            header2 += b
             continue
         elif isinstance(v, (int, long)):
             v = hex(v)
+            typ = 'unsigned int '
         elif not isinstance(v, basestring):
             continue
-        elif ',' in v:
+        else:
             v = '"%s"' % v
-        header += '#define CONFIG_%s %s\n' % (k.upper(), v)
-    return header
+            typ = 'char *'
+        header1 += '#define CONFIG_%s %s\n' % (k.upper(), v)
+        header2 += '%sstatic const %sCONFIG_%s = %s;\n' % ('volatile ' if volatile else '', typ, k.upper(), v)
+    return header1, header2
 
 def merge(a, b):
     if isinstance(a, dict):
@@ -442,7 +447,7 @@ def make_config(platform_):
     for k in data.keys():
         if k == platform_ or k.startswith(platform_ + '_'):
             if platform:
-                raise KeyError('Ambiguous platform %s' % platform_)
+                raise KeyError('Ambiguous platform %s: could be %s or %s' % (platform_, platform, k))
             platform = k
     if platform is None:
         raise KeyError(platform_)
@@ -455,8 +460,9 @@ def make_config(platform_):
     if verbose:
         pretty_print(d)
     open('config.json', 'w').write(json.dumps(d)+'\n')
-    h = dict_to_header(d) + '\n'
-    open('config.h', 'w').write(h)
+    h1, h2 = dict_to_headers(d, platform == 'insane')
+    open('config_asm.h', 'w').write(h1 + '\n')
+    open('config.h', 'w').write(h2 + '\n')
 
 if __name__ == '__main__':
     parser = optparse.OptionParser()
