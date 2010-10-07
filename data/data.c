@@ -196,7 +196,7 @@ uint32_t find_dvp_struct_offset() {
 }
 
 void write_range(prange_t range, const char *fn, mode_t mode) {
-    int fd = open(fn, O_WRONLY | O_CREAT, 0755);
+    int fd = open(fn, O_WRONLY | O_CREAT | O_TRUNC, 0755);
     if(fd == -1) {
         edie("write_range: could not open %s: %s\n", fn);
     }
@@ -225,8 +225,7 @@ prange_t bar() {
     preplace32(the_dylib, 0xfeed0017, dyld_find_anywhere("+ 25 60 b0 bd", 2));
     preplace32(the_dylib, 0xfeed0018, dyld_find_anywhere("+ 10 bd", 2));
     preplace32(the_dylib, 0xfeed0019, dyld_find_anywhere("+ 80 bd", 2));
-    dyld_choose_file("/System/Library/PrivateFrameworks/Symbolication.framework/Symbolication");
-    preplace32(the_dylib, 0xdeadfeed, find_data(macho_segrange("__TEXT"), "- 00 a0 9b 49", 4, true));
+    preplace32(the_dylib, 0xdeadfeed, dyld_find_anywhere("- 00 a0 9b 49", 4));
     dyld_choose_file("/usr/lib/libSystem.B.dylib");
     macho_load_symbols();
     preplace32(the_dylib, 0xfeed1001, sym("_sysctlbyname", true));
@@ -278,11 +277,11 @@ int main(int argc, char **argv) {
     switch(argv[1][1]) {
     case 'C':
         load_dyld_cache(argv[2], true);
-        write_range(bar(), "one.dylib", 0644);
+        write_range(bar(), "libgmalloc.dylib", 0644);
         return 0;
     case 'c':
         load_dyld_cache(argv[2], false);
-        write_range(bar(), "one.dylib", 0644);
+        write_range(bar(), "libgmalloc.dylib", 0644);
         return 0;
     case 'k':
         load_macho(argv[2]);
