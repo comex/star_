@@ -129,18 +129,25 @@ addr_t find_int32(range_t range, uint32_t number, bool must_find) {
     }
 }
 
-void preplace32(prange_t range, uint32_t a, uint32_t b) {
-    bool found_it = false;
+// lol what is this
+uint32_t preplace32_a(prange_t range, uint32_t a) {
     for(paddr_t addr = (paddr_t)range.start; addr + sizeof(uint32_t) <= (paddr_t)range.start + range.size; addr++) {
         if(*(uint32_t *)addr == a) {
-            *(uint32_t *)addr = b;
-            found_it = true;
+            return addr;
         }
     }
-    if(!found_it) {
-        fprintf(stderr, "preplace32: warning: didn't find %08x anywhere\n", a);
+    fprintf(stderr, "preplace32: warning: didn't find %08x anywhere\n", a);
+    return 0;
+}
+
+void preplace32_b(prange_t range, uint32_t start, uint32_t a, uint32_t b) {
+    for(paddr_t addr = start; addr + sizeof(uint32_t) <= (paddr_t)range.start + range.size; addr++) {
+        if(*(uint32_t *)addr == a) {
+            *(uint32_t *)addr = b;
+        }
     }
 }
+#define preplace32(range, a, b) do { uint32_t _ = preplace32_a(range, a); if(_) preplace32_b(range, _, a, b); } while(0)
 
 prange_t pdup(prange_t range) {
     void *buf = malloc(range.size);
@@ -249,7 +256,7 @@ prange_t foo() {
     // cs_enforcement_disable
     preplace32(pf2, 0xfedd0001, find_data(macho_segrange("__DATA"), "00 00 00 00 00 00 00 - 00 00 00 00 01 00 00 00 80", 1, true));
     // kernel_pmap->nx_enabled
-    preplace32(pf2, 0xfedd0002, sym("_kernel_pmap", false) + 0x420);
+    preplace32(pf2, 0xfedd0002, read32(sym("_kernel_pmap", false)) + 0x420);
     addr_t sysent = find_data(macho_segrange("__DATA"), "21 00 00 00 00 10 86 00 -", 0, true);
     preplace32(pf2, 0xfedd0004, sysent + 4);
     addr_t sysent_patch_orig = read32(sysent + 4);
@@ -264,9 +271,10 @@ prange_t foo() {
     // PE_i_can_has_debugger (patch4) - so AMFI allows non-ldid'd binaries (and some other stuff is allowed)
     preplace32(pf2, 0xfedd0016, sym("_PE_i_can_has_debugger", false));
     
-    preplace32(pf2, 0xfedd0017, sym("_kernel_map", false));
-    preplace32(pf2, 0xfedd0018, sym("_lck_rw_lock_exclusive", false));
-    preplace32(pf2, 0xfedd0019, sym("_lck_rw_lock_done", false));
+    //preplace32(pf2, 0xfedd0017, sym("_kernel_map", false));
+    //preplace32(pf2, 0xfedd0018, sym("_lck_rw_lock_exclusive", false));
+    //preplace32(pf2, 0xfedd0019, sym("_lck_rw_done", false));
+
     // task_for_pid 0
     preplace32(pf2, 0xfedd0009, find_data(macho_segrange("__TEXT"), "85 68 00 23 .. 93 .. 93 - .. .. .. .. 29 46 04 22", 0, true));
     preplace32(pf2, 0xfedd0010, sym("_flush_dcache", true));

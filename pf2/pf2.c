@@ -129,6 +129,7 @@ static inline void flush(void *addr, unsigned size) {
     invalidate_icache(addr, size, false);
 }
 
+#if 0
 __attribute__((always_inline))
 static inline void memory_hax() {
     void *k = *((void **) CONFIG_KERNEL_MAP);
@@ -145,6 +146,7 @@ static inline void memory_hax() {
     }
     lck_rw_done(k);
 }
+#endif
 
 extern int ok_go(void *p, void *uap, unsigned int *retval) {
     IOLog("Whoa, I'm here!...\n");
@@ -169,7 +171,7 @@ extern int ok_go(void *p, void *uap, unsigned int *retval) {
     *((unsigned int *) (CONFIG_SB_EVALUATE + 4)) = (unsigned int)scratch | 1;
     flush((void *) CONFIG_SB_EVALUATE, 8);
     
-    memory_hax();
+    //memory_hax();
 
     return 0;
 

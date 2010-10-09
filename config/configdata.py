@@ -103,8 +103,13 @@
         },
         'kill_sb': 1,
     },
-    'iPad1,1_3.2.1': {
+    'iPad1,1_3.2.1_7B405': {
         '<': 'iPad1,1_3.2_7B367',
+    },
+    'iPad1,1_3.2.2_7B500': {
+        '<': '.armv7',
+        '#kern': {
+        },
     },
 
     'iPhone3,1_4.0_8A293': {
@@ -185,9 +190,9 @@
             'patch3_to':    0x1c201c20,
             'patch4': 0xfedd0016,
             'patch4_to':    0x47702001,
-            'kernel_map': 0xfedd0017,
-            'lck_rw_lock_exclusive': 0xfedd0018,
-            'lck_rw_done': 0xfedd0019,
+            #'kernel_map': 0xfedd0017,
+            #'lck_rw_lock_exclusive': 0xfedd0018,
+            #'lck_rw_done': 0xfedd0019,
             'patch_tfp0': 0xfedd0009,
             'patch_tfp0_to': 0x46c0e00b,
             'flush_dcache': 0xfedd0010,
@@ -231,7 +236,7 @@
             #'kernel_pmap':  '-_kernel_pmap',
             #'mem_size':     '-_mem_size',
 
-            'patch_kernel_pmap_nx_enabled': lambda: sym('-_kernel_pmap')+0x420,
+            'patch_kernel_pmap_nx_enabled': lambda: deref(sym('-_kernel_pmap'))+0x420,
             'patch_kernel_pmap_nx_enabled_to': 0,
 
             'sysent': '21 00 00 00 00 10 86 00 /',
@@ -330,9 +335,9 @@
             'patch3_to':    0x1c201c20,
             'patch4':       '-_PE_i_can_has_debugger',
             'patch4_to':    0x47702001,
-            'kernel_map':   '-_kernel_map',
-            'lck_rw_lock_exclusive': '+_lck_rw_lock_exclusive',
-            'lck_rw_done': '+_lck_rw_done',
+            #'kernel_map':   '-_kernel_map',
+            #'lck_rw_lock_exclusive': '+_lck_rw_lock_exclusive',
+            #'lck_rw_done': '+_lck_rw_done',
 
             # search for bic.*0xc00, or vnode_authorize
             #'patch_nosuid': 'd6/d8 f8 88 30 db 6b - 13 f0 08 0f',
@@ -389,10 +394,4 @@
 'world3': {
     '.armv7': { '#cache': {} },
     '.armv7_4.x': { '<': '.armv7', },
-},
-'iPad1,1_3.2_7B367': {
-    '<': '.armv7',
-    '#kern': {
-    
-    },
 },
