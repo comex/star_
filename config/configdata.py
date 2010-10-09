@@ -183,6 +183,11 @@
             'patch1_to':    0x46c00f02,
             'patch3': 0xfedd0008,
             'patch3_to':    0x1c201c20,
+            'patch4': 0xfedd0016,
+            'patch4_to':    0x47702001,
+            'kernel_map': 0xfedd0017,
+            'lck_rw_lock_exclusive': 0xfedd0018,
+            'lck_rw_done': 0xfedd0019,
             'patch_tfp0': 0xfedd0009,
             'patch_tfp0_to': 0x46c0e00b,
             'flush_dcache': 0xfedd0010,
@@ -233,7 +238,6 @@
             'sysent_patch': lambda: k('sysent') + 4,
             'sysent_patch_orig': lambda: deref(k('sysent_patch')),
             'target_addr': lambda: (k('sysent_patch_orig') & 0x00ffffff) | 0x2f000000,
-            'lots_of_nops': lambda: '"' + '; '.join(['nop'] * ((k('target_addr') & 0xfff) / 2)) + '"',
 
             # for sandbox
             'memcmp': '+_memcmp',
@@ -324,6 +328,11 @@
             'patch1_to':    0x46c00f02,
             'patch3':       '~ 23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -',
             'patch3_to':    0x1c201c20,
+            'patch4':       '-_PE_i_can_has_debugger',
+            'patch4_to':    0x47702001,
+            'kernel_map':   '-_kernel_map',
+            'lck_rw_lock_exclusive': '+_lck_rw_lock_exclusive',
+            'lck_rw_done': '+_lck_rw_done',
 
             # search for bic.*0xc00, or vnode_authorize
             #'patch_nosuid': 'd6/d8 f8 88 30 db 6b - 13 f0 08 0f',

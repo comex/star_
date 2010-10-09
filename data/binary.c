@@ -339,7 +339,7 @@ void *macho_offconv(uint32_t fileoff) {
     die("offconv: file offset %u not in segment\n", fileoff);
 }
 
-// return value is |1 if to_execute is set and there is a thumb symbol
+// return value is |1 if to_execute is set and it is a thumb symbol
 addr_t sym(const char *name, bool to_execute) {
     if(!symtab) {
         die("sym: we wanted %s but there is no symbol table\n", name);

