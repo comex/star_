@@ -9,9 +9,10 @@
 #endif
 
 const int desired_cputype = 12; // ARM
-const int desired_cpusubtype = 9; // v7=9, v6=6
+const int desired_cpusubtype = 0; // v7=9, v6=6
 
 // global data:
+int actual_cpusubtype;
 void *load_base;
 
 int dyld_fd;
@@ -179,6 +180,8 @@ void load_macho(const char *path) {
         die("load_macho: (%08x) what is this I don't even", magic);
     }
 
+    actual_cpusubtype = mach_hdr->cpusubtype;
+
     if(mach_hdr->sizeofcmds > 4096 - sizeof(*mach_hdr)) {
         die("load_macho: sizeofcmds is too big\n");
     }
@@ -239,7 +242,7 @@ void load_running_kernel() {
                 die("load_running_kernel: second vm_read_overwrite failed: %d\n", kr);
             }
             if(mach_hdr->magic == MH_MAGIC) {
-                printf("found running kernel at %p\n", (void *) mh_addr);
+                printf("found running kernel at 0x%08x\n", mh_addr);
                 goto ok;
             }
         }
@@ -371,7 +374,7 @@ addr_t sym(const char *name, bool to_execute) {
 
 void check_range_has_addr(range_t range, addr_t addr) {
     if(addr < range.start || addr >= (range.start | range.size)) {
-        die("Bad address 0x%08x\n", addr);
+        die("Bad address 0x%08x (not in range %08x-%08x)\n", addr, range.start, range.start + (uint32_t) range.size);
     }
 }
 

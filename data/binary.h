@@ -1,6 +1,8 @@
 #pragma once
 
+extern int actual_cpusubtype;
 extern void *load_base;
+
 static inline void *addrconv(addr_t addr) {
     return (void *) ((char *)load_base + (intptr_t)(addr & 0x0fffffff));
 }

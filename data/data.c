@@ -2,6 +2,7 @@
 #include "binary.h"
 #define max(a, b) ((a) > (b) ? (a) : (b))
 #define min(a, b) ((a) < (b) ? (a) : (b))
+static bool is_armv7;
 // Specify align as 0 if you only expect to find it at one place anyway.
 addr_t find_data_int(range_t range, int16_t *buf, ssize_t pattern_size, size_t offset, int align, bool must_find, const char *name) {
     int8_t table[256];
@@ -130,7 +131,7 @@ addr_t find_int32(range_t range, uint32_t number, bool must_find) {
 }
 
 // lol what is this
-uint32_t preplace32_a(prange_t range, uint32_t a) {
+paddr_t preplace32_a(prange_t range, uint32_t a) {
     for(paddr_t addr = (paddr_t)range.start; addr + sizeof(uint32_t) <= (paddr_t)range.start + range.size; addr++) {
         if(*(uint32_t *)addr == a) {
             return addr;
@@ -140,14 +141,14 @@ uint32_t preplace32_a(prange_t range, uint32_t a) {
     return 0;
 }
 
-void preplace32_b(prange_t range, uint32_t start, uint32_t a, uint32_t b) {
+void preplace32_b(prange_t range, paddr_t start, uint32_t a, uint32_t b) {
     for(paddr_t addr = start; addr + sizeof(uint32_t) <= (paddr_t)range.start + range.size; addr++) {
         if(*(uint32_t *)addr == a) {
             *(uint32_t *)addr = b;
         }
     }
 }
-#define preplace32(range, a, b) do { uint32_t _ = preplace32_a(range, a); if(_) preplace32_b(range, _, a, b); } while(0)
+#define preplace32(range, a, b) do { paddr_t _ = preplace32_a(range, a); if(_) preplace32_b(range, _, a, b); } while(0)
 
 prange_t pdup(prange_t range) {
     void *buf = malloc(range.size);
@@ -160,6 +161,7 @@ addr_t find_bof(range_t range, addr_t eof, bool is_thumb) {
     addr_t addr = (eof - 1) & ~1;
     check_range_has_addr(range, addr);
     if(is_thumb) {
+        addr &= ~1;
         // xx b5 xx af
         while(!(read8(addr + 1) == 0xb5 && \
                 read8(addr + 3) == 0xaf)) {
@@ -167,6 +169,7 @@ addr_t find_bof(range_t range, addr_t eof, bool is_thumb) {
             check_range_has_addr(range, addr);
         }
     } else {
+        addr &= ~3;
         // xx xx 2d e9 xx xx 8d e2
         while(!(read16(addr + 2) == 0xe92d && \
                 read16(addr + 6) == 0xe28d)) {
@@ -175,6 +178,29 @@ addr_t find_bof(range_t range, addr_t eof, bool is_thumb) {
         }
     }
     return addr;
+}
+
+uint32_t resolve_ldr(addr_t addr) {
+    uint32_t val = read32(addr & ~1); 
+    addr_t target;
+    if(addr & 1) {
+        addr_t base = ((addr + 3) & ~3);
+        if((val & 0xf800) == 0x4800) { // thumb
+            target = base + ((val & 0xff) * 4);
+        } else if((val & 0xffff) == 0xf8df) { // thumb-2
+            target = base + ((val & 0x0fff0000) >> 16);
+        } else {
+            die("resolve_ldr: weird thumb instruction %08x at %08x\n", val, addr);
+        }
+    } else {
+        addr_t base = addr + 8;
+        if((val & 0x0fff0000) == 0x59f0000) { // arm
+            target = base + (val & 0xfff);
+        } else {
+            die("resolve_ldr: weird ARM instruction %08x at %08x\n", val, addr);
+        }
+    }
+    return read32(target);
 }
 
 addr_t dyld_find_anywhere(char *to_find, int align) {
@@ -190,15 +216,12 @@ addr_t dyld_find_anywhere(char *to_find, int align) {
 
 uint32_t find_dvp_struct_offset() {
     range_t range = macho_segrange("__PRELINK_TEXT");
-    addr_t derive_vnode_path = find_bof(range, find_int32(range, find_string(range, "path", 0, true), true), true);
-    switch(read8(find_data((range_t){derive_vnode_path, 1024}, "- .. 69 6a 46", 0, true))) {
-    case 0x20:
-        return 0x10;
-    case 0x60:
-        return 0x14;
-    default:
-        die("couldn't find dvp_struct_offset\n");
-        abort();
+    addr_t derive_vnode_path = find_bof(range, find_int32(range, find_string(range, "path", 0, true), true), is_armv7);
+    uint8_t byte = read8(find_data((range_t){derive_vnode_path, 1024}, !is_armv7 ? "00 00 50 e3 02 30 a0 11 - .. 00 94 e5" : "- .. 69 6a 46", 0, true));
+    if(is_armv7) {
+        return (4 | (byte >> 6)) << 2;
+    } else {
+        return byte;
     }
 }
 
@@ -241,20 +264,31 @@ prange_t bar() {
 }
 
 prange_t foo() {
+    switch(actual_cpusubtype) {
+    case 6:
+        is_armv7 = false;
+        break;
+    case 9:
+        is_armv7 = true;
+        break;
+    default:
+        die("unknown cpusubtype %d\n", actual_cpusubtype);
+    }
+
     prange_t pf2 = pdup((prange_t) {pf2_bin, pf2_bin_len});
+
+    preplace32(pf2, 0xfeee0000, (uint32_t) is_armv7);
 
     // sandbox
     range_t range = macho_segrange("__PRELINK_TEXT");
-    addr_t sb_evaluate = find_bof(range, find_int32(range, find_string(range, "bad opcode", false, true), true), true);
+    addr_t sb_evaluate = find_bof(range, find_int32(range, find_string(range, "bad opcode", false, true), true), is_armv7);
     preplace32(pf2, 0xfeed0001, read32(sb_evaluate));
     preplace32(pf2, 0xfeed0002, read32(sb_evaluate + 4));
-    preplace32(pf2, 0xfeed0003, sb_evaluate + 9);
+    preplace32(pf2, 0xfeed0003, sb_evaluate + (is_armv7 ? 9 : 8));
     preplace32(pf2, 0xfeed0004, sym("_memcmp", true));
     preplace32(pf2, 0xfeed0005, sym("_vn_getpath", true));
     preplace32(pf2, 0xfeed0006, find_dvp_struct_offset());
     
-    // cs_enforcement_disable
-    preplace32(pf2, 0xfedd0001, find_data(macho_segrange("__DATA"), "00 00 00 00 00 00 00 - 00 00 00 00 01 00 00 00 80", 1, true));
     // kernel_pmap->nx_enabled
     preplace32(pf2, 0xfedd0002, read32(sym("_kernel_pmap", false)) + 0x420);
     addr_t sysent = find_data(macho_segrange("__DATA"), "21 00 00 00 00 10 86 00 -", 0, true);
@@ -264,19 +298,23 @@ prange_t foo() {
     // target_addr
     printf("sysent_patch_orig = %x %x\n", sysent, sysent_patch_orig);
     preplace32(pf2, 0xfedd0006, (sysent_patch_orig & 0x00ffffff) | 0x2f000000);
+
     // vm_map_enter (patch1) - allow RWX pages
-    preplace32(pf2, 0xfedd0007, find_data(macho_segrange("__TEXT"), "- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93", 0, true));
+    preplace32(pf2, 0xfedd0007, find_data(macho_segrange("__TEXT"), is_armv7 ? "- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93" : "- .. .. .. .. 6b 08 1e 1c eb 0a 01 22 1c 1c 16 40 14 40", 0, true));
+    preplace32(pf2, 0xfedd0016, is_armv7 ? 0x46c00f02 : 0x46c046c0);
+
     // AMFI (patch3) - disable the predefined list of executable stuff
-    preplace32(pf2, 0xfedd0008, find_data(macho_segrange("__PRELINK_TEXT"), "23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -", 1, true));
+    preplace32(pf2, 0xfedd0008, find_data(macho_segrange("__PRELINK_TEXT"), is_armv7 ? "23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -" : "13 20 a0 e3 .. .. .. .. 33 ff 2f e1 00 00 50 e3 00 00 00 0a .. 40 a0 e3 - 04 00 a0 e1 90 80 bd e8", 0, true));
+    preplace32(pf2, 0xfedd0017, is_armv7 ? 0x1c201c20 : 0xe3a00001);
     // PE_i_can_has_debugger (patch4) - so AMFI allows non-ldid'd binaries (and some other stuff is allowed)
     preplace32(pf2, 0xfedd0016, sym("_PE_i_can_has_debugger", false));
-    
-    //preplace32(pf2, 0xfedd0017, sym("_kernel_map", false));
-    //preplace32(pf2, 0xfedd0018, sym("_lck_rw_lock_exclusive", false));
-    //preplace32(pf2, 0xfedd0019, sym("_lck_rw_done", false));
 
     // task_for_pid 0
-    preplace32(pf2, 0xfedd0009, find_data(macho_segrange("__TEXT"), "85 68 00 23 .. 93 .. 93 - .. .. .. .. 29 46 04 22", 0, true));
+    preplace32(pf2, 0xfedd0009, find_data(macho_segrange("__TEXT"), is_armv7 ? "85 68 00 23 .. 93 .. 93 - .. .. .. .. 29 46 04 22" : "85 68 .. 93 .. 93 - 00 2c 0b d1", 0, true));
+        
+    // cs_enforcement_disable
+    preplace32(pf2, 0xfedd0001, resolve_ldr(find_data(macho_segrange("__TEXT"), is_armv7 ? "1d ee 90 3f d3 f8 4c 33 d3 f8 9c 20 + .. .. .. .. 19 68 00 29" : "9c 22 03 59 99 58 + .. .. 1a 68 00 2a", 0, true)));
+
     preplace32(pf2, 0xfedd0010, sym("_flush_dcache", true));
     preplace32(pf2, 0xfedd0011, sym("_invalidate_icache", true));
     preplace32(pf2, 0xfedd0012, sym("_copyin", true));

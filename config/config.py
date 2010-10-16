@@ -76,6 +76,23 @@ def exeggcute(binary, mtime, d, v):
         def sym(v):
             return sym_(binary, v)
 
+        def resolve_ldr(addr):
+            target = None
+            val = binary.deref(addr & ~1)
+            if addr & 1:
+                base = ((addr + 3) & ~3) 
+                if (val & 0xf800) == 0x4800: # thumb
+                    target = base + ((val & 0xff) * 4)
+                elif (val & 0xffff) == 0xf8df: # thumb-2
+                    target = base + ((val & 0x0fff0000) >> 16)
+            else:
+                base = addr + 8
+                if (val & 0x0fff0000) == 0x59f0000: # arm
+                    target = base + (val & 0xfff)
+            if target is None:
+                raise ValueError('%08x (@ 0x%08x) does not look like a LDR' % (val, addr))
+            return binary.deref(target)
+
         def deref(addr):
             return binary.deref(addr)
 

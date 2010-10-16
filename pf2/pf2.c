@@ -166,8 +166,7 @@ extern int ok_go(void *p, void *uap, unsigned int *retval) {
     copyin(&patch_start, scratch, copysize);
     flush(scratch, copysize);
     
-    // *this* won't work on thumb-1...
-    *((unsigned int *) CONFIG_SB_EVALUATE) = 0xf000f8df; // ldr pc, [pc]
+    *((unsigned int *) CONFIG_SB_EVALUATE) = CONFIG_IS_ARMV7 ? 0xf000f8df : 0xe51ff004; // ldr pc, [pc] or [pc, #-4]
     *((unsigned int *) (CONFIG_SB_EVALUATE + 4)) = (unsigned int)scratch | 1;
     flush((void *) CONFIG_SB_EVALUATE, 8);
     

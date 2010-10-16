@@ -1,5 +1,6 @@
 #include <config/config_asm.h>
 .thumb
+.syntax unified
 .globl _patch_start, _patch_end
 _patch_start:
 // <- 
@@ -11,7 +12,7 @@ _patch_start:
     beq actually_eval
     ldr r3, vn_getpath
     mov r1, sp
-    mov r0, #0x40
+    movs r0, #0x40
     add r2, sp, #0x40
     str r0, [r2]
     mov r0, r4
@@ -25,7 +26,7 @@ enospc:
 
     mov r0, sp
     adr r1, var_mobile
-    mov r2, #19 ;# len(var_mobile)
+    movs r2, #19 ;# len(var_mobile)
     ldr r3, memcmp
     blx r3
     cmp r0, #0
@@ -33,7 +34,7 @@ enospc:
 
     mov r0, sp
     adr r1, preferences_com_apple
-    mov r2, #49 ;# len(preferences_com_apple)
+    movs r2, #49 ;# len(preferences_com_apple)
     ldr r3, memcmp
     blx r3
     cmp r0, #0
@@ -41,7 +42,7 @@ enospc:
 
     mov r0, sp
     adr r1, preferences
-    mov r2, #39 ;# len(preferences)
+    movs r2, #39 ;# len(preferences)
     ldr r3, memcmp
     blx r3
     cmp r0, #0
@@ -51,7 +52,7 @@ allow:
     # it's not in /var/mobile but we have a path, let it through
     add sp, #0x44
     pop {r0}
-    mov r1, #0
+    movs r1, #0
     str r1, [r0]
     strb r1, [r0, #5]
     pop {r1-r4, pc}
@@ -62,11 +63,23 @@ actually_eval:
     mov lr, r0
     ldr r1, orig_addr
     mov r9, r1
+    ldr r0, is_armv7
+    ldr r0, [r0]
+    cmp r0, #0
     pop {r0-r4}
     add sp, #4
+    beq armlol
     .long CONFIG_SB_EVALUATE_ORIG1
     .long CONFIG_SB_EVALUATE_ORIG2
     bx r9
+armlol:
+    bx pc
+.arm
+    .align 2
+    .long CONFIG_SB_EVALUATE_ORIG1
+    .long CONFIG_SB_EVALUATE_ORIG2
+    bx r9
+    
 
 .align 2
 var_mobile: .ascii "/private/var/mobile"
@@ -79,4 +92,5 @@ orig_addr: .long CONFIG_SB_EVALUATE_JUMPTO
 memcmp: .long CONFIG_MEMCMP
 vn_getpath: .long CONFIG_VN_GETPATH
 dvp_struct_offset: .long CONFIG_DVP_STRUCT_OFFSET
+is_armv7: .long CONFIG_IS_ARMV7
 _patch_end:
