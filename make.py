@@ -14,7 +14,7 @@ SDK = '/var/sdk'
 BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
 GCC_BIN = BIN + '/gcc-4.2'
 GCC_BASE = [GCC_BIN, '-Werror', '-Os', '-Wimplicit', '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fno-blocks']
-GCC = [GCC_BASE, '-arch', cfg['arch']]
+GCC = [GCC_BASE, '-arch', cfg['arch'], '-mthumb']
 GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7']
 GCC_SUMMONED = ['/Users/comex/arm-none-eabi/bin/arm-none-eabi-gcc', '-mthumb', '-march='+cfg['arch'], '-Os']
 STRIP_SUMMONED = '/Users/comex/arm-none-eabi/bin/arm-none-eabi-strip'

@@ -181,9 +181,12 @@ int main() {
     unsigned int target_addr_real = target_addr & ~1;
     unsigned int target_pagebase = target_addr & ~0xfff;
     unsigned int num_decs = (CONFIG_SYSENT_PATCH_ORIG - target_addr) >> 24;
-    assert(MAP_FAILED != mmap((void *)target_pagebase, 0x2000, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0));
-    *((unsigned int *) target_addr_real) = 0xf000f8df; // ldr pc, [pc]
-    *((unsigned int *) (target_addr_real + 4)) = (unsigned int)&ok_go | 1;
+    assert(MAP_FAILED != mmap((void *) target_pagebase, 0x2000, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0));
+    unsigned short *p = (void *) target_addr_real;
+    if(target_addr_real & 2) *p++ = 0x46c0; // nop
+    *p++ = 0x4b00; // ldr r3, [pc]
+    *p++ = 0x4718; // bx r3
+    *((unsigned int *) p) = (unsigned int) &ok_go;
     assert(!mprotect((void *)target_pagebase, 0x2000, PROT_READ | PROT_EXEC));
     
     // Yes, reopening is necessary

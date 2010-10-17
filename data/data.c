@@ -307,7 +307,7 @@ prange_t foo() {
     preplace32(pf2, 0xfedd0008, find_data(macho_segrange("__PRELINK_TEXT"), is_armv7 ? "23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -" : "13 20 a0 e3 .. .. .. .. 33 ff 2f e1 00 00 50 e3 00 00 00 0a .. 40 a0 e3 - 04 00 a0 e1 90 80 bd e8", 0, true));
     preplace32(pf2, 0xfedd0017, is_armv7 ? 0x1c201c20 : 0xe3a00001);
     // PE_i_can_has_debugger (patch4) - so AMFI allows non-ldid'd binaries (and some other stuff is allowed)
-    preplace32(pf2, 0xfedd0016, sym("_PE_i_can_has_debugger", false));
+    preplace32(pf2, 0xfedd0018, sym("_PE_i_can_has_debugger", false));
 
     // task_for_pid 0
     preplace32(pf2, 0xfedd0009, find_data(macho_segrange("__TEXT"), is_armv7 ? "85 68 00 23 .. 93 .. 93 - .. .. .. .. 29 46 04 22" : "85 68 .. 93 .. 93 - 00 2c 0b d1", 0, true));

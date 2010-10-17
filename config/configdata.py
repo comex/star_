@@ -189,7 +189,7 @@
             'patch1_to':    0xfedd0016,
             'patch3': 0xfedd0008,
             'patch3_to':    0xfedd0017,
-            'patch4': 0xfedd0016,
+            'patch4': 0xfedd0018,
             'patch4_to':    0x47702001,
             #'kernel_map': 0xfedd0017,
             #'lck_rw_lock_exclusive': 0xfedd0018,

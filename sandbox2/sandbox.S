@@ -64,7 +64,6 @@ actually_eval:
     ldr r1, orig_addr
     mov r9, r1
     ldr r0, is_armv7
-    ldr r0, [r0]
     cmp r0, #0
     pop {r0-r4}
     add sp, #4
