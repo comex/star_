@@ -400,6 +400,7 @@
             # a little messier
             # I could also use r10, but that's ugly (it points to the section entry)
             # ldmibpl	r11, {r6, r9, ip, sp, pc}^
+            # on 3.1.x: 00 ab 9b a9 is equivalent
             'kinit': '@ - % 40 b2 db 59',
 
             # branch support
