@@ -115,7 +115,6 @@
         '<': '.armv7',
         '#kern': {
         },
-        '#cache': None,
     },
     'iPhone3,1_4.0_8A293': {
         '<': '.armv7',
@@ -320,8 +319,8 @@
 
             # OLD: ldmibmi r11, {sp, pc}
             #      actually the tail half of a ldr.w r12, [r1, r0] + ldr r1, [pc, #620] 
-            # new (to comply with armv6): ldmibmi r11!, {r3, r7, r12, sp, pc}
-            'kinit': '@ - % 88 b0 bb 49',
+            # new (to comply with armv6): ldmibmi r11, {r6, r8, r12, sp, pc}
+            'kinit': '@ - % 40 b1 9b 49',
 
             # branch support
             # and.w r0, #1; pop {r7, pc}
