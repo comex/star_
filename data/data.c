@@ -236,34 +236,7 @@ void write_range(prange_t range, const char *fn, mode_t mode) {
     close(fd);
 }
 
-prange_t bar() {
-    prange_t the_dylib = pdup((prange_t) {one_bin, one_bin_len});    
-    // hexydec
-    preplace32(the_dylib, 0xfeed0002, dyld_find_anywhere("+ 54 f8 20 00", 2));
-    preplace32(the_dylib, 0xfeed0003, dyld_find_anywhere("+ 00 f0 01 00 80 bd", 2));
-    preplace32(the_dylib, 0xfeed0004, dyld_find_anywhere("+ 00 68 b0 bd", 2));
-    preplace32(the_dylib, 0xfeed0005, dyld_find_anywhere("+ 20 60 90 bd", 2));
-    preplace32(the_dylib, 0xfeed0006, dyld_find_anywhere("+ 20 44 90 bd", 2));
-    preplace32(the_dylib, 0xfeed0007, dyld_find_anywhere("+ 0f bd", 2));
-    preplace32(the_dylib, 0xfeed0009, dyld_find_anywhere("+ 0e bd", 2));
-    preplace32(the_dylib, 0xfeed0010, dyld_find_anywhere("+ a7 f1 00 0d 80 bd", 2));
-    preplace32(the_dylib, 0xfeed0011, dyld_find_anywhere("+ f0 bd", 2));
-    preplace32(the_dylib, 0xfeed0012, dyld_find_anywhere("+ a0 47 b0 bd", 2));
-    preplace32(the_dylib, 0xfeed0014, dyld_find_anywhere("+ 20 58 90 bd", 2));
-    preplace32(the_dylib, 0xfeed0015, dyld_find_anywhere("+ 40 f8 04 4b 90 bd", 2));
-    preplace32(the_dylib, 0xfeed0016, dyld_find_anywhere("+ 20 68 90 bd", 2));
-    preplace32(the_dylib, 0xfeed0017, dyld_find_anywhere("+ 25 60 b0 bd", 2));
-    preplace32(the_dylib, 0xfeed0018, dyld_find_anywhere("+ 10 bd", 2));
-    preplace32(the_dylib, 0xfeed0019, dyld_find_anywhere("+ 80 bd", 2));
-    preplace32(the_dylib, 0xdeadfeed, dyld_find_anywhere("- 00 a0 9b 49", 4));
-    dyld_choose_file("/usr/lib/libSystem.B.dylib");
-    macho_load_symbols();
-    preplace32(the_dylib, 0xfeed1001, sym("_sysctlbyname", true));
-    preplace32(the_dylib, 0xfeed1002, sym("_execve", true));
-    return the_dylib;
-}
-
-prange_t foo() {
+void test_armv7() {
     switch(actual_cpusubtype) {
     case 6:
         is_armv7 = false;
@@ -274,6 +247,37 @@ prange_t foo() {
     default:
         die("unknown cpusubtype %d\n", actual_cpusubtype);
     }
+}
+
+prange_t bar() {
+    test_armv7();
+    prange_t the_dylib = pdup((prange_t) {one_bin, one_bin_len});    
+    // hexydec
+    int align = is_armv7 ? 2 : 4;
+    preplace32(the_dylib, 0xfeed0004, dyld_find_anywhere(is_armv7 ? "+ 00 68 b0 bd" : "- 00 00 90 e5 b0 80 bd e8", align));
+    preplace32(the_dylib, 0xfeed0005, dyld_find_anywhere(is_armv7 ? "+ 20 60 90 bd" : "- 00 00 84 e5 90 80 bd e8", align));
+    preplace32(the_dylib, 0xfeed0006, dyld_find_anywhere(is_armv7 ? "+ 20 44 90 bd" : "- 00 00 84 e0 90 80 bd e8", align));
+    preplace32(the_dylib, 0xfeed0007, dyld_find_anywhere(is_armv7 ? "+ 0f bd" : "- 0f 80 bd e8", align));
+    preplace32(the_dylib, 0xfeed0009, dyld_find_anywhere("+ 0e bd", 2));
+    preplace32(the_dylib, 0xfeed0010, dyld_find_anywhere(is_armv7 ? "+ a7 f1 00 0d 80 bd" : "- 00 d0 47 e2 80 80 bd e8", align));
+    preplace32(the_dylib, 0xfeed0011, dyld_find_anywhere("+ f0 bd", 2));
+    preplace32(the_dylib, 0xfeed0012, dyld_find_anywhere(is_armv7 ? "+ a0 47 b0 bd" : "- 34 ff 2f e1 b0 80 bd e8", align));
+    preplace32(the_dylib, 0xfeed0014, dyld_find_anywhere("+ 20 58 90 bd", 2));
+    preplace32(the_dylib, 0xfeed0015, dyld_find_anywhere(is_armv7 ? "+ 40 f8 04 4b 90 bd" : "- 00 40 80 e5 90 80 bd e8", align));
+    preplace32(the_dylib, 0xfeed0016, dyld_find_anywhere(is_armv7 ? "+ 20 68 90 bd" : "- 00 00 94 e5 90 80 bd e8", align));
+    preplace32(the_dylib, 0xfeed0017, dyld_find_anywhere(is_armv7 ? "+ 25 60 b0 bd" : "- 00 50 84 e5 b0 80 bd e8", align));
+    preplace32(the_dylib, 0xfeed0018, dyld_find_anywhere("+ 10 bd", 2));
+    preplace32(the_dylib, 0xfeed0019, dyld_find_anywhere("+ 80 bd", 2));
+    preplace32(the_dylib, 0xdeadfeed, dyld_find_anywhere(is_armv7 ? "- 88 b0 bb 49" : "- 40 b2 db 59", 4));
+    dyld_choose_file("/usr/lib/libSystem.B.dylib");
+    macho_load_symbols();
+    preplace32(the_dylib, 0xfeed1001, sym("_sysctlbyname", true));
+    preplace32(the_dylib, 0xfeed1002, sym("_execve", true));
+    return the_dylib;
+}
+
+prange_t foo() {
+    test_armv7();
 
     prange_t pf2 = pdup((prange_t) {pf2_bin, pf2_bin_len});
 

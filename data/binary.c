@@ -12,7 +12,7 @@ const int desired_cputype = 12; // ARM
 const int desired_cpusubtype = 0; // v7=9, v6=6
 
 // global data:
-int actual_cpusubtype;
+int actual_cpusubtype = 0;
 void *load_base;
 
 int dyld_fd;
@@ -83,6 +83,14 @@ void load_dyld_cache(const char *path, bool pre_loaded) {
     if(memcmp(dyld_hdr.magic, "dyld", 4)) {
         die("load_dyld_cache(%s): not a dyld cache\n", path);
     }
+    if(!memcmp(dyld_hdr.magic + sizeof(dyld_hdr.magic) - 7, " armv7", 7)) {
+        actual_cpusubtype = 9;
+    } else if(!memcmp(dyld_hdr.magic + sizeof(dyld_hdr.magic) - 7, " armv6", 7)) {
+        actual_cpusubtype = 6;
+    } else {
+        die("load_dyld_cache(%s): unknown processor in magic: %.16s\n", path, dyld_hdr.magic);
+    }
+
     if(dyld_hdr.mappingCount > 1000) {
         die("load_dyld_cache(%s): insane mapping count\n", path);
     }
@@ -250,6 +258,9 @@ void load_running_kernel() {
     die("load_running_kernel: didn't find the kernel anywhere\n");
 
     ok:;
+
+    actual_cpusubtype = mach_hdr->cpusubtype;
+
     if(mach_hdr->sizeofcmds > size - sizeof(*mach_hdr)) {
         die("load_running_kernel: sizeofcmds is too big\n");
     }
