@@ -304,7 +304,7 @@ prange_t foo() {
     preplace32(pf2, 0xfedd0006, (sysent_patch_orig & 0x00ffffff) | 0x2f000000);
 
     // vm_map_enter (patch1) - allow RWX pages
-    preplace32(pf2, 0xfedd0007, find_data(macho_segrange("__TEXT"), is_armv7 ? "- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93" : "- .. .. .. .. 6b 08 1e 1c eb 0a 01 22 1c 1c 16 40 14 40", 0, true));
+    preplace32(pf2, 0xfedd0007, find_data(macho_segrange("__TEXT"), is_armv7 ? "- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03" : "- .. .. .. .. 6b 08 1e 1c eb 0a 01 22 1c 1c 16 40 14 40", 0, true));
     preplace32(pf2, 0xfedd0016, is_armv7 ? 0x46c00f02 : 0x46c046c0);
 
     // AMFI (patch3) - disable the predefined list of executable stuff

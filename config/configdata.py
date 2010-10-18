@@ -111,7 +111,12 @@
         '#kern': {
         },
     },
-
+    'AppleTV2,1_4.1_8M89': {
+        '<': '.armv7',
+        '#kern': {
+        },
+        '#cache': None,
+    },
     'iPhone3,1_4.0_8A293': {
         '<': '.armv7',
         '#kern': {
@@ -328,7 +333,7 @@
         '#kern': {
             # vm_map and AMFI
             # these are overridden by the one down there
-            'patch1':       '- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03 1e 93',
+            'patch1':       '- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03',
             'patch1_to':    0x46c00f02,
             'patch3':       '~ 23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -',
             'patch3_to':    0x1c201c20,

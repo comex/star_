@@ -394,6 +394,7 @@ def do_binary(name, d):
         plat = '../bs/%s' % platform
         filename = plat + '/' + name[1:]
         if not os.path.exists(filename):
+            print 'downloading', filename
             if not os.path.exists(plat): os.mkdir(plat)
             assert 0 == os.system('curl "http://$BS_HOST/%s.lzma" | lzma -d > "%s"' % (filename[3:], filename))
             assert os.path.exists(filename)
@@ -433,7 +434,7 @@ def dict_to_headers(d, volatile):
     return header1, header2
 
 def merge(a, b):
-    if isinstance(a, dict):
+    if isinstance(a, dict) and isinstance(b, dict):
         new = a.copy()
         new.update(b)
         for k in new:
@@ -471,7 +472,7 @@ def make_config(platform_):
     d = get_data(platform)
     d['platform'] = platform
     for k, v in d.iteritems():
-        if k.startswith('#'):
+        if k.startswith('#') and v is not None:
             print >> sys.stderr, 'doing', k
             do_binary(k, v)
     if verbose:
