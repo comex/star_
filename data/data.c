@@ -268,7 +268,7 @@ prange_t bar() {
     preplace32(the_dylib, 0xfeed0017, dyld_find_anywhere(is_armv7 ? "+ 25 60 b0 bd" : "- 00 50 84 e5 b0 80 bd e8", align));
     preplace32(the_dylib, 0xfeed0018, dyld_find_anywhere("+ 10 bd", 2));
     preplace32(the_dylib, 0xfeed0019, dyld_find_anywhere("+ 80 bd", 2));
-    preplace32(the_dylib, 0xdeadfeed, dyld_find_anywhere(is_armv7 ? "- 88 b0 bb 49" : "- 40 b2 db 59", 4));
+    preplace32(the_dylib, 0xdeadfeed, dyld_find_anywhere(is_armv7 ? "- 40 b1 9b 49" : "- 40 b2 db 59", 4));
     dyld_choose_file("/usr/lib/libSystem.B.dylib");
     macho_load_symbols();
     preplace32(the_dylib, 0xfeed1001, sym("_sysctlbyname", true));
