@@ -422,7 +422,7 @@ def dict_to_headers(d, volatile):
             header2 += b
             continue
         elif isinstance(v, (int, long)):
-            v = hex(v)
+            v = '0x%x' % v
             typ = 'unsigned int '
         elif not isinstance(v, basestring):
             continue
