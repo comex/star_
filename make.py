@@ -88,6 +88,7 @@ def pf2():
                  ['strip', '-Sx', 'pf2'],
                  ['ldid', '-S', 'pf2'])
 
+data_objs = ['data.o', 'binary.o', 'one.o', 'pf2.o']
 def data_prereq():
     # config for insane first
     goo_pf()
@@ -95,23 +96,21 @@ def data_prereq():
     goto('data')
     run('bash', '-c', 'cp ../goo/pf/one.dylib one.bin; xxd -i one.bin > one.c')
     run('bash', '-c', 'cp ../pf2/pf2 pf2.bin; xxd -i pf2.bin > pf2.c')
-    objs = ['data.o', 'binary.o', 'one.o', 'pf2.o']
-    return objs
 
 def data():
-    objs = data_prereq()
-    for obj in objs:
+    data_prereq()
+    for obj in data_objs:
         run(GCC, '-g', '-std=gnu99', '-c', '-o', obj, chext(obj, '.c'))
-    run(GCC, '-g', '-std=gnu99', '-o', 'data_', objs)
+    run(GCC, '-g', '-std=gnu99', '-o', 'data_', data_objs)
     run_multiple(['cp', 'data_', 'data'],
                  ['strip', '-Sx', 'data'],
                  ['ldid', '-Sent.plist', 'data'])
 
 def data_native():
-    objs = data_prereq()
-    for obj in objs:
+    data_prereq()
+    for obj in data_objs:
         run(GCC_NATIVE, '-g', '-std=gnu99', '-c', '-o', obj, chext(obj, '.c'))
-    run(GCC_NATIVE, '-g', '-std=gnu99', '-o', 'data_native', objs)
+    run(GCC_NATIVE, '-g', '-std=gnu99', '-o', 'data_native', data_objs)
 
 def mm():
     goto('mm')
