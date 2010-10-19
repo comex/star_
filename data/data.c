@@ -131,8 +131,8 @@ addr_t find_int32(range_t range, uint32_t number, bool must_find) {
 }
 
 // lol what is this
-paddr_t preplace32_a(prange_t range, uint32_t a) {
-    for(paddr_t addr = (paddr_t)range.start; addr + sizeof(uint32_t) <= (paddr_t)range.start + range.size; addr++) {
+uintptr_t preplace32_a(prange_t range, uint32_t a) {
+    for(uintptr_t addr = (uintptr_t)range.start; addr + sizeof(uint32_t) <= (uintptr_t)range.start + range.size; addr++) {
         if(*(uint32_t *)addr == a) {
             return addr;
         }
@@ -141,14 +141,14 @@ paddr_t preplace32_a(prange_t range, uint32_t a) {
     return 0;
 }
 
-void preplace32_b(prange_t range, paddr_t start, uint32_t a, uint32_t b) {
-    for(paddr_t addr = start; addr + sizeof(uint32_t) <= (paddr_t)range.start + range.size; addr++) {
+void preplace32_b(prange_t range, uintptr_t start, uint32_t a, uint32_t b) {
+    for(uintptr_t addr = start; addr + sizeof(uint32_t) <= (uintptr_t)range.start + range.size; addr++) {
         if(*(uint32_t *)addr == a) {
             *(uint32_t *)addr = b;
         }
     }
 }
-#define preplace32(range, a, b) do { paddr_t _ = preplace32_a(range, a); if(_) preplace32_b(range, _, a, b); } while(0)
+#define preplace32(range, a, b) do { uintptr_t _ = preplace32_a(range, a); if(_) preplace32_b(range, _, a, b); } while(0)
 
 prange_t pdup(prange_t range) {
     void *buf = malloc(range.size);
@@ -213,6 +213,34 @@ addr_t dyld_find_anywhere(char *to_find, int align) {
 }
 
 // --
+// count the number of set bits
+int count_ones(uint32_t number) {
+    int result = 0;
+    for(; number; number >>= 1) {
+        result += (number & 1);
+    }
+    return result;
+}
+
+// ldmib<cond> r11/r11!, {.., .., .., sp, pc}
+addr_t find_kinit(uint32_t cond) {
+    range_t range;
+    for(int i = 0; (range = dyld_nth_segment(i)).start; i++) {
+        uint32_t *p = addrconv(range.start);
+        for(addr_t addr = range.start; addr + 4 <= (range.start + range.size); addr += 4) {
+            // <3 http://a.qoid.us/01x.py
+            uint32_t val = *p++;
+            if((val & 0xfdfe000) != 0x99ba000) continue;
+            uint32_t actual_cond = ((val & 0xf0000000) >> 28);
+            if(actual_cond != cond) continue;
+            uint32_t reglist = val & 0x1fff;
+            // The famous interview question: calculate the number of 1 bits
+            if(count_ones(reglist) != 3) continue;
+            return addr; 
+        }
+    }
+    die("find_kinit: didn't find kinit /anywhere/\n"); 
+}
 
 uint32_t find_dvp_struct_offset() {
     range_t range = macho_segrange("__PRELINK_TEXT");
@@ -268,7 +296,7 @@ prange_t bar() {
     preplace32(the_dylib, 0xfeed0017, dyld_find_anywhere(is_armv7 ? "+ 25 60 b0 bd" : "- 00 50 84 e5 b0 80 bd e8", align));
     preplace32(the_dylib, 0xfeed0018, dyld_find_anywhere("+ 10 bd", 2));
     preplace32(the_dylib, 0xfeed0019, dyld_find_anywhere("+ 80 bd", 2));
-    preplace32(the_dylib, 0xdeadfeed, dyld_find_anywhere(is_armv7 ? "- 40 b1 9b 49" : "- 40 b2 db 59", 4));
+    preplace32(the_dylib, 0xdeadfeed, find_kinit(is_armv7 ? 4 /* MI */ : 5 /* PL */));
     dyld_choose_file("/usr/lib/libSystem.B.dylib");
     macho_load_symbols();
     preplace32(the_dylib, 0xfeed1001, sym("_sysctlbyname", true));

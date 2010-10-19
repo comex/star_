@@ -23,6 +23,5 @@ extern unsigned int pf2_bin_len, one_bin_len;
 
 typedef uint32_t addr_t;
 typedef struct { addr_t start; size_t size; } range_t;
-typedef uintptr_t paddr_t;
 typedef struct { void *start; size_t size; } prange_t;
 

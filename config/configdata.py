@@ -319,8 +319,7 @@
 
             # OLD: ldmibmi r11, {sp, pc}
             #      actually the tail half of a ldr.w r12, [r1, r0] + ldr r1, [pc, #620] 
-            # new (to comply with armv6): ldmibmi r11, {r6, r8, r12, sp, pc}
-            'kinit': '@ - % 40 b1 9b 49',
+            'kinit': lambda: find_kinit(0b0100), # MI
 
             # branch support
             # and.w r0, #1; pop {r7, pc}
@@ -405,7 +404,7 @@
             # I could also use r10, but that's ugly (it points to the section entry)
             # ldmibpl	r11, {r6, r9, ip, sp, pc}^
             # on 3.1.x: 00 ab 9b a9 is equivalent
-            'kinit': '@ - % 40 b2 db 59',
+            'kinit': lambda: find_kinit(0b0101), # PL
 
             # branch support
             # and r0, #1; pop {r7, pc}

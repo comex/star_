@@ -112,11 +112,6 @@ def data_native():
         run(GCC_NATIVE, '-g', '-std=gnu99', '-c', '-o', obj, chext(obj, '.c'))
     run(GCC_NATIVE, '-g', '-std=gnu99', '-o', 'data_native', data_objs)
 
-def mm():
-    goto('mm')
-    # Not actually i386... obviously.
-    run(GCC, '-dynamiclib', '-o', 'mem.dylib', 'mem.c', '-fwhole-program', '-combine', '-nostdinc', '-nodefaultlibs', '-lgcc', '-Wimplicit', '-Ixnu', '-Ixnu/bsd', '-Ixnu/libkern', '-Ixnu/osfmk', '-Ixnu/bsd/i386', '-Ixnu/bsd/sys', '-Ixnu/EXTERNAL_HEADERS', '-Ixnu/osfmk/libsa', '-D__i386__', '-DKERNEL', '-DKERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE', '-D__APPLE_API_PRIVATE', '-DXNU_KERNEL_PRIVATE', '-flat_namespace', '-undefined', 'dynamic_lookup', '-fno-builtin-printf')
-
 def pf():
     goo_pf()
     pf2()
