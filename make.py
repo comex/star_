@@ -114,12 +114,8 @@ def data_native():
 
 def mm():
     goto('mm')
-    run(GCC, '-o', 'loader', 'loader.c')
-    run('python', 'nm.py')
     # Not actually i386... obviously.
-    run(GCC_SUMMONED, '-o', 'kcode_.elf', 'kasm.S', 'mem.c', '-fwhole-program', '-combine', '-nostdlib', '-nostdinc', '-nodefaultlibs', '-lgcc', '-T', 'nm.ld', '-Wimplicit', '-Ixnu', '-Ixnu/bsd', '-Ixnu/libkern', '-Ixnu/osfmk', '-Ixnu/bsd/i386', '-Ixnu/bsd/sys', '-Ixnu/EXTERNAL_HEADERS', '-Ixnu/osfmk/libsa', '-D__i386__', '-DKERNEL', '-DKERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE', '-D__APPLE_API_PRIVATE', '-DXNU_KERNEL_PRIVATE')
-    run('sh', '-c', 'cp kcode_.elf kcode.elf; '+STRIP_SUMMONED+' kcode.elf') 
-
+    run(GCC, '-dynamiclib', '-o', 'mem.dylib', 'mem.c', '-fwhole-program', '-combine', '-nostdinc', '-nodefaultlibs', '-lgcc', '-Wimplicit', '-Ixnu', '-Ixnu/bsd', '-Ixnu/libkern', '-Ixnu/osfmk', '-Ixnu/bsd/i386', '-Ixnu/bsd/sys', '-Ixnu/EXTERNAL_HEADERS', '-Ixnu/osfmk/libsa', '-D__i386__', '-DKERNEL', '-DKERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE', '-D__APPLE_API_PRIVATE', '-DXNU_KERNEL_PRIVATE', '-flat_namespace', '-undefined', 'dynamic_lookup', '-fno-builtin-printf')
 
 def pf():
     goo_pf()
