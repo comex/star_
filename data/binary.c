@@ -12,8 +12,6 @@
 const int desired_cputype = 12; // ARM
 const int desired_cpusubtype = 0; // v7=9, v6=6
 
-#define CMD_ITERATE(hdr, cmd) for(struct load_command *cmd = (void *)((hdr) + 1), *end = (void *)((char *)(hdr) + (hdr)->sizeofcmds); cmd < end; cmd = (void *)((char *)(cmd) + cmd->cmdsize))
-
 void b_init(struct binary *binary) {
     memset(binary, 0, sizeof(*binary));
 }
@@ -27,8 +25,6 @@ static void *reserve_memory() {
 }
 
 void b_macho_load_symbols(struct binary *binary) {
-    bool dysymtab = false;
-    uint32_t iextdefsym, nextdefsym;
     CMD_ITERATE(binary->mach_hdr, cmd) {
         if(cmd->cmd == LC_SYMTAB) {
             struct symtab_command *scmd = (void *) cmd;
@@ -40,23 +36,25 @@ void b_macho_load_symbols(struct binary *binary) {
             binary->symtab = b_macho_offconv(binary, scmd->symoff);
             binary->strtab = b_macho_offconv(binary, scmd->stroff);
         } else if(cmd->cmd == LC_DYSYMTAB) {
-            struct dysymtab_command *dcmd = (void *) cmd;
-            iextdefsym = dcmd->iextdefsym;
-            nextdefsym = dcmd->nextdefsym;
-            dysymtab = true;
+            binary->dysymtab = (void *) cmd;
         } else if(cmd->cmd == LC_DYLD_INFO_ONLY) {
             fprintf(stderr, "b_load_symbols: warning: file is fancy, symbols might be missing\n");
         }
     }
-    if(binary->symtab && dysymtab) {
+    if(binary->symtab && binary->dysymtab) {
+        uint32_t iextdefsym = binary->dysymtab->iextdefsym;
+        uint32_t nextdefsym = binary->dysymtab->nextdefsym;
         if(iextdefsym >= binary->nsyms) {
             die("bad iextdefsym (%u)", iextdefsym);
         }
         if(nextdefsym > binary->nsyms - iextdefsym) {
             die("bad nextdefsym (%u)", nextdefsym);
         }
-        binary->symtab += iextdefsym;
-        binary->nsyms = nextdefsym;
+        binary->ext_symtab = binary->symtab + iextdefsym;
+        binary->ext_nsyms = nextdefsym;
+    } else {
+        binary->ext_symtab = binary->symtab;
+        binary->ext_nsyms = binary->nsyms;
     }
 }
 
@@ -95,15 +93,15 @@ void b_load_dyldcache(struct binary *binary, const char *path, bool pre_loaded) 
         // verify!
         for(int i = 0; i < binary->dyld_mapping_count; i++) {
             struct shared_file_mapping_np mapping = binary->dyld_mappings[i];
-            if(!is_valid_range((prange_t) {addrconv(binary, mapping.sfm_address), (size_t) mapping.sfm_size})) {
-                die("segment %d wasn't found in memory at %p", i, addrconv(binary, mapping.sfm_address));
+            if(!is_valid_range((prange_t) {b_addrconv(binary, mapping.sfm_address), (size_t) mapping.sfm_size})) {
+                die("segment %d wasn't found in memory at %p", i, b_addrconv(binary, mapping.sfm_address));
             }
         }
     } else {
         binary->load_base = reserve_memory();
         for(int i = 0; i < binary->dyld_mapping_count; i++) {
             struct shared_file_mapping_np mapping = binary->dyld_mappings[i];
-            if(mmap(addrconv(binary, (addr_t) mapping.sfm_address), (size_t) mapping.sfm_size, PROT_READ, MAP_SHARED | MAP_FIXED, fd, (off_t) mapping.sfm_file_offset) == MAP_FAILED) {
+            if(mmap(b_addrconv(binary, (addr_t) mapping.sfm_address), (size_t) mapping.sfm_size, PROT_READ, MAP_SHARED | MAP_FIXED, fd, (off_t) mapping.sfm_file_offset) == MAP_FAILED) {
                 edie("could not map segment %d of this crappy binary format", i);
             }
         }
@@ -137,7 +135,7 @@ void b_dyldcache_load_macho(struct binary *binary, const char *filename) {
             continue;
         }
         // we found it
-        binary->mach_hdr = addrconv(binary, (addr_t) info.address);
+        binary->mach_hdr = b_addrconv(binary, (addr_t) info.address);
         if(!is_valid_range((prange_t) {binary->mach_hdr, 0x1000})) {
             die("invalid mach_hdr offset");
         }
@@ -206,7 +204,7 @@ void b_load_macho(struct binary *binary, const char *path) {
             struct segment_command *scmd = (void *) cmd;
             if(scmd->vmsize == 0) scmd->filesize = 0; // __CTF
             if(scmd->filesize != 0) {
-                if(mmap(addrconv(binary, scmd->vmaddr), scmd->filesize, PROT_READ, MAP_SHARED | MAP_FIXED, fd, fat_offset + scmd->fileoff) == MAP_FAILED) {
+                if(mmap(b_addrconv(binary, scmd->vmaddr), scmd->filesize, PROT_READ, MAP_SHARED | MAP_FIXED, fd, fat_offset + scmd->fileoff) == MAP_FAILED) {
                     edie("could not map segment %.16s at %u+%u,%u", scmd->segname, scmd->fileoff, fat_offset, scmd->filesize);
                 }
             }
@@ -345,7 +343,7 @@ void *b_macho_offconv(const struct binary *binary, uint32_t fileoff) {
         if(cmd->cmd == LC_SEGMENT) {
             struct segment_command *scmd = (void *) cmd;
             if(fileoff >= scmd->fileoff && fileoff < scmd->fileoff + scmd->filesize) {
-                void *result = addrconv(binary, scmd->vmaddr + fileoff - scmd->fileoff);
+                void *result = b_addrconv(binary, scmd->vmaddr + fileoff - scmd->fileoff);
                 if(!is_valid_address(result)) {
                     die("invalid offset %u", fileoff);
                 }
@@ -358,12 +356,12 @@ void *b_macho_offconv(const struct binary *binary, uint32_t fileoff) {
 
 // return value is |1 if to_execute is set and it is a thumb symbol
 addr_t b_sym(const struct binary *binary, const char *name, bool to_execute) {
-    if(!binary->symtab) {
+    if(!binary->ext_symtab) {
         die("we wanted %s but there is no symbol table", name);
     }
     // I stole dyld's codez
-    const struct nlist *base = binary->symtab;
-    for(uint32_t n = binary->nsyms; n > 0; n /= 2) {
+    const struct nlist *base = binary->ext_symtab;
+    for(uint32_t n = binary->ext_nsyms; n > 0; n /= 2) {
         const struct nlist *pivot = base + n/2;
         uint32_t strx = pivot->n_un.n_strx;
         if(strx >= binary->strsize) {
@@ -386,3 +384,20 @@ addr_t b_sym(const struct binary *binary, const char *name, bool to_execute) {
     die("symbol %s not found", name);
 }
 
+void b_macho_store(struct binary *binary, const char *path) {
+#define _arg path
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    if(fd <= 0) {
+        edie("unable to open");
+    }
+    CMD_ITERATE(binary->mach_hdr, cmd) {
+        if(cmd->cmd == LC_SEGMENT) {
+            struct segment_command *scmd = (void *) cmd;
+            lseek(fd, scmd->fileoff, SEEK_SET);
+            if(write(fd, b_addrconv(binary, scmd->vmaddr), scmd->filesize) != scmd->filesize) {
+                edie("couldn't write segment data");
+            }
+        }
+    }
+#undef _arg
+}

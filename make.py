@@ -81,14 +81,21 @@ def goo_pf():
     run('python', 'transe.py')
     run('python', '../one.py', 'transeboot.txt')
 
+def compile_arm(objs, output, ent=''):
+    for obj in objs:
+        run(GCC, '-g', '-std=gnu99', '-c', '-o', obj, chext(obj, '.c'))
+    run(GCC, '-g', '-std=gnu99', '-o', output + '_', objs)
+    run_multiple(['cp', output + '_', output],
+                 ['strip', '-Sx', output],
+                 ['ldid', '-S' + ent, output])
+
 def pf2():
     goto('pf2')
-    run(GCC, '-o', 'pf2_', 'pf2.c', '../sandbox2/sandbox.S', '-image_base', '0x10000000')
-    run_multiple(['cp', 'pf2_', 'pf2'],
-                 ['strip', '-Sx', 'pf2'],
-                 ['ldid', '-S', 'pf2'])
+    compile_arm(['pf2.c', '../sandbox2/sandbox.S'], 'pf2')
 
-data_objs = ['data.o', 'binary.o', 'find.o', 'common.o', 'one.o', 'pf2.o']
+data_common_objs = ['binary.o', 'find.o', 'common.o']
+data_objs = data_common_objs + ['data.o', 'one.o', 'pf2.o']
+white_loader_objs = data_common_objs + ['white_loader.o']
 def data_prereq():
     # config for insane first
     goo_pf()
@@ -99,18 +106,17 @@ def data_prereq():
 
 def data():
     data_prereq()
-    for obj in data_objs:
-        run(GCC, '-g', '-std=gnu99', '-c', '-o', obj, chext(obj, '.c'))
-    run(GCC, '-g', '-std=gnu99', '-o', 'data_', data_objs)
-    run_multiple(['cp', 'data_', 'data'],
-                 ['strip', '-Sx', 'data'],
-                 ['ldid', '-Sent.plist', 'data'])
+    compile_arm(data_objs, 'data', 'ent.plist')
 
 def data_native():
     data_prereq()
     for obj in data_objs:
         run(GCC_NATIVE, '-g', '-std=gnu99', '-c', '-o', obj, chext(obj, '.c'))
     run(GCC_NATIVE, '-g', '-std=gnu99', '-o', 'data_native', data_objs)
+
+def white_loader():
+    goto('data')
+    compile_arm(white_loader_objs, 'white_loader')
 
 def pf():
     goo_pf()
