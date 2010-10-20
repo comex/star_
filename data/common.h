@@ -1,6 +1,6 @@
 #pragma once
 
-#define PROFILING
+//#define PROFILING
 
 #include <stdio.h>
 #include <string.h>
@@ -15,13 +15,21 @@
 #include <time.h>
 #endif
 
-#define die(fmt, args...) do { fprintf(stderr, fmt, ##args); abort(); } while(0)
-#define edie(fmt, args...) die(fmt, ##args, strerror(errno))
+const static char *_arg = NULL;
+#define die(fmt, args...) do { \
+    fprintf(stderr, "%s: ", __func__); \
+    if(_arg) fprintf(stderr, "%s: ", _arg); \
+    fprintf(stderr, fmt "\n", ##args); \
+    abort(); \
+} while(0)
+#define edie(fmt, args...) die(fmt ": %s", ##args, strerror(errno))
 
-extern unsigned char pf2_bin[], one_bin[];
-extern unsigned int pf2_bin_len, one_bin_len;
-
+struct binary;
 typedef uint32_t addr_t;
-typedef struct { addr_t start; size_t size; } range_t;
+typedef struct { const struct binary *binary; addr_t start; size_t size; } range_t;
 typedef struct { void *start; size_t size; } prange_t;
 
+void check_range_has_addr(range_t range, addr_t addr);
+
+prange_t pdup(prange_t range);
+void write_range(prange_t range, const char *fn, mode_t mode);

@@ -88,7 +88,7 @@ def pf2():
                  ['strip', '-Sx', 'pf2'],
                  ['ldid', '-S', 'pf2'])
 
-data_objs = ['data.o', 'binary.o', 'one.o', 'pf2.o']
+data_objs = ['data.o', 'binary.o', 'find.o', 'common.o', 'one.o', 'pf2.o']
 def data_prereq():
     # config for insane first
     goo_pf()
