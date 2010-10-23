@@ -921,9 +921,9 @@ class Builder(object):
         arglists = map(args_to_list, arglists)
         # we want a command line string for the .deps file key and for display
         commands = [subprocess.list2cmdline(arglist) for arglist in arglists]
-        command_key = '; '.join(commands)
+        command_key = os.getcwd() + ':' + '; '.join(commands)
 
-        if not self.cmdline_outofdate(command_key):
+        if not self.key_outofdate(command_key):
             return
 
         # if just checking up-to-date-ness, set flag and do nothing more
@@ -981,11 +981,11 @@ class Builder(object):
         self.checking = False
         return self.outofdate_flag
 
-    def cmdline_outofdate(self, command):
-        """ Return True if given command line is out of date. """
-        if command in self.deps:
+    def key_outofdate(self, key):
+        """ Return True if given key (command line + cwd) is out of date. """
+        if key in self.deps:
             # command has been run before, see if deps have changed
-            for dep, oldhash in self.deps[command].items():
+            for dep, oldhash in self.deps[key].items():
                 assert oldhash.startswith('input-') or \
                        oldhash.startswith('output-'), \
                     "%s file corrupt, do a clean!" % self.depsname
