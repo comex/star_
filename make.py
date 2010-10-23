@@ -13,7 +13,7 @@ cfg = config.openconfig()
 SDK = '/var/sdk'
 BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
 GCC_BIN = BIN + '/gcc-4.2'
-GCC_BASE = [GCC_BIN, '-Werror', '-Os', '-Wimplicit', '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fno-blocks']
+GCC_BASE = [GCC_BIN, '-Werror', '-Os', '-Wimplicit', '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fno-blocks', '-mapcs-frame', '-fomit-frame-pointer']
 GCC = [GCC_BASE, '-arch', cfg['arch'], '-mthumb']
 GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7']
 GCC_SUMMONED = ['/Users/comex/arm-none-eabi/bin/arm-none-eabi-gcc', '-mthumb', '-march='+cfg['arch'], '-Os']
@@ -81,9 +81,11 @@ def goo_pf():
     run('python', 'transe.py')
     run('python', '../one.py', 'transeboot.txt')
 
-def compile_arm(objs, output, ent=''):
-    for obj in objs:
-        run(GCC, '-g', '-std=gnu99', '-c', '-o', obj, chext(obj, '.c'))
+def compile_arm(files, output, ent=''):
+    objs = []
+    for obj, inp in files:
+        run(GCC, '-g', '-std=gnu99', '-c', '-o', obj, inp)
+        objs.append(obj)
     run(GCC, '-g', '-std=gnu99', '-o', output + '_', objs)
     run_multiple(['cp', output + '_', output],
                  ['strip', '-Sx', output],
@@ -91,7 +93,7 @@ def compile_arm(objs, output, ent=''):
 
 def pf2():
     goto('pf2')
-    compile_arm(['pf2.c', '../sandbox2/sandbox.S'], 'pf2')
+    compile_arm([('pf2.o', 'pf2.c'), ('sandbox2.o', '../sandbox2/sandbox.S')], 'pf2')
 
 data_common_objs = ['binary.o', 'find.o', 'common.o']
 data_objs = data_common_objs + ['data.o', 'one.o', 'pf2.o']
@@ -101,12 +103,12 @@ def data_prereq():
     goo_pf()
     pf2()
     goto('data')
-    run('bash', '-c', 'cp ../goo/pf/one.dylib one.bin; xxd -i one.bin > one.c')
-    run('bash', '-c', 'cp ../pf2/pf2 pf2.bin; xxd -i pf2.bin > pf2.c')
+    run('sh', '-c', 'cp ../goo/pf/one.dylib one.bin; xxd -i one.bin > one.c')
+    run('sh', '-c', 'cp ../pf2/pf2 pf2.bin; xxd -i pf2.bin > pf2.c')
 
 def data():
     data_prereq()
-    compile_arm(data_objs, 'data', 'ent.plist')
+    compile_arm(((i, chext(i, '.c')) for i in data_objs), 'data', 'ent.plist')
 
 def data_native():
     data_prereq()
@@ -116,7 +118,7 @@ def data_native():
 
 def white_loader():
     goto('data')
-    compile_arm(white_loader_objs, 'white_loader')
+    compile_arm(((i, chext(i, '.c')) for i in white_loader_objs), 'white_loader')
 
 def pf():
     goo_pf()
