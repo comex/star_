@@ -81,12 +81,12 @@ def goo_pf():
     run('python', 'transe.py')
     run('python', '../one.py', 'transeboot.txt')
 
-def compile_arm(files, output, ent=''):
+def compile_arm(files, output, ent='', cflags=[], ldflags=[]):
     objs = []
     for obj, inp in files:
-        run(GCC, '-g', '-std=gnu99', '-c', '-o', obj, inp)
+        run(GCC, '-gdwarf-2', '-std=gnu99', '-c', '-o', obj, inp, cflags)
         objs.append(obj)
-    run(GCC, '-g', '-std=gnu99', '-o', output + '_', objs)
+    run(GCC, '-gdwarf-2', '-std=gnu99', '-o', output + '_', objs, ldflags)
     run_multiple(['cp', output + '_', output],
                  ['strip', '-Sx', output],
                  ['ldid', '-S' + ent, output])
@@ -97,6 +97,7 @@ def pf2():
 
 data_common_objs = ['binary.o', 'find.o', 'common.o']
 data_objs = data_common_objs + ['data.o', 'one.o', 'pf2.o']
+data_upgrade_objs = data_objs + ['cc.o', 'lzss.o']
 white_loader_objs = data_common_objs + ['white_loader.o']
 def data_prereq():
     # config for insane first
@@ -109,6 +110,10 @@ def data_prereq():
 def data():
     data_prereq()
     compile_arm(((i, chext(i, '.c')) for i in data_objs), 'data', 'ent.plist')
+
+def data_upgrade():
+    data_prereq()
+    compile_arm(((i, chext(i, '.c')) for i in data_upgrade_objs), 'data', 'ent.plist', cflags='-DIMG3_SUPPORT')
 
 def data_native():
     data_prereq()
