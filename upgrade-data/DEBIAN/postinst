@@ -1,0 +1,40 @@
+#!/bin/bash
+set -e
+platform="$(uname -m)_$(sw_vers -productVersion)_$(sw_vers -buildVersion)"
+key="$(fgrep "$platform.KernelCache:" /usr/share/data/keyz.txt  | head -n 1 | cut -d' ' -f 2,3)"
+echo ">> $key"
+if [ -z "$key" ]; then
+    echo "! Couldn't find keys for $platform !"
+    echo "Please contact comex or someone."
+    exit 1
+fi
+kc=/System/Library/Caches/com.apple.kernelcaches/kernelcache
+if [ ! -e "$kc" ]; then 
+    echo "! Couldn't find $kc !"
+    exit 1
+fi
+should_mkdir=0
+if [ -z /usr/lib/libgmalloc.dylib ]; then
+    echo "You don't have either star or pf2 installed."
+    echo "Installing the latter..."
+    should_mkdir=1
+elif [ -z /usr/lib/pf2 ]; then
+    echo "You have star installed."
+    echo "Upgrading you to pf2..."
+fi
+td="$(mktemp -d /tmp/data-output.XXXXX)"
+cd "$td"
+/usr/share/data/data -C
+/usr/share/data/data -i $kc $key
+output="$(DYLD_INSERT_LIBRARIES=libgmalloc.dylib /sbin/launchd 2>&1 || true)"
+if [ "$output" != "launchd: This program is not meant to be run directly." ]; then
+    echo "! pf2 didn't output the right thing: !"
+    echo "$output"
+    exit 1
+fi
+mv libgmalloc.dylib pf2 /usr/lib/
+cd /
+rm -rf "$td"
+if [ "$should_mkdir" = 1 ]; then
+    /usr/share/data/lol_mkdir
+fi

@@ -1,0 +1,6 @@
+Package: upgrade-data
+Version: 0.0
+Maintainer: comex <comexk@gmail.com>
+Priority: optional
+Architecture: iphoneos-arm
+Depends: coreutils
