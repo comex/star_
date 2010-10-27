@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 platform="$(uname -m)_$(sw_vers -productVersion)_$(sw_vers -buildVersion)"
-key="$(fgrep "$platform.KernelCache:" /usr/share/data/keyz.txt  | head -n 1 | cut -d' ' -f 2,3)"
+key="$(fgrep "$platform.KernelCache:" /usr/share/_data/keyz.txt  | head -n 1 | cut -d' ' -f 2,3)"
 echo ">> $key"
 if [ -z "$key" ]; then
     echo "! Couldn't find keys for $platform !"
@@ -24,8 +24,8 @@ elif [ -z /usr/lib/pf2 ]; then
 fi
 td="$(mktemp -d /tmp/data-output.XXXXX)"
 cd "$td"
-/usr/share/data/data -C
-/usr/share/data/data -i $kc $key
+/usr/share/_data/data -C
+maybe_the_address="$(/usr/share/_data/data -i $kc $key $(if [ "$should_mkdir" = 1 ]; then printf -8; fi))"
 output="$(DYLD_INSERT_LIBRARIES=libgmalloc.dylib /sbin/launchd 2>&1 || true)"
 if [ "$output" != "launchd: This program is not meant to be run directly." ]; then
     echo "! pf2 didn't output the right thing: !"
@@ -36,5 +36,9 @@ mv libgmalloc.dylib pf2 /usr/lib/
 cd /
 rm -rf "$td"
 if [ "$should_mkdir" = 1 ]; then
-    /usr/share/data/lol_mkdir
+    if [ -z "$maybe_the_address" ]; then
+        echo "! data didn't output an address !"
+        exit 1
+    fi
+    /usr/share/_data/lol_mkdir $maybe_the_address
 fi

@@ -199,7 +199,7 @@
             #'lck_rw_lock_exclusive': 0xfedd0018,
             #'lck_rw_done': 0xfedd0019,
             'patch_tfp0': 0xfedd0009,
-            'patch_tfp0_to': 0xe00b,
+            'patch_tfp0_to': 0xfedd0020,
             'flush_dcache': 0xfedd0010,
             'invalidate_icache': 0xfedd0011,
             'copyin': 0xfedd0012,
@@ -338,7 +338,7 @@
 
             # the actual check for 0
             'patch_tfp0': '85 68 00 23 .. 93 .. 93 - 5c b9 .. .. 29 46 04 22',
-            'patch_tfp0_to': 0xe00b,
+            'patch_tfp0_to': 0x46c0e00b,
             
             'cs_enforcement_disable_check': '1d ee 90 3f d3 f8 4c 33 d3 f8 9c 20 + .. .. .. .. 19 68 00 29',
             'derive_vnode_path': lambda: bof(stringref('path')),
@@ -420,8 +420,8 @@
             'patch3':       '13 20 a0 e3 .. .. .. .. 33 ff 2f e1 00 00 50 e3 00 00 00 0a .. 40 a0 e3 - 04 00 a0 e1 90 80 bd e8',
             'patch3_to':    0xe3a00001,
             
-            'patch_tfp0': '85 68 .. 93 .. 93 00 2c - 0b d1',
-            'patch_tfp0_to': 0xe00b,
+            'patch_tfp0': '85 68 .. 93 .. 93 - 00 2c 0b d1',
+            'patch_tfp0_to': 0xe00b2c00,
 
             'cs_enforcement_disable_check': '9c 22 03 59 99 58 + .. .. 1a 68 00 2a',
             'derive_vnode_path': lambda: bof(stringref('path'), False),

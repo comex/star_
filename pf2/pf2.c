@@ -157,7 +157,7 @@ extern int ok_go(void *p, void *uap, unsigned int *retval) {
     P(PATCH4, 32);
     P(PATCH_CS_ENFORCEMENT_DISABLE, 32);
     P(PATCH_KERNEL_PMAP_NX_ENABLED, 32);
-    P(PATCH_TFP0, 16);
+    P(PATCH_TFP0, 32);
     *((uint32_t *) CONFIG_SYSENT_PATCH) = CONFIG_SYSENT_PATCH_ORIG;
     flush((void *) CONFIG_SYSENT_PATCH, 4);
 

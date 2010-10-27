@@ -115,6 +115,12 @@ def data_upgrade():
     data_prereq()
     compile_arm(((i, chext(i, '.c')) for i in data_upgrade_objs), 'data', 'ent.plist', cflags='-DIMG3_SUPPORT')
 
+def upgrade_data():
+    data_upgrade()
+    goto('upgrade-data')
+    compile_arm([('lol_mkdir.o', 'lol_mkdir.c')], 'lol_mkdir', '../data/ent.plist')
+    run('./build-deb.sh')
+
 def data_native():
     data_prereq()
     for obj in data_objs:

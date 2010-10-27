@@ -79,9 +79,9 @@ def exeggcute(binary, mtime, d, v):
         def find_kinit(cond):
             # We want ldmib<cond> r11/r11!, {.., .., .., sp, pc}
             # because this seems to get found :p
-            # ?? a?/b? bb/9b [cond]9
+            # ?? a?/b? 9b/bb/db/fb [cond]9
             # ^------^ the register list
-            r = '.[\xa0-\xbf][\x9b\xbb]' + chr((cond << 4) | 0x9)
+            r = '.[\xa0-\xbf][\x9b\xbb\xdb\xfb]' + chr((cond << 4) | 0x9)
             for off in re.finditer(r, binary.stuff):
                 s = off.start()
                 if s % 2 != 0: continue
