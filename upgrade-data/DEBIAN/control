@@ -1,5 +1,5 @@
 Package: upgrade-data
-Version: 0.002
+Version: 0.003
 Maintainer: comex <comexk@gmail.com>
 Priority: optional
 Architecture: iphoneos-arm
