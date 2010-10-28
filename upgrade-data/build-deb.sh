@@ -8,7 +8,7 @@ if [ "`whoami`" != "root" ]; then
     touch upgrade-data.deb
     # lol fabricate
     cat ../config/keyz.txt ../data/data lol_mkdir DEBIAN/* >/dev/null
-    exec ./fakeroot "$0" "$@"
+    exec ./fakeroot.sh "$0" "$@"
 fi
 rm -rf root
 mkdir root
