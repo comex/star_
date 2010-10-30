@@ -95,6 +95,10 @@ def pf2():
     goto('pf2')
     compile_arm([('pf2.o', 'pf2.c'), ('sandbox2.o', '../sandbox2/sandbox.S')], 'pf2')
 
+def chain():
+    goto('chain')
+    compile_arm([('chain.o', 'chain.c'), ('chain-pf2.o', 'chain-pf2.c'), ('stuff.o', 'stuff.c'), ('bcopy.o', 'bcopy.s'), ('bzero.o', 'bzero.s')], 'chain', ldflags=['-segaddr', '__LOCKTEXT', '0x08000000', '-segaddr', '__LOCKDATA', '0x08001000'])
+
 data_common_objs = ['binary.o', 'find.o', 'common.o']
 data_objs = data_common_objs + ['data.o', 'one.o', 'pf2.o']
 data_upgrade_objs = data_objs + ['cc.o', 'lzss.o']

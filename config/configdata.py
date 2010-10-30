@@ -180,7 +180,7 @@
             'memcmp': 0xfeed0004,
             'vn_getpath': 0xfeed0005,
             'dvp_struct_offset': 0xfeed0006,
-            
+
             # feddit
             'patch_cs_enforcement_disable': 0xfedd0001,
             'patch_cs_enforcement_disable_to': 1,
@@ -233,6 +233,8 @@
 
     '.base': {
         '#kern': {
+            'fancy_set_rate': '- 80 40 2d e9 00 70 8d e2 .. .. .. .. 4b 0f 51 e3 96 1d a0 33',
+            
             'patch4':       '-_PE_i_can_has_debugger',
             'patch4_to':    0x47702001,
 
