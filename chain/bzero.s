@@ -40,7 +40,7 @@
  * The algorithm is to align the destination pointer on a 32 byte boundary and then
  * blast data 64 bytes at a time, in two stores of 32 bytes per loop.
  */
-    .section __LOCKTEXT,__locktext
+    .section __LTXT,__locktext
 	.align 2
 
 	.globl _my_memset

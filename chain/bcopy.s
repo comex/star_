@@ -36,7 +36,7 @@
  
 #include <arm/arch.h>
 
-.section __LOCKTEXT,__locktext
+.section __LTXT,__locktext
 .align 2
 	
 	.globl _my_memcpy

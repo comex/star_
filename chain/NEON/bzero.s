@@ -34,7 +34,7 @@
 //
 // -- Stephen Canon, August 2009
 
-.section __LOCKTEXT,__locktext
+.section __LTXT,__locktext
 .syntax unified
 .code 16
 
