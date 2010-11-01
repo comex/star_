@@ -98,12 +98,12 @@ def pf2():
 
 def chain():
     goto('chain')
-    dbg = ['-DDEBUG=1', '-DACTUALLY_JUST_USE_PRAM=1']
-    for c in ['chain.c', 'stuff.c']:
+    dbg = ['-DDEBUG=1', '-fnested-functions']
+    for c in ['chain.c', 'dt.c', 'stuff.c']:
         run(GCC, dbg, '-c', '-o', chext(c, '.oo'), c)
         run('sh', '-c', 'sed "s/__TEXT/__LTXT/g; s/__DATA/__LDTA/g" ' + chext(c, '.oo') + ' >' + chext(c, '.o'))
 
-    compile_arm(['chain-pf2.c', 'chain.o', 'stuff.o', 'fffuuu.S', 'bcopy.s', 'bzero.s'], 'chain', cflags=[dbg], ldflags=['-segaddr', '__LTXT', '0x08000000', '-segaddr', '__LDTA', '0x08002000'])
+    compile_arm(['chain-pf2.c', 'chain.o', 'dt.o', 'stuff.o', 'fffuuu.S', 'bcopy.s', 'bzero.s'], 'chain', cflags=dbg, ldflags=['-segaddr', '__LTXT', '0x08001000', '-segaddr', '__LDTA', '0x08000000'])
 
 data_common_files = ['binary.c', 'find.c', 'common.c']
 data_files = data_common_files + ['data.c', 'one.c', 'pf2.c']

@@ -1,16 +1,14 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <config/config.h>
+#include "chain.h"
 
-#if ACTUALLY_JUST_USE_PRAM
+#if 1
 void uart_set_rate(uint32_t rate) {
-    *((volatile uint32_t *) 0xc0001000) = 4;
 }
 
 static void serial_putc(char c) {
-    volatile char *ptr = (void*) (0xc0001000 + (*((volatile uint32_t *) 0xc0001000))++);
-    for(int i = 0; i < 10; i++) *ptr = c;
+    ((void (*)(const char *, ...)) CONFIG_IOLOG)("%c", c);
 }
 #else
 #define fancy_set_rate ((void (*)(uint32_t, uint32_t)) CONFIG_FANCY_SET_RATE)
@@ -80,4 +78,10 @@ int my_memcmp(const char *a, const char *b, size_t size) {
         if(c != d) return c - d;
     }
     return 0;
+}
+
+size_t my_strlen(const char *a) {
+    size_t i = 0;
+    while(*a++) i++;
+    return i;
 }

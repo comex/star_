@@ -1,46 +1,8 @@
-#include <assert.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <mach-o/loader.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/mman.h>
-#include <sys/syscall.h>
-#include <unistd.h>
-#include <config/config.h>
+#include "chain.h"
 
-#define IOLog ((void (*)(char *fmt, ...)) CONFIG_IOLOG)
-
-#define IORegistryEntry_fromPath ((void *(*)(const char *path, void *plane, char *residualPath, int *residualLength, void *fromEntry)) CONFIG_IOREGISTRYENTRY_FROMPATH)
-// These are actually virtual but I don't care
-// this is the char * version
-#define IORegistryEntry_getProperty ((void *(*)(void *entry, const char *key)) CONFIG_IOREGISTRYENTRY_GETPROPERTY)
-#define OSData_getBytesNoCopy ((void *(*)(void *data)) CONFIG_OSDATA_GETBYTESNOCOPY)
-#define OSData_getLength ((unsigned int (*)(void *data)) CONFIG_OSDATA_GETLENGTH)
 
 #define CMD_ITERATE(hdr, cmd) for(struct load_command *cmd = (void *)((hdr) + 1), *end = (void *)((char *)(hdr) + (hdr)->sizeofcmds); cmd; cmd = (cmd->cmdsize > 0 && cmd->cmdsize < ((char *)end - (char *)cmd)) ? (void *)((char *)cmd + cmd->cmdsize) : NULL)
 
-// stuff.c
-#if DEBUG
-// call this before clobbering the kernel kthx
-extern void uart_set_rate(uint32_t rate);
-extern void serial_putstring(const char *string);
-extern void serial_puthexbuf(void *buf, uint32_t size);
-extern void serial_puthex(uint32_t number);
-#else
-#define uart_set_rate(x)
-#define serial_putstring(x)
-#define serial_puthexbuf(x, y)
-#define serial_puthex(x)
-#endif
-extern int my_strcmp(const char *a, const char *b);
-extern int my_memcmp(const char *a, const char *b, size_t n);
-// {bcopy, bzero}.s
-extern void *my_memcpy(void *dest, const void *src, size_t n);
-extern void *my_memset(void *b, int c, size_t len);
 
 struct mach_header *kern_hdr;
 size_t kern_size;
@@ -66,29 +28,6 @@ struct boot_args {
     char cmdline[]; // 38
 } __attribute__((packed));
 
-static char *overwrites[] = {
-    "IODeviceTree:/arm-io/i2c0/pmu", "swi-vcores",
-    "IODeviceTree:/arm-io/tv-out", "dac-cals",
-    "IODeviceTree:/arm-io", "chip-revision",
-    "IODeviceTree:/arm-io/audio-complex", "ncoref-frequency",
-    "IODeviceTree:/arm-io", "clock-frequencies",
-    "IODeviceTree:/cpus/cpu0", "clock-frequency",
-    "IODeviceTree:/chosen/iBoot", "start-time",
-    "IODeviceTree:/arm-io/spi1/multi-touch", "multi-touch-calibration",
-    "IODeviceTree:/charger", "battery-id",
-    "IODeviceTree:/arm-io/uart3/bluetooth", "local-mac-address",
-    "IODeviceTree:/arm-io/sdio", "local-mac-address",
-    "IODeviceTree:/ethernet", "local-mac-address",
-    "IODeviceTree:/", "platform-name",
-    "IODeviceTree:/vram", "reg",
-    "IODeviceTree:/pram", "reg",
-    "IODeviceTree:/", "config-number",
-    "IODeviceTree:/", "mlb-serial-number", // mmm, baseball
-    "IODeviceTree:/", "serial-number",
-    "IODeviceTree:/", "region-info",
-    "IODeviceTree:/", "model-number"
-};
-
 static const char *placeholders[] = {
     "MemoryMapReserved-0",
     "MemoryMapReserved-1",
@@ -108,81 +47,6 @@ static const char *placeholders[] = {
     "MemoryMapReserved-15"
 };
 
-
-static char *dt_get_entry(char **dt, char *desired) {
-    char *rest_of_path;
-    size_t size;
-    // find the rest
-    if(desired) {
-        char *p = desired;
-        while(1) {
-            if(*p == '\0') {
-                size = p - desired;
-                rest_of_path = NULL;
-                break;
-            } else if(*p == '/') {
-                size = p - desired;
-                rest_of_path = p + 1;
-                if(!*rest_of_path) rest_of_path = NULL;
-                break;
-            } else {
-                p++;
-            }
-        }
-        if(!my_memcmp(desired, "IODeviceTree:", size)) {
-            desired = "device-tree";
-            size = strlen("device-tree");
-        }
-    }
-    char *entry = *dt; // in case we return it
-    uint32_t n_properties = *((uint32_t *) *dt); *dt += 4;
-    uint32_t n_children = *((uint32_t *) *dt); *dt += 4;
-    bool this_is_the_right_node = false;
-    while(n_properties--) {
-        char *name = *dt; *dt += 32;
-        uint32_t length = *((uint32_t *) *dt); *dt += 4;
-        char *value = *dt;
-        if(desired && !this_is_the_right_node && !my_strcmp(name, "name")) {
-            if(!my_memcmp(value, desired, size) && value[size] == '\0') {
-                if(rest_of_path) {
-                    this_is_the_right_node = true;
-                    // we still have to go through the other properties before reaching the children
-                } else {
-                    return entry;
-                }
-            }
-        }
-        *dt += (length + 3) & ~3;
-    }
-    while(n_children--) {
-        if(this_is_the_right_node) {
-            char *v = dt_get_entry(dt, rest_of_path);
-            if(this_is_the_right_node && v) return v;
-        } else {
-            // again, we have to go through all the children
-            dt_get_entry(dt, NULL);
-        }
-    }
-    return NULL;
-}
-
-void dt_entry_set_prop(char *entry, const char *key, char *replacement_key /* could be NULL */, void *value, size_t value_len) {
-    uint32_t n_properties = *((uint32_t *) entry); entry += 4;
-    entry += 4; // n_children
-
-    while(n_properties--) {
-        char *name = entry; entry += 32;
-        uint32_t length = *((uint32_t *) entry); entry += 4;
-        if(!my_strcmp(name, key)) {
-            if(replacement_key) {
-                my_memcpy(name, replacement_key, 32);
-            }
-            my_memcpy(entry, value, value_len);
-            return;
-        }
-        entry += (length + 3) & ~3;
-    }
-}
 
 __attribute__((always_inline)) static inline void invalidate_tlb() {
     asm volatile("mov r2, #0;"
@@ -232,8 +96,9 @@ static void vita(uint32_t args_phys, uint32_t jump_phys) {
 static void load_it() {
     uart_set_rate(115200);
 
-    char *dt;
-    for(int i = 0; i < (sizeof(overwrites) / sizeof(*overwrites)); i+=2) {
+    char *dt = devicetree;
+    dt_super_iterate(&dt);
+    /*for(int i = 0; i < (sizeof(overwrites) / sizeof(*overwrites)); i+=2) {
         serial_putstring(overwrites[i]); serial_putstring(": "); 
         void *entry = IORegistryEntry_fromPath(overwrites[i], NULL, NULL, NULL, NULL);
         serial_puthex((uint32_t) entry);
@@ -259,13 +124,18 @@ static void load_it() {
             return;
         }
         dt_entry_set_prop(dt_entry, overwrites[i+1], NULL, bytes, length);
-    }
+    }*/
     dt = devicetree;
     char *memory_map_entry = dt_get_entry(&dt, "IODeviceTree:/chosen/memory-map");
     if(!memory_map_entry) {
         serial_putstring("wtf\n");
         return;
     }
+
+    serial_putstring("New DeviceTree:\n");
+    serial_puthexbuf((void *) devicetree, 2000);
+    serial_putstring("\n");
+    return;
 
     // no kanye 
     asm volatile("cpsid if");
@@ -357,7 +227,7 @@ static void load_it() {
     
     *((uint32_t *) 0x801dbfe8) = 0xe12fff1e; // bx lr
 
-#if DEBUG
+#if 0
     extern void fffuuu_start(), fffuuu_end();
 #   define fffuuu_addr 0x807d5518
     my_memcpy((void *) fffuuu_addr, (void *) fffuuu_start, ((uint32_t)fffuuu_end - (uint32_t)fffuuu_start));
