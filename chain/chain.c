@@ -96,35 +96,11 @@ static void vita(uint32_t args_phys, uint32_t jump_phys) {
 static void load_it() {
     uart_set_rate(115200);
 
-    char *dt = devicetree;
+    char *dt;
+    
+    dt = devicetree;
     dt_super_iterate(&dt);
-    /*for(int i = 0; i < (sizeof(overwrites) / sizeof(*overwrites)); i+=2) {
-        serial_putstring(overwrites[i]); serial_putstring(": "); 
-        void *entry = IORegistryEntry_fromPath(overwrites[i], NULL, NULL, NULL, NULL);
-        serial_puthex((uint32_t) entry);
-        if(!entry) {
-            serial_putstring(";;\n");
-            continue;
-        }
-        serial_putstring("."); serial_putstring(overwrites[i+1]); serial_putstring(":\n");
 
-        void *data = IORegistryEntry_getProperty(entry, overwrites[i+1]);
-        if(!data) {
-            // it's not even here
-            continue;
-        }
-        void *bytes = OSData_getBytesNoCopy(data);
-        uint32_t length = OSData_getLength(data);
-        serial_puthexbuf(bytes, length); serial_putstring("\n");
-        dt = devicetree;
-        char *dt_entry = dt_get_entry(&dt, overwrites[i]);
-        serial_puthex((uint32_t) dt_entry); serial_putstring("\n");
-        if(!dt_entry) {
-            serial_putstring("wtf\n");
-            return;
-        }
-        dt_entry_set_prop(dt_entry, overwrites[i+1], NULL, bytes, length);
-    }*/
     dt = devicetree;
     char *memory_map_entry = dt_get_entry(&dt, "IODeviceTree:/chosen/memory-map");
     if(!memory_map_entry) {

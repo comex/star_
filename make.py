@@ -98,7 +98,7 @@ def pf2():
 
 def chain():
     goto('chain')
-    dbg = ['-DDEBUG=1', '-fnested-functions']
+    dbg = ['-DDEBUG=1', '-fblocks']
     for c in ['chain.c', 'dt.c', 'stuff.c']:
         run(GCC, dbg, '-c', '-o', chext(c, '.oo'), c)
         run('sh', '-c', 'sed "s/__TEXT/__LTXT/g; s/__DATA/__LDTA/g" ' + chext(c, '.oo') + ' >' + chext(c, '.o'))
