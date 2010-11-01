@@ -21,14 +21,6 @@
  * @APPLE_LICENSE_HEADER_END@
  */
 
-#if defined __thumb2__ && defined __ARM_NEON__
-    
-// Use our tuned NEON implementation when it is available.  Otherwise fall back
-// on more generic ARM code.
-
-#include "NEON/bcopy.s"
-    
-#else // defined __thumb2__ && defined __ARM_NEON__
 
 /*****************************************************************************
  * ARMv5 and ARMv6 implementation                                            *
@@ -36,7 +28,7 @@
  
 #include <arm/arch.h>
 
-.section __LTXT,__locktext
+.text
 .align 2
 	
 	.globl _my_memcpy
@@ -411,5 +403,4 @@ Lalign3_forward_loop:
 Lexit:
 	ldmfd	sp!, {r0, r4, r5, r7, pc}
 
-#endif // defined __thumb2__ && defined __ARM_NEON__
 

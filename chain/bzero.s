@@ -20,18 +20,8 @@
  * 
  * @APPLE_LICENSE_HEADER_END@
  */
- 
-#if defined __thumb2__ && defined __ARM_NEON__
-
-// Use our tuned NEON implementation when it is available.  Otherwise fall back
-// on more generic ARM code.
-
-#include "NEON/bzero.s"
-
-#else // defined __thumb2__ && defined __ARM_NEON__
 
 #include <mach/machine/asm.h>
-#include <architecture/arm/asm_help.h>
 	
 /* 
  * A reasonably well-optimized bzero/memset. Should work equally well on arm11 and arm9 based
@@ -40,7 +30,7 @@
  * The algorithm is to align the destination pointer on a 32 byte boundary and then
  * blast data 64 bytes at a time, in two stores of 32 bytes per loop.
  */
-    .section __LTXT,__locktext
+    .text
 	.align 2
 
 	.globl _my_memset
@@ -168,5 +158,4 @@ L_unaligned:
 	bge		L_64ormorealigned
 	b		L_lessthan64aligned
 
-#endif // defined __thumb2__ && defined __ARM_NEON__
 

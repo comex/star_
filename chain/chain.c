@@ -108,11 +108,6 @@ static void load_it() {
         return;
     }
 
-    serial_putstring("New DeviceTree:\n");
-    serial_puthexbuf((void *) devicetree, 2000);
-    serial_putstring("\n");
-    return;
-
     // no kanye 
     asm volatile("cpsid if");
 
@@ -240,10 +235,57 @@ static void load_it() {
     serial_putstring("it returned?\n");
 }
 
-int ok_go(void *p, void *uap, int32_t *retval) {
-    *((uint32_t *) CONFIG_SYSENT_PATCH) = CONFIG_SYSENT_PATCH_ORIG;
+typedef uint32_t user_addr_t;
+
+struct args {
+    user_addr_t kern_hdr;
+    size_t kern_size;
+    user_addr_t devicetree;
+    size_t devicetree_size;
+};
+
+extern void *kalloc(uint32_t size);
+extern void kfree(void *data, uint32_t size);
+extern int copyin(const user_addr_t user_addr, void *kernel_addr, uint32_t nbytes);
+
+int ok_go(void *p, struct args *uap, int32_t *retval) {
+    kern_hdr = kalloc(uap->kern_size);
+    copyin(uap->kern_hdr, kern_hdr, uap->kern_size);
+    devicetree = kalloc(uap->devicetree_size);
+    copyin(uap->devicetree, devicetree, uap->devicetree_size);
+
     load_it();
+
+    kfree(kern_hdr, uap->kern_size);
+    kfree(devicetree, uap->devicetree_size);
     *retval = -1;
     return 0;
 }
+
+struct proc;
+typedef int32_t sy_call_t(struct proc *, void *, int *);
+typedef void    sy_munge_t(const void *, void *);
+
+struct sysent {     /* system call table */
+    int16_t     sy_narg;    /* number of args */
+    int8_t      sy_resv;    /* reserved  */
+    int8_t      sy_flags;   /* flags */
+    sy_call_t   *sy_call;   /* implementing function */
+    sy_munge_t  *sy_arg_munge32; /* system call arguments munger for 32-bit process */
+    sy_munge_t  *sy_arg_munge64; /* system call arguments munger for 64-bit process */
+    int32_t     sy_return_type; /* system call return types */
+    uint16_t    sy_arg_bytes;   /* Total size of arguments in bytes for
+                     * 32-bit system calls
+                     */
+};
+#define _SYSCALL_RET_INT_T      1   
+
+
+extern struct sysent sysent[];
+
+__attribute__((constructor))
+static void init() {
+    sysent[8] = (struct sysent){ 1, 0, 0, (void *) ok_go, NULL, NULL, _SYSCALL_RET_INT_T, sizeof(struct args) };
+}
+
 

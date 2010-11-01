@@ -234,12 +234,6 @@
     '.base': {
         '#kern': {
             # for chain
-            'fancy_set_rate': '- 80 40 2d e9 00 70 8d e2 .. .. .. .. 4b 0f 51 e3 96 1d a0 33',
-            'IORegistryEntry_fromPath': '+__ZN15IORegistryEntry8fromPathEPKcPK15IORegistryPlanePcPiPS_',
-            'IORegistryEntry_getProperty': '+__ZNK15IORegistryEntry11getPropertyEPKc',
-            'OSData_getBytesNoCopy': '+__ZNK6OSData14getBytesNoCopyEv',
-            'OSData_getLength': '+__ZNK6OSData9getLengthEv',
-            
             'patch4':       '-_PE_i_can_has_debugger',
             'patch4_to':    0x47702001,
 

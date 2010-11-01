@@ -3,15 +3,17 @@
 #include <stdbool.h>
 #include "chain.h"
 
+int _NSConcreteGlobalBlock;
+int _NSConcreteStackBlock;
+
 #if 1
 void uart_set_rate(uint32_t rate) {
 }
 
 static void serial_putc(char c) {
-    ((void (*)(const char *, ...)) CONFIG_IOLOG)("%c", c);
+    //IOLog("%c", c);
 }
 #else
-#define fancy_set_rate ((void (*)(uint32_t, uint32_t)) CONFIG_FANCY_SET_RATE)
 
 void uart_set_rate(uint32_t rate) {
     fancy_set_rate(0/*ignored!*/, rate);
@@ -85,3 +87,4 @@ size_t my_strlen(const char *a) {
     while(*a++) i++;
     return i;
 }
+

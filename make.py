@@ -34,13 +34,13 @@ def F(*frameworks):
         ret.append(framework)
     return ret
 
-def compile_to_bin(filename):
+def compile_to_bin(output, input=None, flags=[]):
     # requires machdump
-    ofile = chext(filename, '.o')
-    binfile = chext(filename, '.bin')
-    run(GCC, '-c', '-o', ofile, filename)
+    if input is None: input = [filename]
+    ofile = output + '.o'
+    binfile = output + '.bin'
+    run(GCC, '-o', ofile, input, flags, '-nostdlib', '-nodefaultlibs', '-nostartfiles')
     run(ROOT + '/machdump/machdump', ofile, binfile)
-    if os.path.exists(ofile): os.unlink(ofile)
 
 def pmap():
     goto('star/pmap')
@@ -80,30 +80,35 @@ def goo_pf():
     run('python', 'transe.py')
     run('python', '../one.py', 'transeboot.txt')
 
-def compile_arm(files, output, ent='', cflags=[], ldflags=[]):
+def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True):
     objs = []
     for inp in files:
         obj = chext(os.path.basename(inp), '.o')
         objs.append(obj)
         if obj == inp: continue
-        run(GCC, '-c', '-o', obj, inp, cflags)
-    run(GCC, '-o', output + '_', objs, ldflags)
-    run_multiple(['cp', output + '_', output],
-                 ['strip', '-Sx', output],
-                 ['ldid', '-S' + ent, output])
+        run(gcc, '-c', '-o', obj, inp, cflags)
+    if strip:
+        run(gcc, '-o', output + '_', objs, ldflags)
+        if ldid:
+            run_multiple(['cp', output + '_', output],
+                         ['strip', '-Sx', output],
+                         ['ldid', '-S' + ent, output])
+        else:
+            run_multiple(['cp', output + '_', output],
+                         ['strip', '-Sx', output])
+    else:
+        run(gcc, '-o', output, objs, ldflags)
 
 def pf2():
     goto('pf2')
-    compile_arm(['pf2.c', '../sandbox2/sandbox.S'], 'pf2')
+    compile_stuff(['pf2.c', '../sandbox2/sandbox.S'], 'pf2')
 
 def chain():
     goto('chain')
-    dbg = ['-DDEBUG=1', '-fblocks']
-    for c in ['chain.c', 'dt.c', 'stuff.c']:
-        run(GCC, dbg, '-c', '-o', chext(c, '.oo'), c)
-        run('sh', '-c', 'sed "s/__TEXT/__LTXT/g; s/__DATA/__LDTA/g" ' + chext(c, '.oo') + ' >' + chext(c, '.o'))
-
-    compile_arm(['chain-pf2.c', 'chain.o', 'dt.o', 'stuff.o', 'fffuuu.S', 'bcopy.s', 'bzero.s'], 'chain', cflags=dbg, ldflags=['-segaddr', '__LTXT', '0x08001000', '-segaddr', '__LDTA', '0x08000000'])
+    cf = ['-DDEBUG=1', '-fblocks']
+    ldf=['-dynamiclib', '-nostdlib', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-read_only_relocs', 'suppress']
+    compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', cflags=cf, ldflags=ldf, strip=False)
+    compile_stuff(['chain-user.c'], 'chain-user')
 
 data_common_files = ['binary.c', 'find.c', 'common.c']
 data_files = data_common_files + ['data.c', 'one.c', 'pf2.c']
@@ -119,27 +124,25 @@ def data_prereq():
 
 def data():
     data_prereq()
-    compile_arm(data_files, 'data', 'ent.plist')
+    compile_stuff(data_files, 'data', 'ent.plist')
 
 def data_upgrade():
     data_prereq()
-    compile_arm(data_upgrade_files, 'data', 'ent.plist', cflags='-DIMG3_SUPPORT')
+    compile_stuff(data_upgrade_files, 'data', 'ent.plist', cflags='-DIMG3_SUPPORT')
 
 def upgrade_data():
     data_upgrade()
     goto('upgrade-data')
-    compile_arm(['lol_mkdir.c'], 'lol_mkdir', '../data/ent.plist')
+    compile_stuff(['lol_mkdir.c'], 'lol_mkdir', '../data/ent.plist')
     run('./build-deb.sh')
 
 def data_native():
     data_prereq()
-    for obj in data_objs:
-        run(GCC_NATIVE, '-c', '-o', obj, chext(obj, '.c'))
-    run(GCC_NATIVE, '-o', 'data_native', data_objs)
+    compile_stuff(data_files, 'data', gcc=GCC_NATIVE, ldid=False)
 
 def white_loader():
     goto('data')
-    compile_arm(white_loader_files, 'white_loader')
+    compile_stuff(white_loader_files, 'white_loader')
 
 def pf():
     goo_pf()
