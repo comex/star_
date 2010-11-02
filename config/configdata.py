@@ -318,10 +318,6 @@
             # pop {r7, pc}
             'k19': '@ + 80 bd',
 
-            # OLD: ldmibmi r11, {sp, pc}
-            #      actually the tail half of a ldr.w r12, [r1, r0] + ldr r1, [pc, #620] 
-            'kinit': lambda: find_kinit(0b0100), # MI
-
             # branch support
             # and.w r0, #1; pop {r7, pc}
             #'k3': '@ + 00 f0 01 00 80 bd',
@@ -400,12 +396,6 @@
 
             # str r5, [r4]; pop {r4, r5, r7, pc}
             'k17': '@ - 00 50 84 e5 b0 80 bd e8',
-
-            # a little messier
-            # I could also use r10, but that's ugly (it points to the section entry)
-            # ldmibpl	r11, {r6, r9, ip, sp, pc}^
-            # on 3.1.x: 00 ab 9b a9 is equivalent
-            'kinit': lambda: find_kinit(0b0101), # PL
 
             # branch support
             # and r0, #1; pop {r7, pc}
