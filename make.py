@@ -11,7 +11,7 @@ os.environ['PYTHONPATH'] = ':'.join([(ROOT + '/config'), (ROOT + '/goo')])
 import config
 cfg = config.openconfig()
 
-GCC_FLAGS = ['-std=gnu99', '-gdwarf-2', '-Werror', '-Wimplicit', '-Os']
+GCC_FLAGS = ['-std=gnu99', '-gdwarf-2', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wextra', '-Wreturn-type', '-Os']
 SDK = '/var/sdk'
 BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
 GCC_BIN = BIN + '/gcc-4.2'
@@ -105,7 +105,7 @@ def pf2():
 
 def chain():
     goto('chain')
-    cf = ['-DDEBUG=1', '-fblocks']
+    cf = ['-DDEBUG=1', '-DDEBUG_VERBOSE=0', '-DUSE_ASM_FUNCS=1', '-fblocks']
     ldf=['-dynamiclib', '-nostdlib', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-read_only_relocs', 'suppress']
     compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', cflags=cf, ldflags=ldf, strip=False)
     compile_stuff(['chain-user.c'], 'chain-user')

@@ -6,65 +6,24 @@
 int _NSConcreteGlobalBlock;
 int _NSConcreteStackBlock;
 
-#if 1
-void uart_set_rate(uint32_t rate) {
-}
-
-static void serial_putc(char c) {
-    //IOLog("%c", c);
-}
-#else
-
-void uart_set_rate(uint32_t rate) {
-    fancy_set_rate(0/*ignored!*/, rate);
-}
-
-static void uart_putc(char c) {
-    while(0 == (*((volatile uint32_t *) 0xc0000010) & 4));
-    *((volatile char *) 0xc0000020) = c;
-}
-
-static void serial_putc(char c) {
-    uart_putc(c);
-    if(c == '\n') {
-        // dunno why the kernel does this, but...
-        uart_putc('\r');
+#if !USE_ASM_FUNCS
+void *my_memcpy(void *dest, const void *src, size_t n) {
+    char *a = dest;
+    const char *b = src;
+    while(n--) {
+        *a++ = *b++;
     }
+    return dest;
+}
+
+void *my_memset(void *dest, int c, size_t len) {
+    char *a = dest;
+    while(len--) {
+        *a++ = (char) c;
+    }
+    return dest;
 }
 #endif
-
-void serial_putstring(const char *string) {
-    char c; while(c = *string++) serial_putc(c);
-}
-
-void serial_puthexbuf(void *buf, uint32_t size) {
-    uint8_t *p = buf;
-    while(size--) {
-        uint8_t number = *p++;
-        for(int i = 4; i >= 0; i -= 4) {
-            uint8_t digit = ((number >> i) & 15);
-            if(digit < 10) {
-                serial_putc('0' + digit);
-            } else {
-                serial_putc('a' + (digit - 10));
-            }
-        }
-    }
-}
-
-void serial_puthex(uint32_t number) {
-    bool going = false;
-    for(int i = 28; i >= 0; i -= 4) {
-        uint8_t digit = ((number >> i) & 15);
-        if(digit) going = true;
-        if(!going) continue;
-        if(digit < 10) {
-            serial_putc('0' + digit);
-        } else {
-            serial_putc('a' + (digit - 10));
-        }
-    }
-}
 
 int my_strcmp(const char *a, const char *b) {
     while(1) {
@@ -88,3 +47,106 @@ size_t my_strlen(const char *a) {
     return i;
 }
 
+#if DEBUG
+
+bool serial_important = false;
+
+#if 1 // USB
+static char *ringbuf_start = (char *) 0x807d6000;
+static char *ringbuf = NULL;
+static size_t ringbuf_size = 0x3000;
+
+void uart_set_rate(uint32_t rate) {
+}
+
+static void serial_putbuf(const char *c, size_t size) {
+    // This is silly: the ring buffer is just because I don't understand how to use this properly
+    if(!ringbuf || (ringbuf + size) > (ringbuf_start + ringbuf_size)) {
+        ringbuf = ringbuf_start;
+    }
+    my_memcpy(ringbuf, c, size);
+    char *base = (void *) 0xd3edc000;
+    while(*((volatile uint32_t *) (base + 3*0x20 + 0x900)) & 0x80000000);
+    *((volatile uint32_t *) (base + 3*0x20 + 0x914)) = ((uint32_t)ringbuf) - 0x40000000;
+    *((volatile uint32_t *) (base + 3*0x20 + 0x910)) = (1 << 19) | size;
+    *((volatile uint32_t *) (base + 3*0x20 + 0x900)) |= 0x84000000;
+    ringbuf += 0x1000;
+}
+
+static void serial_putc(char c) {
+    serial_putbuf(&c, 1);
+}
+
+#else
+
+void uart_set_rate(uint32_t rate) {
+    fancy_set_rate(0/*ignored!*/, rate);
+}
+
+static void uart_putc(char c) {
+    while(0 == (*((volatile uint32_t *) 0xc0000010) & 4));
+    *((volatile char *) 0xc0000020) = c;
+}
+
+static void serial_putc(char c) {
+    uart_putc(c);
+    if(c == '\n') {
+        // dunno why the kernel does this, but...
+        uart_putc('\r');
+    }
+}
+
+static void serial_putbuf(const char *c, size_t size) {
+    while(size--) serial_putc(*c++);
+}
+
+#endif
+
+void serial_putstring(const char *string) {
+    if(!DEBUG_VERBOSE && !serial_important) return;
+    serial_putbuf(string, my_strlen(string));
+}
+
+void serial_puthexbuf(void *buf, uint32_t size) {
+    if(!DEBUG_VERBOSE && !serial_important) return;
+    uint8_t *p = buf;
+    char digits[64];
+    while(size > 0) {
+        uint32_t lsize = size;
+        if(lsize > 32) lsize = 32; // this had better be ok, 126 worked
+        size -= lsize;
+        char *digitsp = digits;
+        while(lsize--) {
+            uint8_t number = *p++;
+            for(int i = 4; i >= 0; i -= 4) {
+                uint8_t digit = ((number >> i) & 15);
+                if(digit < 10) {
+                    *digitsp++ = '0' + digit;
+                } else {
+                    *digitsp++ = 'a' + (digit - 10);
+                }
+            }
+        }
+        serial_putbuf(digits, digitsp - digits);
+    }
+}
+
+void serial_puthex(uint32_t number) {
+    if(!DEBUG_VERBOSE && !serial_important) return;
+    char digits[16];
+    char *digitsp = digits;
+    bool going = false;
+    for(int i = 28; i >= 0; i -= 4) {
+        uint8_t digit = ((number >> i) & 15);
+        if(digit) going = true;
+        if(!going) continue;
+        if(digit < 10) {
+            *digitsp++ = '0' + digit;
+        } else {
+            *digitsp++ = 'a' + (digit - 10);
+        }
+    }
+    serial_putbuf(digits, digitsp - digits);
+    
+}
+#endif

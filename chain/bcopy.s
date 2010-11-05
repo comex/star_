@@ -26,6 +26,7 @@
  * ARMv5 and ARMv6 implementation                                            *
  *****************************************************************************/
  
+#if USE_ASM_FUNCS
 #include <arm/arch.h>
 
 .text
@@ -403,4 +404,4 @@ Lalign3_forward_loop:
 Lexit:
 	ldmfd	sp!, {r0, r4, r5, r7, pc}
 
-
+#endif

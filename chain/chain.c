@@ -1,7 +1,6 @@
 #include "chain.h"
 
-
-#define CMD_ITERATE(hdr, cmd) for(struct load_command *cmd = (void *)((hdr) + 1), *end = (void *)((char *)(hdr) + (hdr)->sizeofcmds); cmd; cmd = (cmd->cmdsize > 0 && cmd->cmdsize < ((char *)end - (char *)cmd)) ? (void *)((char *)cmd + cmd->cmdsize) : NULL)
+#define CMD_ITERATE(hdr, cmd) for(struct load_command *cmd = (void *)((hdr) + 1), *end = (void *)((char *)(hdr) + (hdr)->sizeofcmds); cmd; cmd = (cmd->cmdsize > 0 && cmd->cmdsize < (uint32_t)((char *)end - (char *)cmd)) ? (void *)((char *)cmd + cmd->cmdsize) : NULL)
 
 
 struct mach_header *kern_hdr;
@@ -26,6 +25,11 @@ struct boot_args {
     uint32_t dt_vaddr; // 30 (-> PE_state+0x6c)
     uint32_t dt_size; // 34
     char cmdline[]; // 38
+} __attribute__((packed));
+
+struct memory_map_entry {
+    void *address;
+    uint32_t size;
 } __attribute__((packed));
 
 static const char *placeholders[] = {
@@ -81,7 +85,7 @@ static void vita(uint32_t args_phys, uint32_t jump_phys) {
     asm volatile("mcr p15, 0, r0, c7, c5, 6;" // invalidate branch predictor
                  ::: "r2"); 
 
-#if DEBUG
+#if 0
     // n.b. this is a physical address
     while(0 == (*((volatile uint32_t *) 0x82500010) & 4));
     *((volatile char *) 0x82500020) = '!';
@@ -104,22 +108,57 @@ static void load_it() {
     dt = devicetree;
     char *memory_map_entry = dt_get_entry(&dt, "IODeviceTree:/chosen/memory-map");
     if(!memory_map_entry) {
-        serial_putstring("wtf\n");
+        IOLog("wtf\n");
         return;
     }
 
-    // no kanye 
-    asm volatile("cpsid if");
-
     struct boot_args *args = (struct boot_args *) 0x809d6000; // XXX use ttbr1?
+    
+    const char **placeholders_p = placeholders;
+    struct memory_map_entry s;
+    s.address = args;
+    s.size = sizeof(*args);
+    if(!dt_entry_set_prop(memory_map_entry, *placeholders_p++, "BootArgs", &s, sizeof(s))) {
+        IOLog("Could not put BootArgs in memory map\n");
+        return;
+    }
+    
+    s.address = (void *) args->dt_vaddr;
+    s.size = devicetree_size;
+    if(!dt_entry_set_prop(memory_map_entry, *placeholders_p++, "DeviceTree", &s, sizeof(s))) {
+        IOLog("Could not put DeviceTree in memory map\n");
+        return;
+    }
+    
+    CMD_ITERATE(kern_hdr, cmd) {
+        if(cmd->cmd == LC_SEGMENT) {
+            struct segment_command *seg = (void *) cmd;
+            // update the devicetree
+            static char buf[32] = "Kernel-";
+            my_memcpy(buf + 7, seg->segname, 16);
+            struct memory_map_entry s;
+            s.address = (void *) (seg->vmaddr + args->physbase - args->virtbase);
+            s.size = seg->vmsize;
+            dt_entry_set_prop(memory_map_entry, *placeholders_p++, buf, &s, sizeof(s));
+        }
+    }
+
+#if DEBUG && 0
+    serial_important = true;
+    serial_putstring("New DeviceTree:\n");
+    serial_puthexbuf((void *) devicetree, 0xde78);
+    serial_putstring("\n");
+    serial_important = false;
+#endif
+
+    asm volatile("cpsid if");
+    // no kanye 
     args->v_display = 0; // verbose
     
     serial_putstring("Hi "); serial_puthex(args->dt_vaddr); serial_putstring("\n");
 
     my_memcpy((void *) args->dt_vaddr, devicetree, devicetree_size);
     devicetree = (void *) args->dt_vaddr;
-
-    const char **placeholders_p = placeholders;
 
     uint32_t jump_addr = 0;
 
@@ -131,22 +170,11 @@ static void load_it() {
             struct section *sections = (void *) (seg + 1);
             serial_putstring(seg->segname); serial_putstring("\n");
 
-            // update the devicetree
-            static char buf[32] = "Kernel-";
-            my_memcpy(buf + 7, seg->segname, 16);
-            struct {
-                uint32_t address;
-                uint32_t size;
-            } __attribute__((packed)) s;
-            s.address = seg->vmaddr + args->physbase - args->virtbase;
-            s.size = seg->vmsize;
-            dt_entry_set_prop(memory_map_entry, *placeholders_p++, buf, &s, sizeof(s));
-
             if(seg->filesize > 0) {
                 my_memcpy((void *) seg->vmaddr, ((char *) kern_hdr) + seg->fileoff, seg->filesize);
             }
 
-            for(int i = 0; i < seg->nsects; i++) {
+            for(uint32_t i = 0; i < seg->nsects; i++) {
                 struct section *sect = &sections[i];
                 if((sect->flags & SECTION_TYPE) == S_ZEROFILL) {
                     my_memset((void *) sect->addr, 0, sect->size);
@@ -174,11 +202,13 @@ static void load_it() {
 
     serial_putstring("jump_addr: "); serial_puthex((uint32_t) jump_addr); serial_putstring("\n");
 
-#if DEBUG
     *((uint32_t *) 0x8024d18c) = 0; // disable_debug_output
+#if 0
     static const char c[] = " io=65535 serial=15 debug=15 diag=15";
-    my_memcpy(args->cmdline, c, sizeof(c));
+#else
+    static const char c[] = " io=65535 debug=15 diag=15";
 #endif
+    my_memcpy(args->cmdline, c, sizeof(c));
 
     // "In addition, if the physical address of the code that enables or disables the MMU differs from its MVA, instruction prefetching can cause complications. Therefore, ARM strongly recommends that any code that enables or disables the MMU has identical virtual and physical addresses."
     uint32_t ttbr1;
@@ -192,20 +222,14 @@ static void load_it() {
         pt[i] = (i << 20) | 0x40c0e;
     }
     
-    //serial_putstring("New DeviceTree:\n");
-    //serial_puthexbuf((void *) args->dt_vaddr, 0xde78);
-    //serial_putstring("\n");
-    
-    *((uint32_t *) 0x801dbfe8) = 0xe12fff1e; // bx lr
-
-#if 0
+#if 1
     extern void fffuuu_start(), fffuuu_end();
 #   define fffuuu_addr 0x807d5518
     my_memcpy((void *) fffuuu_addr, (void *) fffuuu_start, ((uint32_t)fffuuu_end - (uint32_t)fffuuu_start));
     static uint32_t jump_to_fu_arm[] = {0xe51ff004, fffuuu_addr};
     static uint16_t jump_to_fu_thumb_al4[] = {0xf8df, 0xf000, fffuuu_addr & 0xffff, fffuuu_addr >> 16};
     static uint16_t jump_to_fu_thumb_notal4[] = {0xbf00, 0xf8df, 0xf000, fffuuu_addr & 0xffff, fffuuu_addr >> 16};
-    my_memcpy((void *) 0x80064364, jump_to_fu_arm, sizeof(jump_to_fu_arm));
+    my_memcpy((void *) 0x8005aadc, jump_to_fu_thumb_al4, sizeof(jump_to_fu_thumb_al4));
 #endif
 
     serial_putstring("invalidating stuff\n");
@@ -252,6 +276,7 @@ int ok_go(void *p, struct args *uap, int32_t *retval) {
     kern_hdr = kalloc(uap->kern_size);
     copyin(uap->kern_hdr, kern_hdr, uap->kern_size);
     devicetree = kalloc(uap->devicetree_size);
+    devicetree_size = uap->devicetree_size;
     copyin(uap->devicetree, devicetree, uap->devicetree_size);
 
     load_it();

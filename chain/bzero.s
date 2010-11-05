@@ -21,6 +21,7 @@
  * @APPLE_LICENSE_HEADER_END@
  */
 
+#if USE_ASM_FUNCS
 #include <mach/machine/asm.h>
 	
 /* 
@@ -158,4 +159,4 @@ L_unaligned:
 	bge		L_64ormorealigned
 	b		L_lessthan64aligned
 
-
+#endif

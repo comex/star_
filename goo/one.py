@@ -36,8 +36,6 @@ def f(x):
         fp.write(struct.pack('I', x))
         OFF += 4
 
-lc_size = 0x7c + 0x50 + 0x18 # size of load commands
-
 f(0xfeedface) # magic
 if arch == 'armv6':
     f(12) # CPU_TYPE_ARM
@@ -49,61 +47,24 @@ elif arch == 'i386':
     f(7)
     f(3)
 f(2) # MH_EXECUTE
-f(10) # number of load commands
+f(4) # number of load commands
 f(0) # sizeofcmds; overwrite this
-f(0x1 | 0x4 | 0x80) # flags: NOUNDEFS DYLDLINK TWOLEVEL
+f(0x1) # flags: NOUNDEFS
 
 # Load commands
-# LC_SEGMENT
-f(1) 
-f(56 + 0*68)
-f('__PAGEZERO' + '\0'*6)
-f(0) # vmaddr
-f(4096) # vmsize
-f(0) # fileoff
-f(0) # filesize
-f(0) # maxprot = VM_PROT_READ | VM_PROT_WRITE
-f(0) # initprot = VM_PROT_READ | VM_PROT_WRITE
-f(0) # no sections
-f(0) # flags=0
-# LC_SEGMENT
-f(1) 
-f(56 + 0*68)
-f('__TEXT' + '\0'*10)
-f(0x20000000) # vmaddr
-f(4096) # vmsize
-f(0) # fileoff
-f(0) # filesize
-f(5) # maxprot = VM_PROT_READ | VM_PROT_WRITE
-f(5) # initprot = VM_PROT_READ | VM_PROT_WRITE
-f(0) # no sections
-f(0) # flags=0
 
 # LC_SEGMENT
 f(1) 
-f(56 + 1*68)
+f(56 + 0*68)
 f('__LINKEDIT' + '\0'*6)
-f(baseaddr) # vmaddr
-f(beforesize) # vmsize
+f(0x1000) # vmaddr
+f(0x2000) # vmsize
 f(0) # fileoff
-f(0) # filesize
-f(5) # maxprot = VM_PROT_READ | VM_PROT_WRITE
-f(5) # initprot = VM_PROT_READ | VM_PROT_WRITE
-f(1) # no sections
-f(0) # flags=0
-
-# Section 1
-f('__text' + '\0'*10)
-f('__LINKEDIT' + '\0'*6)
-f(baseaddr) # address
-f(beforesize) # size
-f(0) # off
-f(0) # align
-f(0) # reloff
-f(0) # nreloc
-f(0) # flags 
-f(0) # reserved1
-f(0) # reserved2
+f(0x2000) # filesize
+f(3) # maxprot = VM_PROT_READ | VM_PROT_WRITE
+f(3) # initprot = VM_PROT_READ | VM_PROT_WRITE
+f(0) # no sections
+f(4) # flags=SG_NORELOC
 
 # LC_SEGMENT
 f(1) 
@@ -116,43 +77,23 @@ f(heapsize) # filesize
 f(3) # maxprot = VM_PROT_READ | VM_PROT_WRITE
 f(3) # initprot = VM_PROT_READ | VM_PROT_WRITE
 f(0) # no sections
-f(0) # flags=0
+f(4) # flags=SG_NORELOC
 
-# dyld crashes without this
-f(0xb) # LC_DYSYMTAB
-f(0x50)
-f(0); f(0) # local
-f(0); f(0) # extdef
-f(0); f(0) # undef
-f(0); f(0) # toc
-f(0); f(0) # modtab
-f(0); f(0) # extrefsym
-f(0); f(0) # indirectsym
-f(0); f(0) # extrel
-f(0); f(0) # locrel
-
-# this too
-f(2) # LC_SYMTAB
-f(4*6)
-f(0) # symoff
-f(0) # nsyms
-f(0) # stroff
-f(0) # strsize
+# LC_SEGMENT
+f(1) 
+f(56 + 0*68)
+f('__TEXT' + '\0'*10)
+f(baseaddr) # vmaddr
+f(beforesize) # vmsize
+f(0) # fileoff
+f(0) # filesize
+f(5) # maxprot = VM_PROT_READ | VM_PROT_WRITE
+f(5) # initprot = VM_PROT_READ | VM_PROT_WRITE
+f(0) # no sections
+f(4) # flags=SG_NORELOC
 
 
-dylinker = '/usr/lib/dyld\0\0\0'
-# LC_LOAD_DYLINKER
-f(0xe)
-f(12 + len(dylinker))
-f(12)
-f(dylinker)
-
-# LC_UUID
-f(0x1b)
-f(8 + 16)
-f('\xde\xad\xbe\xef' * 4)
-
-# LC_THREAD
+# LC_UNIXTHREAD
 f(5)
 f(16 + 17*4)
 f(1) # ARM_THREAD_STATE
@@ -160,26 +101,10 @@ f(17) # ARM_THREAD_STATE_COUNT
 
 # In the future I should use all of these...
 for i in xrange(13): f(0) # R0-R12
-f(0xdeadbeec) # SP
+f(0) # SP
 f(0) # LR
-f(0xdeadbeec) # PC
+f(0x2002) # PC
 f(0) # CPSR
-
-dylib = '/usr/lib/libSystem.B.dylib\0\0'
-# LC_LOAD_DYLIB
-f(0xc)
-f(24 + len(dylib))
-f(24)
-f(0)
-f(0x007d0400)
-f(0x00010000)
-f(dylib)
-
-# LC_CODE_SIGNATURE
-f(0x1d)
-f(16)
-f(0) # off
-f(0) # size
 
 # overwrite sizeofcmds
 fp.seek(0x14)
@@ -191,5 +116,9 @@ fp.seek(0x1000)
 heapoff = fp.tell()
 fp.write(heap)
 
+fp.seek(0x2ffc)
+fp.write('\x00\x00\x00\x00')
+
 fp.close()
 os.chmod('one', 0o755)
+
