@@ -51,7 +51,7 @@ size_t my_strlen(const char *a) {
 
 bool serial_important = false;
 
-#if 1 // USB
+#if !HAVE_SERIAL // USB
 static char *ringbuf_start = (char *) 0x807d6000;
 static char *ringbuf = NULL;
 static size_t ringbuf_size = 0x3000;
@@ -68,7 +68,7 @@ static void serial_putbuf(const char *c, size_t size) {
     char *base = (void *) 0xd3edc000;
     while(*((volatile uint32_t *) (base + 3*0x20 + 0x900)) & 0x80000000);
     *((volatile uint32_t *) (base + 3*0x20 + 0x914)) = ((uint32_t)ringbuf) - 0x40000000;
-    *((volatile uint32_t *) (base + 3*0x20 + 0x910)) = (1 << 19) | size;
+    *((volatile uint32_t *) (base + 3*0x20 + 0x910)) = (((size + 63) & ~63) << 19) | size;
     *((volatile uint32_t *) (base + 3*0x20 + 0x900)) |= 0x84000000;
     ringbuf += 0x1000;
 }

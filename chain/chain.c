@@ -202,8 +202,7 @@ static void load_it() {
 
     serial_putstring("jump_addr: "); serial_puthex((uint32_t) jump_addr); serial_putstring("\n");
 
-    *((uint32_t *) 0x8024d18c) = 0; // disable_debug_output
-#if 0
+#if HAVE_SERIAL
     static const char c[] = " io=65535 serial=15 debug=15 diag=15";
 #else
     static const char c[] = " io=65535 debug=15 diag=15";
@@ -229,7 +228,7 @@ static void load_it() {
     static uint32_t jump_to_fu_arm[] = {0xe51ff004, fffuuu_addr};
     static uint16_t jump_to_fu_thumb_al4[] = {0xf8df, 0xf000, fffuuu_addr & 0xffff, fffuuu_addr >> 16};
     static uint16_t jump_to_fu_thumb_notal4[] = {0xbf00, 0xf8df, 0xf000, fffuuu_addr & 0xffff, fffuuu_addr >> 16};
-    my_memcpy((void *) 0x8005aadc, jump_to_fu_thumb_al4, sizeof(jump_to_fu_thumb_al4));
+    my_memcpy((void *) 0x80069acc, jump_to_fu_arm, sizeof(jump_to_fu_arm));
 #endif
 
     serial_putstring("invalidating stuff\n");
