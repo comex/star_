@@ -5,10 +5,9 @@ import fabricate
 fabricate.default_builder.deps # do this before we chdir
 import sys, os
 ROOT = os.path.realpath(os.path.dirname(sys.argv[0]))
-sys.path.append(ROOT + '/config')
-os.environ['PYTHONPATH'] = ':'.join([(ROOT + '/config'), (ROOT + '/goo')])
+os.environ['PYTHONPATH'] = ROOT + '/goo'
 
-GCC_FLAGS = ['-std=gnu99', '-gdwarf-2', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wextra', '-Wreturn-type', '-Os']
+GCC_FLAGS = ['-std=gnu99', '-gdwarf-2', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wall', '-Wextra', '-Wreturn-type', '-Wno-unused', '-Os']
 SDK = '/var/sdk'
 BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
 GCC_BIN = BIN + '/gcc-4.2'
@@ -111,14 +110,9 @@ data_common_files = ['binary.c', 'find.c', 'common.c']
 data_files = data_common_files + ['data.c']
 data_upgrade_files = data_files + ['cc.c', 'lzss.c']
 white_loader_files = data_common_files + ['white_loader.c']
-def data_prereq():
-    # config for insane first
-    goo_pf()
-    pf2()
-    goto('data')
 
 def data():
-    data_prereq()
+    goto('data')
     compile_stuff(data_upgrade_files, 'data', 'ent.plist', cflags='-DIMG3_SUPPORT')
 
 def upgrade_data():
@@ -128,7 +122,7 @@ def upgrade_data():
     run('./build-deb.sh')
 
 def data_native():
-    data_prereq()
+    goto('data')
     compile_stuff(data_upgrade_files, 'data', gcc=GCC_NATIVE, ldid=False, cflags='-DIMG3_SUPPORT')
 
 def white_loader():
