@@ -57,7 +57,9 @@ __attribute__((always_inline)) static inline void invalidate_tlb() {
                  "mcr p15, 0, r2, c8, c7, 0;" // invalidate entire unified TLB
                  "mcr p15, 0, r2, c8, c6, 0;" // invalidate entire data TLB
                  "mcr p15, 0, r2, c8, c5, 0;" // invalidate entire instruction TLB
-                 "dsb; isb" ::: "r2");
+                 "mcr p15, 0, r2, c7, c10, 4;" // DSB
+                 "mcr p15, 0, r2, c7, c5, 4;" // ISB
+                 ::: "r2");
                  
 }
 

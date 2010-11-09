@@ -8,15 +8,12 @@ ROOT = os.path.realpath(os.path.dirname(sys.argv[0]))
 sys.path.append(ROOT + '/config')
 os.environ['PYTHONPATH'] = ':'.join([(ROOT + '/config'), (ROOT + '/goo')])
 
-import config
-cfg = config.openconfig()
-
 GCC_FLAGS = ['-std=gnu99', '-gdwarf-2', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wextra', '-Wreturn-type', '-Os']
 SDK = '/var/sdk'
 BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
 GCC_BIN = BIN + '/gcc-4.2'
 GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fno-blocks', '-mapcs-frame', '-fomit-frame-pointer']
-GCC = [GCC_BASE, '-arch', cfg['arch'], '-mthumb']
+GCC = [GCC_BASE, '-arch', 'armv6', '-mthumb']
 GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7', '-mthumb']
 GCC_NATIVE = ['gcc', GCC_FLAGS]
 HEADERS = ROOT + '/headers'
@@ -105,13 +102,13 @@ def pf2():
 
 def chain():
     goto('chain')
-    cf = ['-DDEBUG=0', '-DDEBUG_VERBOSE=0', '-DHAVE_SERIAL=0', '-DUSE_ASM_FUNCS=1', '-fblocks']
+    cf = ['-marm', '-DDEBUG=0', '-DDEBUG_VERBOSE=0', '-DHAVE_SERIAL=0', '-DUSE_ASM_FUNCS=1', '-fblocks']
     ldf=['-dynamiclib', '-nostdlib', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-read_only_relocs', 'suppress']
     compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', cflags=cf, ldflags=ldf, strip=False)
     compile_stuff(['chain-user.c'], 'chain-user')
 
 data_common_files = ['binary.c', 'find.c', 'common.c']
-data_files = data_common_files + ['data.c', 'one.c', 'pf2.c']
+data_files = data_common_files + ['data.c']
 data_upgrade_files = data_files + ['cc.c', 'lzss.c']
 white_loader_files = data_common_files + ['white_loader.c']
 def data_prereq():
@@ -119,14 +116,8 @@ def data_prereq():
     goo_pf()
     pf2()
     goto('data')
-    run('sh', '-c', 'cp ../goo/pf/one.dylib one.bin; xxd -i one.bin > one.c')
-    run('sh', '-c', 'cp ../pf2/pf2 pf2.bin; xxd -i pf2.bin > pf2.c')
 
 def data():
-    data_prereq()
-    compile_stuff(data_files, 'data', 'ent.plist')
-
-def data_upgrade():
     data_prereq()
     compile_stuff(data_upgrade_files, 'data', 'ent.plist', cflags='-DIMG3_SUPPORT')
 
@@ -138,7 +129,7 @@ def upgrade_data():
 
 def data_native():
     data_prereq()
-    compile_stuff(data_files, 'data', gcc=GCC_NATIVE, ldid=False)
+    compile_stuff(data_upgrade_files, 'data', gcc=GCC_NATIVE, ldid=False, cflags='-DIMG3_SUPPORT')
 
 def white_loader():
     goto('data')

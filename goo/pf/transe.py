@@ -1,5 +1,5 @@
 #!/opt/local/bin/python2.6
-from world1 import *
+from world2 import *
 import config
 cfg = config.openconfig()
 

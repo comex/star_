@@ -69,9 +69,9 @@ if fs_key is not None:
         arch = 'armv6'
     else:
         arch = 'armv7'
-    system('~/xpwnbin/hfsplus temproot.img extract /sbin/launchd %s/launchd' % output)
+    system('~/xpwnbin/hfsplus temproot.img extract /usr/lib/dyld %s/dyld' % output)
 
-    os.chmod('%s/launchd' % output, 0755)
+    os.chmod('%s/dyld' % output, 0755)
     os.unlink('temproot.img')
     os.unlink(fs_name)
 else:
