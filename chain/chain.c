@@ -84,8 +84,7 @@ static void vita(uint32_t args_phys, uint32_t jump_phys) {
 
      
     invalidate_tlb();
-    asm volatile("mcr p15, 0, r0, c7, c5, 6;" // invalidate branch predictor
-                 ::: "r2"); 
+    asm volatile("mcr p15, 0, r0, c7, c5, 6;"); // invalidate branch predictor
 
 #if 0
     // n.b. this is a physical address
@@ -217,12 +216,22 @@ static void load_it() {
     uint32_t *pt = (uint32_t *) ((ttbr1 & 0xffffc000) + args->virtbase - args->physbase);
 
     serial_putstring("pt: "); serial_puthex((uint32_t) pt); serial_putstring("  old entry: "); serial_puthex(pt[0x400]);  serial_putstring("  at 80000000: "); serial_puthex(pt[0x800]); serial_putstring("\n");
-
+    
+#if 1
+    // debug a jump to 0
+    *((uint32_t *) 0x80065090) = 0xe1a00000; // remove the kernel's zero...
+    flush_cache((void *) 0x80065000, 0x1000);
+    pt[0] = pt[0x1000] = (0x400 << 20) | 0x40c0e; // but wait...
+    serial_putstring("setting "); serial_puthex((uint32_t) &pt[0]); serial_putstring("\n");
+    // .long 0x4778; mov r10, lr; mov r11, sp; ldr pc, [pc, #-4]; .long 0x0badbadb
+    static uint32_t omg[] = {0x00004778, 0xe1a0a00e, 0xe1a0b00d, 0xe51ff004, 0x0badbadb};
+    my_memcpy((void *) 0x80000000, omg, sizeof(omg));
+#endif
 
     for(uint32_t i = 0x400; i < 0x420; i++) {
         pt[i] = (i << 20) | 0x40c0e;
     }
-    
+
 #if 1
     extern void fffuuu_start(), fffuuu_end();
 #   define fffuuu_addr 0x807d5518
@@ -230,12 +239,14 @@ static void load_it() {
     static uint32_t jump_to_fu_arm[] = {0xe51ff004, fffuuu_addr};
     static uint16_t jump_to_fu_thumb_al4[] = {0xf8df, 0xf000, fffuuu_addr & 0xffff, fffuuu_addr >> 16};
     static uint16_t jump_to_fu_thumb_notal4[] = {0xbf00, 0xf8df, 0xf000, fffuuu_addr & 0xffff, fffuuu_addr >> 16};
-    my_memcpy((void *) 0x80069acc, jump_to_fu_arm, sizeof(jump_to_fu_arm));
+    // 80069acc - _sleh_abort
+    // 80064310 - prefetch abort in system mode
+    // 800643c8 - data abort in system mode
+    my_memcpy((void *) 0x80064310, jump_to_fu_arm, sizeof(jump_to_fu_arm));
 #endif
 
     serial_putstring("invalidating stuff\n");
-
-    flush_cache(&pt[0x400], 0x20*sizeof(uint32_t));
+    flush_cache(&pt[0], 0x2000*sizeof(uint32_t));
     invalidate_tlb();
     
     uint32_t sz = 0x100;
@@ -255,7 +266,7 @@ static void load_it() {
     serial_puthex(*((uint32_t *) jump_addr));
     serial_putstring("\n");
 
-    ((void (*)(uint32_t, uint32_t)) 0x40000001)(args_phys, jump_phys);
+    ((void (*)(uint32_t, uint32_t)) 0x40000000)(args_phys, jump_phys);
 
     serial_putstring("it returned?\n");
 }

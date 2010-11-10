@@ -52,11 +52,19 @@ size_t my_strlen(const char *a) {
 bool serial_important = false;
 
 #if !HAVE_SERIAL // USB
+
+static char *usb_base = (char *) 0xd3edc000; // -> 86100000
+static char *gpio_base = (char *) 0xc9d9d000; // -> bfa00000
 static char *ringbuf_start = (char *) 0x807d6000;
 static char *ringbuf = NULL;
 static size_t ringbuf_size = 0x3000;
 
 void uart_set_rate(uint32_t rate) {
+}
+
+static void poke_wdt() {
+    volatile uint32_t *wdt = (void *) (gpio_base + 0x4c);
+    *wdt = (*wdt == 0x212) ? 0x213 : 0x212;
 }
 
 static void serial_putbuf(const char *c, size_t size) {
@@ -65,12 +73,15 @@ static void serial_putbuf(const char *c, size_t size) {
         ringbuf = ringbuf_start;
     }
     my_memcpy(ringbuf, c, size);
-    char *base = (void *) 0xd3edc000;
-    while(*((volatile uint32_t *) (base + 3*0x20 + 0x900)) & 0x80000000);
-    *((volatile uint32_t *) (base + 3*0x20 + 0x914)) = ((uint32_t)ringbuf) - 0x40000000;
-    *((volatile uint32_t *) (base + 3*0x20 + 0x910)) = (((size + 63) & ~63) << 19) | size;
-    *((volatile uint32_t *) (base + 3*0x20 + 0x900)) |= 0x84000000;
-    ringbuf += 0x1000;
+    for(uintptr_t p = (uintptr_t) ringbuf; p < ((uintptr_t) ringbuf) + size; p += 0x10) {
+        asm volatile("mcr p15, 0, %0, c7, c14, 1" :: "r"(p));
+    }
+    poke_wdt();
+    while(*((volatile uint32_t *) (usb_base + 3*0x20 + 0x900)) & 0x80000000);
+    *((volatile uint32_t *) (usb_base + 3*0x20 + 0x914)) = ((uint32_t)ringbuf) - 0x40000000;
+    *((volatile uint32_t *) (usb_base + 3*0x20 + 0x910)) = (((size + 63) / 64) << 19) | size;
+    *((volatile uint32_t *) (usb_base + 3*0x20 + 0x900)) |= 0x84000000;
+    ringbuf += 64;
 }
 
 static void serial_putc(char c) {
