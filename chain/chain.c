@@ -217,17 +217,6 @@ static void load_it() {
 
     serial_putstring("pt: "); serial_puthex((uint32_t) pt); serial_putstring("  old entry: "); serial_puthex(pt[0x400]);  serial_putstring("  at 80000000: "); serial_puthex(pt[0x800]); serial_putstring("\n");
     
-#if 1
-    // debug a jump to 0
-    *((uint32_t *) 0x80065090) = 0xe1a00000; // remove the kernel's zero...
-    flush_cache((void *) 0x80065000, 0x1000);
-    pt[0] = pt[0x1000] = (0x400 << 20) | 0x40c0e; // but wait...
-    serial_putstring("setting "); serial_puthex((uint32_t) &pt[0]); serial_putstring("\n");
-    // .long 0x4778; mov r10, lr; mov r11, sp; ldr pc, [pc, #-4]; .long 0x0badbadb
-    static uint32_t omg[] = {0x00004778, 0xe1a0a00e, 0xe1a0b00d, 0xe51ff004, 0x0badbadb};
-    my_memcpy((void *) 0x80000000, omg, sizeof(omg));
-#endif
-
     for(uint32_t i = 0x400; i < 0x420; i++) {
         pt[i] = (i << 20) | 0x40c0e;
     }
