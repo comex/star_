@@ -101,10 +101,10 @@ def pf2():
 
 def chain():
     goto('chain')
-    cf = ['-marm', '-DDEBUG=0', '-DDEBUG_VERBOSE=0', '-DHAVE_SERIAL=0', '-DUSE_ASM_FUNCS=1', '-fblocks']
+    cf = ['-marm', '-DDEBUG=1', '-DDEBUG_VERBOSE=1', '-DPUTC=1', '-DHAVE_SERIAL=0', '-DUSE_ASM_FUNCS=1', '-fblocks']
     ldf=['-dynamiclib', '-nostdlib', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-read_only_relocs', 'suppress']
-    compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', cflags=cf, ldflags=ldf, strip=False)
-    compile_stuff(['chain-user.c'], 'chain-user')
+    compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', cflags=cf, ldflags=ldf, strip=False)
+    compile_stuff(['chain-user.c'], 'chain-user', ldflags=['-framework', 'IOKit', '-framework', 'CoreFoundation'])
 
 data_common_files = ['binary.c', 'find.c', 'common.c']
 data_files = data_common_files + ['data.c']

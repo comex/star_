@@ -99,12 +99,67 @@ static void vita(uint32_t args_phys, uint32_t jump_phys) {
 }
 
 static void load_it() {
+    void *regentry = IORegistryEntry_fromPath("IOService:/AppleARMPE/arm-io/AppleS5L8930XIO/vic", NULL, NULL, NULL, NULL);
+    if(!regentry) {
+        IOLog("Could not look up vic\n");
+        return;
+    }
+    void *map = IOService_mapDeviceMemoryWithIndex(regentry, 0, 0);
+    if(!map) {
+        IOLog("Could not map vic device memory\n");
+        return;
+    }
+    volatile char *vic = IOMemoryMap_getAddress(map);
+
     uart_set_rate(115200);
 
     char *dt;
     
     dt = devicetree;
     dt_super_iterate(&dt);
+
+    //return;
+    
+    uint32_t frequency = 0;
+    if(!dt_entry_set_prop(devicetree, "clock-frequency", NULL, &frequency, sizeof(frequency))) {
+        IOLog("couldn't set /clock-frequency to 0\n");
+        return;
+    }
+
+    dt = devicetree;
+    char *cpus = dt_get_entry(&dt, "IODeviceTree:/cpus/cpu0");
+    if(!cpus) {
+        IOLog("couldn't get /cpus/cpu0\n");
+        return;
+    }
+
+    frequency = 200000000;
+    if(!dt_entry_set_prop(cpus, "memory-frequency", NULL, &frequency, sizeof(frequency))) {
+        IOLog("couldn't set /cpus/cpu0/memory-frequency\n");
+        return;
+    }
+    
+    frequency = 800000000;
+    if(!dt_entry_set_prop(cpus, "clock-frequency", NULL, &frequency, sizeof(frequency))) {
+        IOLog("couldn't set /cpus/cpu0/clock-frequency\n");
+        return;
+    }
+
+#if 1
+    dt = devicetree;
+    char *usb_complex_entry = dt_get_entry(&dt, "IODeviceTree:/arm-io/usb-complex");
+    if(!usb_complex_entry || !dt_entry_set_prop(usb_complex_entry, "compatible", NULL, "", 1)) { 
+        IOLog("wtf usb-complex\n");
+        return;
+    }
+
+    dt = devicetree;
+    char *usb_device_entry = dt_get_entry(&dt, "IODeviceTree:/arm-io/usb-complex/usb-device");
+    if(!usb_device_entry || !dt_entry_set_prop(usb_device_entry, "compatible", NULL, "", 1)) { 
+        IOLog("wtf usb-device\n");
+        return;
+    }
+#endif
 
     dt = devicetree;
     char *memory_map_entry = dt_get_entry(&dt, "IODeviceTree:/chosen/memory-map");
@@ -152,8 +207,22 @@ static void load_it() {
     serial_important = false;
 #endif
 
-    asm volatile("cpsid if");
+    //return;
+
     // no kanye 
+    asm volatile("cpsid if");
+
+    // stuff from openiboot
+    for(int i = 0; i <= 3; i++) {
+        volatile uint32_t *thisvic = (volatile void *) (vic + 0x10000 * i);
+        thisvic[0x14/4] = 0xffffffff;
+        // openiboot does this but I don't think iBoot does - is it correct here?
+        thisvic[0x24/4] = 0xffff;
+        for(int j = 0; j < 0x20; j++) {
+            thisvic[0x100/4 + j] = i*0x20 + j;
+        }
+    }
+
     args->v_display = 0; // verbose
     
     serial_putstring("Hi "); serial_puthex(args->dt_vaddr); serial_putstring("\n");
@@ -203,10 +272,10 @@ static void load_it() {
 
     serial_putstring("jump_addr: "); serial_puthex((uint32_t) jump_addr); serial_putstring("\n");
 
-#if HAVE_SERIAL
-    static const char c[] = " io=65535 serial=15 debug=15 diag=15";
+#if PUTC || HAVE_SERIAL
+    static const char c[] = " io=4095 serial=15 diag=15 sdio.debug.init-delay=5000 sdio.log.level=65535 sdio.log.flags=1 debug=10";
 #else
-    static const char c[] = " io=65535 debug=15 diag=15";
+    static const char c[] = " io=4095 diag=15";
 #endif
     my_memcpy(args->cmdline, c, sizeof(c));
 
@@ -221,17 +290,41 @@ static void load_it() {
         pt[i] = (i << 20) | 0x40c0e;
     }
 
-#if 1
-    extern void fffuuu_start(), fffuuu_end();
-#   define fffuuu_addr 0x807d5518
-    my_memcpy((void *) fffuuu_addr, (void *) fffuuu_start, ((uint32_t)fffuuu_end - (uint32_t)fffuuu_start));
-    static uint32_t jump_to_fu_arm[] = {0xe51ff004, fffuuu_addr};
-    static uint16_t jump_to_fu_thumb_al4[] = {0xf8df, 0xf000, fffuuu_addr & 0xffff, fffuuu_addr >> 16};
-    static uint16_t jump_to_fu_thumb_notal4[] = {0xbf00, 0xf8df, 0xf000, fffuuu_addr & 0xffff, fffuuu_addr >> 16};
+    // TODO fix this for armv6
+#define place_thing(thing, addr, hookaddr) \
+    do { \
+        extern void thing##_start(), thing##_end(); \
+        my_memcpy((void *) addr, (void *) thing##_start, ((uint32_t)thing##_end - (uint32_t)thing##_start)); \
+        static uint32_t jump_to_fu_arm[] = {0xe51ff004, addr}; \
+        static uint16_t jump_to_fu_thumb_al4[] = {0xf8df, 0xf000, addr & 0xffff, addr >> 16}; \
+        static uint16_t jump_to_fu_thumb_notal4[] = {0xbf00, 0xf8df, 0xf000, addr & 0xffff, addr >> 16}; \
+        switch(hookaddr & 3) { \
+        case 3: \
+            my_memcpy((void *) (hookaddr - 1), jump_to_fu_thumb_notal4, sizeof(jump_to_fu_thumb_notal4)); \
+            break; \
+        case 1: \
+            my_memcpy((void *) (hookaddr - 1), jump_to_fu_thumb_al4, sizeof(jump_to_fu_thumb_al4)); \
+            break; \
+        case 2: \
+        case 0: \
+            my_memcpy((void *) hookaddr, jump_to_fu_arm, sizeof(jump_to_fu_arm)); \
+            break; \
+        } \
+    } while(0)
+
+    *((uint16_t *) 0x807261d4) = 0x4770; // patch idie
+
+#if PUTC
     // 80069acc - _sleh_abort
     // 80064310 - prefetch abort in system mode
     // 800643c8 - data abort in system mode
-    my_memcpy((void *) 0x80064310, jump_to_fu_arm, sizeof(jump_to_fu_arm));
+    // 800152f1 - panic
+    // 80067c59 - Debugger
+    place_thing(fffuuu, 0x807d5518, 0x80867645);
+
+    place_thing(putc, 0x807d6518, 0x8001abb5);
+    place_thing(putc, 0x807d6518, 0x8001ab59);
+    place_thing(putc, 0x807d6518, 0x8015f259);
 #endif
 
     serial_putstring("invalidating stuff\n");
@@ -254,6 +347,12 @@ static void load_it() {
     serial_putstring(" btw, what I'm jumping to looks like ");
     serial_puthex(*((uint32_t *) jump_addr));
     serial_putstring("\n");
+
+    *((uint32_t *) 0x8000011c) = 0; // for putc
+
+    void (*p)(char) = (void *) 0x8001abb5;
+    p('h'); p('i'); 
+    p('\n');
 
     ((void (*)(uint32_t, uint32_t)) 0x40000000)(args_phys, jump_phys);
 
