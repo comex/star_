@@ -32,7 +32,6 @@ def F(*frameworks):
 
 def compile_to_bin(output, input=None, flags=[]):
     # requires machdump
-    if input is None: input = [filename]
     ofile = output + '.o'
     binfile = output + '.bin'
     run(GCC, '-o', ofile, input, flags, '-nostdlib', '-nodefaultlibs', '-nostartfiles')
@@ -101,19 +100,17 @@ def pf2():
 
 def chain():
     goto('chain')
-    cf = ['-marm', '-DDEBUG=1', '-DDEBUG_VERBOSE=1', '-DPUTC=1', '-DHAVE_SERIAL=0', '-DUSE_ASM_FUNCS=1', '-fblocks']
+    cf = ['-marm', '-DDEBUG=1', '-DDEBUG_VERBOSE=1', '-DPUTC=0', '-DHAVE_SERIAL=1', '-DUSE_ASM_FUNCS=1', '-fblocks']
     ldf=['-dynamiclib', '-nostdlib', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-read_only_relocs', 'suppress']
     compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', cflags=cf, ldflags=ldf, strip=False)
     compile_stuff(['chain-user.c'], 'chain-user', ldflags=['-framework', 'IOKit', '-framework', 'CoreFoundation'])
 
-data_common_files = ['binary.c', 'find.c', 'common.c']
-data_files = data_common_files + ['data.c']
-data_upgrade_files = data_files + ['cc.c', 'lzss.c']
-white_loader_files = data_common_files + ['white_loader.c']
+data_files = ['binary.c', 'find.c', 'common.c', 'cc.c', 'lzss.c']
 
-def data():
+def data(gcc=GCC, ldid=True):
     goto('data')
-    compile_stuff(data_upgrade_files, 'data', 'ent.plist', cflags='-DIMG3_SUPPORT')
+    compile_stuff(data_files + ['deplaceholder.c'], 'deplaceholder', cflags='-DIMG3_SUPPORT', gcc=gcc, ldid=ldid)
+    compile_stuff(data_files + ['kernel_patcher.c'], 'kernel_patcher', 'ent.plist', cflags='-DIMG3_SUPPORT', gcc=gcc, ldid=ldid)
 
 def upgrade_data():
     data_upgrade()
@@ -122,16 +119,11 @@ def upgrade_data():
     run('./build-deb.sh')
 
 def data_native():
-    goto('data')
-    compile_stuff(data_upgrade_files, 'data', gcc=GCC_NATIVE, ldid=False, cflags='-DIMG3_SUPPORT')
+    data(GCC_NATIVE, False)
 
-def white_loader():
-    goto('data')
-    compile_stuff(white_loader_files, 'white_loader')
-
-def pf():
-    goo_pf()
-    pf2()
+def sandbox2():
+    goto('sandbox2')
+    compile_to_bin('sandbox', ['sandbox.S'], ['-D_patch_start=start'])
 
 def clean():
     autoclean()

@@ -273,7 +273,11 @@ static void load_it() {
     serial_putstring("jump_addr: "); serial_puthex((uint32_t) jump_addr); serial_putstring("\n");
 
 #if PUTC || HAVE_SERIAL
-    static const char c[] = " io=4095 serial=15 diag=15 sdio.debug.init-delay=5000 sdio.log.level=65535 sdio.log.flags=1 debug=10";
+    static const char c[] = " io=4095 serial=15 diag=15 sdio.debug.init-delay=10000 sdio.log.level=65535 sdio.log.flags=1"
+#   if PUTC
+        " debug=0xa"
+#   endif
+    ;
 #else
     static const char c[] = " io=4095 diag=15";
 #endif
@@ -320,11 +324,12 @@ static void load_it() {
     // 800643c8 - data abort in system mode
     // 800152f1 - panic
     // 80067c59 - Debugger
-    place_thing(fffuuu, 0x807d5518, 0x80867645);
+    //place_thing(fffuuu, 0x807d5518, 0x80867645);
 
     place_thing(putc, 0x807d6518, 0x8001abb5);
     place_thing(putc, 0x807d6518, 0x8001ab59);
     place_thing(putc, 0x807d6518, 0x8015f259);
+    place_thing(putc, 0x807d6518, 0x8006a93d);
 #endif
 
     serial_putstring("invalidating stuff\n");

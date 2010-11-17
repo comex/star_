@@ -84,7 +84,7 @@ if '3.1.' in identifier:
 #    arch += '_3.2+'
 
 # allow for customization.
-if not eval('{%s}' % open(configdata).read())['all'].has_key(identifier):
+if False and not eval('{%s}' % open(configdata).read())['all'].has_key(identifier):
     print 'Add this to configdata.py:'
     new = '''
     '*X*': {
