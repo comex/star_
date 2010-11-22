@@ -98,18 +98,29 @@ static void vita(uint32_t args_phys, uint32_t jump_phys) {
     ptr(args_phys);
 }
 
-static void load_it() {
+static volatile char *vic;
+static struct boot_args *args;
+static const char **placeholders_p;
+
+extern int (*PE_halt_restart)(unsigned int type);
+extern int PEHaltRestart(unsigned int type);
+#define kPEHaltCPU 0
+#define kPERestartCPU 1
+
+static int phase_2(unsigned int type);
+
+static int phase_1() {
     void *regentry = IORegistryEntry_fromPath("IOService:/AppleARMPE/arm-io/AppleS5L8930XIO/vic", NULL, NULL, NULL, NULL);
     if(!regentry) {
         IOLog("Could not look up vic\n");
-        return;
+        return -1;
     }
     void *map = IOService_mapDeviceMemoryWithIndex(regentry, 0, 0);
     if(!map) {
         IOLog("Could not map vic device memory\n");
-        return;
+        return -1;
     }
-    volatile char *vic = IOMemoryMap_getAddress(map);
+    vic = IOMemoryMap_getAddress(map);
 
     uart_set_rate(115200);
 
@@ -123,26 +134,26 @@ static void load_it() {
     uint32_t frequency = 0;
     if(!dt_entry_set_prop(devicetree, "clock-frequency", NULL, &frequency, sizeof(frequency))) {
         IOLog("couldn't set /clock-frequency to 0\n");
-        return;
+        return -1;
     }
 
     dt = devicetree;
     char *cpus = dt_get_entry(&dt, "IODeviceTree:/cpus/cpu0");
     if(!cpus) {
         IOLog("couldn't get /cpus/cpu0\n");
-        return;
+        return -1;
     }
 
     frequency = 200000000;
     if(!dt_entry_set_prop(cpus, "memory-frequency", NULL, &frequency, sizeof(frequency))) {
         IOLog("couldn't set /cpus/cpu0/memory-frequency\n");
-        return;
+        return -1;
     }
     
     frequency = 800000000;
     if(!dt_entry_set_prop(cpus, "clock-frequency", NULL, &frequency, sizeof(frequency))) {
         IOLog("couldn't set /cpus/cpu0/clock-frequency\n");
-        return;
+        return -1;
     }
 
 #if 1
@@ -150,14 +161,14 @@ static void load_it() {
     char *usb_complex_entry = dt_get_entry(&dt, "IODeviceTree:/arm-io/usb-complex");
     if(!usb_complex_entry || !dt_entry_set_prop(usb_complex_entry, "compatible", NULL, "", 1)) { 
         IOLog("wtf usb-complex\n");
-        return;
+        return -1;
     }
 
     dt = devicetree;
     char *usb_device_entry = dt_get_entry(&dt, "IODeviceTree:/arm-io/usb-complex/usb-device");
     if(!usb_device_entry || !dt_entry_set_prop(usb_device_entry, "compatible", NULL, "", 1)) { 
         IOLog("wtf usb-device\n");
-        return;
+        return -1;
     }
 #endif
 
@@ -165,25 +176,25 @@ static void load_it() {
     char *memory_map_entry = dt_get_entry(&dt, "IODeviceTree:/chosen/memory-map");
     if(!memory_map_entry) {
         IOLog("wtf\n");
-        return;
+        return -1;
     }
 
-    struct boot_args *args = (struct boot_args *) 0x809d6000; // XXX use ttbr1?
+    args = (struct boot_args *) 0x809d6000; // XXX use ttbr1?
     
-    const char **placeholders_p = placeholders;
+    placeholders_p = placeholders;
     struct memory_map_entry s;
     s.address = args;
     s.size = sizeof(*args);
     if(!dt_entry_set_prop(memory_map_entry, *placeholders_p++, "BootArgs", &s, sizeof(s))) {
         IOLog("Could not put BootArgs in memory map\n");
-        return;
+        return -1;
     }
     
     s.address = (void *) args->dt_vaddr;
     s.size = devicetree_size;
     if(!dt_entry_set_prop(memory_map_entry, *placeholders_p++, "DeviceTree", &s, sizeof(s))) {
         IOLog("Could not put DeviceTree in memory map\n");
-        return;
+        return -1;
     }
     
     CMD_ITERATE(kern_hdr, cmd) {
@@ -207,8 +218,13 @@ static void load_it() {
     serial_important = false;
 #endif
 
-    //return;
+    PE_halt_restart = phase_2;
+    PEHaltRestart(kPERestartCPU);
 
+    return 0;
+}
+
+static int phase_2(unsigned int type) {
     // no kanye 
     asm volatile("cpsid if");
 
@@ -336,9 +352,6 @@ static void load_it() {
     flush_cache(&pt[0], 0x2000*sizeof(uint32_t));
     invalidate_tlb();
     
-    uint32_t sz = 0x100;
-    serial_putstring("kernel_pmap: "); serial_puthex(*((uint32_t *) 0x8024e218)); serial_putstring("...\n");
-
     my_memcpy((void *) 0x40000000, (void *) (((uint32_t) vita) & ~1), 0x100);
 
     serial_putstring("-> vita ");
@@ -355,13 +368,10 @@ static void load_it() {
 
     *((uint32_t *) 0x8000011c) = 0; // for putc
 
-    void (*p)(char) = (void *) 0x8001abb5;
-    p('h'); p('i'); 
-    p('\n');
-
     ((void (*)(uint32_t, uint32_t)) 0x40000000)(args_phys, jump_phys);
 
     serial_putstring("it returned?\n");
+    return 0;
 }
 
 typedef uint32_t user_addr_t;
@@ -384,11 +394,11 @@ int ok_go(void *p, struct args *uap, int32_t *retval) {
     devicetree_size = uap->devicetree_size;
     copyin(uap->devicetree, devicetree, uap->devicetree_size);
 
-    load_it();
-
-    kfree(kern_hdr, uap->kern_size);
-    kfree(devicetree, uap->devicetree_size);
-    *retval = -1;
+    *retval = phase_1();
+    if(*retval) {
+        kfree(kern_hdr, uap->kern_size);
+        kfree(devicetree, uap->devicetree_size);
+    }
     return 0;
 }
 

@@ -49,6 +49,7 @@ def importWiki(data, string):
         for k, v in thingsICareAbout.items():
             if k in line:
                 ivline = f.readline()
+                if 'KBAG' in ivline: ivline = f.readline()
                 keyline = f.readline()
                 print string + '.' + v + ': ' + re.search('Key:\s*([a-zA-Z0-9]*)', keyline).group(1) + ' ' + re.search('IV:\s*([a-zA-Z0-9]*)', ivline).group(1)
                 break
@@ -59,7 +60,7 @@ def importGenpass(data, string):
         line = line.lower()
         for k, v in thingsICareAbout.items():
             if k in line:
-                print string + '.' + v + ': ' + re.search('-k ([a-zA-Z0-9]*)', line).group(1) + ' ' + re.search('-iv ([a-zA-Z0-9]*)', line).group(1)
+                print string + '.' + v + ': ' + re.search('-k(ey)? ([a-zA-Z0-9]*)', line).group(2) + ' ' + re.search('-iv ([a-zA-Z0-9]*)', line).group(1)
 
 def importMultilineGenpass(data, string):
     m = None
