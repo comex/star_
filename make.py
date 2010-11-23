@@ -42,8 +42,6 @@ def pmap():
     for x in ['pmap2', 'pmaparb', 'shelltester']:
         run(GCC_UNIVERSAL, '-o', x, x + '.c', '-I', headers, F('IOKit', 'CoreFoundation', 'IOSurface'))
 
-
-
 def machdump():
     goto('machdump')
     run(GCC_NATIVE, '-o', 'machdump', 'machdump.c')
@@ -83,7 +81,7 @@ def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=
         if obj == inp: continue
         run(gcc, '-c', '-o', obj, inp, cflags)
     if strip:
-        run(gcc, '-o', output + '_', objs, ldflags)
+        run(gcc, '-o', output + '_', objs, ldflags, '-dead_strip')
         if ldid:
             run_multiple(['cp', output + '_', output],
                          ['strip', '-Sx', output],
@@ -111,6 +109,7 @@ def data(gcc=GCC, ldid=True):
     goto('data')
     compile_stuff(data_files + ['deplaceholder.c'], 'deplaceholder', cflags='-DIMG3_SUPPORT', gcc=gcc, ldid=ldid)
     compile_stuff(data_files + ['kernel_patcher.c'], 'kernel_patcher', 'ent.plist', cflags='-DIMG3_SUPPORT', gcc=gcc, ldid=ldid)
+    compile_stuff(['dyld_to_pwn.c'], 'dyld_to_pwn', gcc=gcc, ldid=ldid)
 
 def upgrade_data():
     data_upgrade()
