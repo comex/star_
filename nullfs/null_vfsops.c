@@ -85,6 +85,13 @@
 #include "null.h"
 #include <sys/mount.h>
 #include <sys/vm.h>
+
+int x_namei(struct nameidata *ndp)
+asm("$bl1__vnode_lookup");
+void x_nameidone(struct nameidata *)
+asm("$bl2__vnode_lookup");
+
+
 struct proc *current_proc(void);
 
 struct vfs_attr;
@@ -137,42 +144,6 @@ extern int VFS_VPTOFH(vnode_t, int *, unsigned char *, vfs_context_t);
 #define VFSATTR_f_carbon_fsid       (1LL<< 23)
 #define VFSATTR_f_uuid          (1LL<< 24)
 
-struct vfs_attr {
-    uint64_t    f_supported;
-    uint64_t    f_active;
-
-    uint64_t    f_objcount; /* number of filesystem objects in volume */
-    uint64_t    f_filecount;    /* ... files */
-    uint64_t    f_dircount; /* ... directories */
-    uint64_t    f_maxobjcount;  /* maximum number of filesystem objects */
-
-    uint32_t    f_bsize;    /* block size for the below size values */
-    size_t      f_iosize;   /* optimal transfer block size */
-    uint64_t    f_blocks;   /* total data blocks in file system */
-    uint64_t    f_bfree;    /* free blocks in fs */
-    uint64_t    f_bavail;   /* free blocks avail to non-superuser */
-    uint64_t    f_bused;    /* blocks in use */
-    uint64_t    f_files;    /* total file nodes in file system */
-    uint64_t    f_ffree;    /* free file nodes in fs */
-    fsid_t      f_fsid;     /* file system id */
-    uid_t       f_owner;    /* user that mounted the filesystem */
-
-    vol_capabilities_attr_t f_capabilities;
-    vol_attributes_attr_t f_attributes;
-
-    struct timespec f_create_time;  /* creation time */
-    struct timespec f_modify_time;  /* last modification time */
-    struct timespec f_access_time;  /* time of last access */
-    struct timespec f_backup_time;  /* last backup time */
-
-    uint32_t    f_fssubtype;    /* filesystem subtype */
-
-    char        *f_vol_name;    /* volume name */
-
-    uint16_t    f_signature;    /* used for ATTR_VOL_SIGNATURE, Carbon's FSVolumeInfo.signature */
-    uint16_t    f_carbon_fsid;  /* same as Carbon's FSVolumeInfo.filesystemID */
-};
-
 void    vfs_getnewfsid(struct mount *);
 
 /*
@@ -224,9 +195,9 @@ nullfs_mount(mp, devvp, data, context)
      */
     NDINIT(&nd, LOOKUP, FOLLOW|WANTPARENT,
         UIO_USERSPACE, args.target, context);
-    if (error = namei(&nd))
+    if (error = x_namei(&nd))
         return (error);
-    nameidone(&nd);
+    x_nameidone(&nd);
     /*
      * Sanity check on lower vnode
      */
@@ -268,7 +239,7 @@ nullfs_mount(mp, devvp, data, context)
      * It is vnode_put'd in nullfs_unmount.
      */
     nullm_rootvp = vp;
-    vnode_get(nullm_rootvp);
+    //vnode_get(nullm_rootvp);
     nullm_rootvp->v_flag |= VROOT;
     xmp->nullm_rootvp = nullm_rootvp;
     //if (NULLVPTOLOWERVP(nullm_rootvp)->v_mount->mnt_flag & MNT_LOCAL)
@@ -310,9 +281,6 @@ nullfs_unmount(mp, mntflags, context)
     int mntflags;
     vfs_context_t context;
 {
-    *((int *) 0) = 0x33333333;
-    return;
-#if 0
     struct vnode *nullm_rootvp = MOUNTTONULLMOUNT(mp)->nullm_rootvp;
     int error;
     int flags = 0;
@@ -329,27 +297,29 @@ nullfs_unmount(mp, mntflags, context)
 
     if ( (nullm_rootvp->v_usecount > 1) && !force )
         return (EBUSY);
-    if ( (error = vflush(mp, nullm_rootvp, flags)) && !force )
-        return (error);
-
-#ifdef NULLFS_DIAGNOSTIC
-    vprint("alias root of lower", nullm_rootvp);
-#endif     
     /*
      * Release reference on underlying root vnode
      */
     vnode_put(nullm_rootvp);
+    if ( (error = vflush(mp, NULLVP, flags)) && !force )
+        return (error);
+
+    printf("ok we flushed it\n");
+#ifdef NULLFS_DIAGNOSTIC
+    //vprint("alias root of lower", nullm_rootvp);
+#endif     
     /*
      * And blow it away for future re-use
      */
-    vnode_reclaim(nullm_rootvp);
+    // XXX
+    //vnode_reclaim(nullm_rootvp);
     /*
      * Finally, throw away the null_mount structure
      */
     FREE(mp->mnt_data, M_UFSMNT);    /* XXX */
     mp->mnt_data = 0;
+    printf("all done\n");
     return 0;
-#endif
 }
 
 static int
@@ -485,174 +455,6 @@ int nullfs_init (struct vfsconf *);
 
 // copypaste
 
-struct vfsops {
-    /*!
-     @function vfs_mount
-     @abstract Perform filesystem-specific operations required for mounting.
-     @discussion Typical operations include setting the mount-specific data with vfs_setfsprivate().
-     Note that if a mount call fails, the filesystem must clean up any state it has constructed, because
-     vfs-level mount code will not clean it up.  
-     @param mp Mount structure for the newly mounted filesystem.
-     @param devvp Device that the filesystem is mounted from.
-     @param data Filesystem-specific data passed down from userspace.
-     @param context Context to authenticate for mount.
-     @return 0 for success, else an error code.  Once success is returned, the filesystem should be ready to go active;
-     VFS will not ask again.
-     */
-    int  (*vfs_mount)(struct mount *mp, vnode_t devvp, user_addr_t data, vfs_context_t context);
-    
-    /*!
-     @function vfs_start
-     @abstract Mark a mount as ready to be used.
-     @discussion After receiving this calldown, a filesystem will be hooked into the mount list and should expect 
-     calls down from the VFS layer.  
-     @param mp Mount structure being activated.
-     @param flags Unused.
-     @param context Context to authenticate for mount.
-     @return Return value is ignored.
-     */
-    int  (*vfs_start)(struct mount *mp, int flags, vfs_context_t context);
-    
-    /*!
-     @function vfs_unmount
-     @abstract Perform filesystem-specific cleanup as part of unmount.
-     @discussion If the unmount downcall succeeds, VFS considers itself authorized to destroy all
-     state related to the mount.
-     @param mp Mount structure to unmount.
-     @param mntflags MNT_FORCE indicates that we wish to unmount even if there are active vnodes.
-     @param context Context to authenticate for unmount.
-     @return 0 for success, else an error code.  
-     */
-    int  (*vfs_unmount)(struct mount *mp, int mntflags, vfs_context_t context);
-    
-    /*!
-     @function vfs_root
-     @abstract Get the root vnode of a filesystem.
-     @discussion Upon success, should return with an iocount held on the root vnode which the caller will
-     drop with vnode_put().
-     @param mp Mount for which to get the root.
-     @param vpp Destination for root vnode.
-     @param context Context to authenticate for getting the root.
-     @return 0 for success, else an error code.  
-     */
-    int  (*vfs_root)(struct mount *mp, struct vnode **vpp, vfs_context_t context);
-    
-    /*!
-     @function vfs_quotactl
-     @abstract Manipulate quotas for a volume.
-     @param mp Mount for which to manipulate quotas.
-     @param cmds Detailed in "quotactl" manual page.      
-     @param uid Detailed in "quotactl" manual page.
-     @param arg Detailed in "quotactl" manual page.
-     @param context Context to authenticate for changing quotas.
-     @return 0 for success, else an error code.  
-     */
-    int  (*vfs_quotactl)(struct mount *mp, int cmds, uid_t uid, caddr_t arg, vfs_context_t context);
-
-    /*!
-     @function vfs_getattr
-     @abstract Get filesystem attributes.
-     @discussion See VFSATTR_RETURN, VFSATTR_ACTIVE, VFSATTR_SET_SUPPORTED, VFSATTR_WANTED macros.
-     @param mp Mount for which to get parameters.
-     @param vfa Container for specifying which attributes are desired and which attributes the filesystem
-     supports, as well as for returning results.
-     @param ctx Context to authenticate for getting filesystem attributes.
-     @return 0 for success, else an error code.  
-     */
-    int  (*vfs_getattr)(struct mount *mp, struct vfs_attr *, vfs_context_t context);
-/*    int  (*vfs_statfs)(struct mount *mp, struct vfsstatfs *sbp, vfs_context_t context);*/
-
-    /*!
-     @function vfs_sync
-     @abstract Flush all filesystem data to backing store.
-     @discussion vfs_sync will be called as part of the sync() system call and during unmount.
-     @param mp Mountpoint to sync.
-     @param waitfor MNT_WAIT: flush synchronously, waiting for all data to be written before returning. MNT_NOWAIT: start I/O but do not wait for it.
-     @param ctx Context to authenticate for the sync.
-     @return 0 for success, else an error code.  
-     */
-    int  (*vfs_sync)(struct mount *mp, int waitfor, vfs_context_t context);
-    
-    /*!
-     @function vfs_vget
-     @abstract Get a vnode by file id (inode number).
-     @discussion This routine is chiefly used to build paths to vnodes.  Result should be turned with an iocount that the 
-     caller will drop with vnode_put().
-     @param mp Mount against which to look up inode number.
-     @param ino File ID for desired file, as found through a readdir.
-     @param vpp Destination for vnode.
-     @return 0 for success, else an error code.  
-     */
-    int  (*vfs_vget)(struct mount *mp, ino64_t ino, struct vnode **vpp, vfs_context_t context);
-    
-    /*!
-     @function vfs_fhtovp
-     @abstract Get the vnode corresponding to a file handle.
-     @discussion Filesystems can return handles to files which are independent of their (transient) vnode identities.
-     vfs_thtovp converts that persistent handle back to a vnode.  The vnode should be returned with an iocount which 
-     the caller will drop with vnode_put().
-     @param mp Mount against which to look up file handle.
-     @param fhlen Size of file handle structure, as returned by vfs_vptofh.
-     @param fhp Pointer to handle.
-     @param vpp Destination for vnode.
-     @param ctx Context against which to authenticate the file-handle conversion.
-     @return 0 for success, else an error code.  
-     */
-    int  (*vfs_fhtovp)(struct mount *mp, int fhlen, unsigned char *fhp, struct vnode **vpp,
-                       vfs_context_t context);
-
-    /*!
-     @function vfs_vptofh
-     @abstract Get a persistent handle corresponding to a vnode.
-     @param mp Mount against which to convert the vnode to a handle.
-     @param fhlen Size of buffer provided for handle; set to size of actual handle returned.
-     @param fhp Pointer to buffer in which to place handle data.
-     @param ctx Context against which to authenticate the file-handle request.
-     @return 0 for success, else an error code.  
-     */
-    int  (*vfs_vptofh)(struct vnode *vp, int *fhlen, unsigned char *fhp, vfs_context_t context);
-
-    /*!
-     @function vfs_init
-     @abstract Prepare a filesystem for having instances mounted.
-     @discussion This routine is called once, before any particular instance of a filesystem
-     is mounted; it allows the filesystem to initialize whatever global data structures
-     are shared across all mounts.  If this returns successfully, a filesystem should be ready to have
-     instances mounted.
-     @param vfsconf Configuration information.  Currently, the only useful data are the filesystem name,
-     typenum, and flags.  The flags field will be either 0 or MNT_LOCAL.  Many filesystems ignore this
-     parameter.
-     @return 0 for success, else an error code.  
-     */
-    int  (*vfs_init)(struct vfsconf *);
-    
-    /*!
-     @function vfs_sysctl
-     @abstract Broad interface for querying and controlling filesystem.
-     @discussion VFS defines VFS_CTL_QUERY as a generic status request which is answered
-     with the VQ_* macros in a "struct vfsquery."
-     A filesystem may also define implementation-specific commands.  See "man 3 sysctl" 
-     for the meaning of sysctl parameters.
-     @param context Context against which to authenticate command.
-     @return 0 for success, else an error code.  
-     */
-    int  (*vfs_sysctl)(int *, u_int, user_addr_t, size_t *, user_addr_t, size_t, vfs_context_t context);
-
-    /*!
-     @function vfs_setattr
-     @abstract Set filesystem attributes.
-     @discussion The other side of the vfs_getattr coin.  Currently only called to set volume name.
-     @param mp Mount on which to set attributes.
-     @param vfa VFS attribute structure containing requested attributes to set and their values.  Currently
-     will only be called with f_vol_name set.
-     @param context Context against which to authenticate attribute change.
-     @return 0 for success, else an error code.  
-     */
-    int  (*vfs_setattr)(struct mount *mp, struct vfs_attr *, vfs_context_t context);
-    void *vfs_reserved[7];
-};
-
-
 #define nullfs_sysctl (int (*) (int *, u_int, user_addr_t, size_t *, user_addr_t, size_t, vfs_context_t))eopnotsupp
 #define nullfs_setattr (int  (*)(struct mount *mp, struct vfs_attr *, vfs_context_t context)) eopnotsupp
 
@@ -671,18 +473,8 @@ struct vfsops null_vfsops = {
     nullfs_init,
     nullfs_sysctl,
     nullfs_setattr,
+    {0}
 };
-
-struct vfs_fsentry {
-    struct vfsops * vfe_vfsops; /* vfs operations */
-    int     vfe_vopcnt; /* # of vnodeopv_desc being registered (reg, spec, fifo ...) */
-    struct vnodeopv_desc ** vfe_opvdescs; /* null terminated;  */
-    int         vfe_fstypenum;  /* historic filesystem type number */
-    char        vfe_fsname[MFSNAMELEN]; /* filesystem type name */
-    uint32_t    vfe_flags;      /* defines the FS capabilities */
-    void *      vfe_reserv[2];  /* reserved for future use; set this to zero*/
- };
-
 
 extern struct vnodeopv_desc null_vnodeop_opv_desc;
 struct vnodeopv_desc *descs[] = { &null_vnodeop_opv_desc, NULL };
@@ -693,11 +485,17 @@ struct vfs_fsentry fe = {
     9,
     "loopback",
     VFC_VFSGENERICARGS,
-    NULL,
-    NULL
+    {NULL, NULL}
 };
 
 vfstable_t ft;
+__attribute__((constructor))
+static void init() {
+    vfs_fsadd(&fe, &ft);
+}
 
-void *magic[3] = {(void *) 0xdeadf00d, &fe, &ft};
-
+__attribute__((destructor))
+static void fini() {
+    // it's very dangerous to do this if you have anything mounted ;p
+    IOLog("vfs_fsremove: %d\n", vfs_fsremove(ft));
+}

@@ -210,7 +210,7 @@
 #include <sys/namei.h>
 #include <sys/malloc.h>
 #include <sys/buf_internal.h>
-#include <miscfs/nullfs/null.h>
+#include "null.h"
 
 
 int null_bug_bypass = 0;   /* for debugging: enables bypass printf'ing */

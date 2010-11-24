@@ -100,8 +100,7 @@ u_long null_node_hash;
 /*
  * Initialise cache headers
  */
-void
-nullfs_init()
+int nullfs_init(struct vfsconf *vfsconf)
 {
 
 #ifdef NULLFS_DIAGNOSTIC
@@ -109,6 +108,7 @@ nullfs_init()
 #endif
     //*((unsigned int *) 0xdeadbeef) = 0xf00df00d;
     null_node_hashtbl = hashinit(NNULLNODECACHE, M_CACHE, &null_node_hash);
+    return 0;
 }
 
 struct proc *curproc;
