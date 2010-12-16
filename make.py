@@ -90,7 +90,7 @@ def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=
             run_multiple(['cp', output + '_', output],
                          ['strip', '-Sx', output])
     else:
-        run(gcc, '-o', output, objs, ldflags)
+        run(gcc, '-o', output, objs, ldflags, '-dead_strip')
 
 def pf2():
     goto('pf2')
@@ -103,7 +103,7 @@ def chain():
     compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', cflags=cf, ldflags=ldf, strip=False)
     compile_stuff(['chain-user.c'], 'chain-user', ldflags=['-framework', 'IOKit', '-framework', 'CoreFoundation'])
 
-data_files = ['binary.c', 'find.c', 'common.c', 'cc.c', 'lzss.c']
+data_files = ['binary.c', 'find.c', 'common.c', 'cc.c', 'lzss.c', 'running_kernel.c']
 
 def data(gcc=GCC, ldid=True):
     goto('data')

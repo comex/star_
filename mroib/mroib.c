@@ -59,7 +59,7 @@ extern uint32_t serial_putc[];
 extern uint32_t serial_getc[];
 
 __attribute__((constructor))
-static void init() {
+void mr_init() {
     serial_init[0] = 0xe51ff004;
     serial_init[1] = (uint32_t) &mr_setup;
     serial_putc[0] = 0x47184b00;
