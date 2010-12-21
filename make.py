@@ -98,7 +98,7 @@ def pf2():
 
 def chain():
     goto('chain')
-    cf = ['-marm', '-DDEBUG=1', '-DDEBUG_VERBOSE=1', '-DPUTC=1', '-DHAVE_SERIAL=0', '-DUSE_ASM_FUNCS=1', '-fblocks']
+    cf = ['-marm', '-DUSE_ASM_FUNCS=1', '-fblocks']
     ldf=['-dynamiclib', '-nostdlib', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-read_only_relocs', 'suppress']
     compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', cflags=cf, ldflags=ldf, strip=False)
     compile_stuff(['chain-user.c'], 'chain-user', ldflags=['-framework', 'IOKit', '-framework', 'CoreFoundation'])

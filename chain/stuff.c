@@ -48,19 +48,60 @@ size_t my_strlen(const char *a) {
     return i;
 }
 
+void *map_from_iokit(const char *name) {
+    void *matching = IOService_nameMatching(name, NULL);
+    if(!matching) {
+        IOLog("map_from_iokit(%s): matching is NULL\n", name);
+        return NULL;
+    }
+    void *iterator = IOService_getMatchingServices(matching);
+    if(!iterator) {
+        IOLog("map_from_iokit(%s): iterator is NULL\n", name);
+        return NULL;
+    }
+    void *object, *regentry = NULL;
+    while(object = OSIterator_getNextObject(iterator)) {
+        if(!regentry) {
+            regentry = object;
+        } else {
+            IOLog("map_from_iokit(%s): multiple objects\n", name);
+            return NULL;
+        }
+    }
+
+    if(!regentry) {
+        IOLog("map_from_iokit(%s): no objects\n", name);
+        return NULL;
+    }
+
+    void *map = IOService_mapDeviceMemoryWithIndex(regentry, 0, 0);
+    if(!map) {
+        IOLog("map_from_iokit(%s): could not map device memory\n", name);
+        return NULL;
+    }
+    return IOMemoryMap_getAddress(map);
+}
+
 #if DEBUG
 
 bool serial_important = false;
 
 #if !HAVE_SERIAL // USB
 
-static char *usb_base = (char *) 0xd3edc000; // -> 86100000
-static char *gpio_base = (char *) 0xc9d9d000; // -> bfa00000
+static char *usb_base, *gpio_base;
+
+#ifdef HOST_IPHONE3_1_4_1
 static char *ringbuf_start = (char *) 0x807d8000;
+#elif defined(HOST_IPAD1_1_4_2_1) 
+static char *ringbuf_start = (char *) 0x80855000;
+#endif
 static char *ringbuf = NULL;
 static size_t ringbuf_size = 0x500;
 
-void uart_set_rate(uint32_t rate) {
+int uart_set_rate(uint32_t rate) {
+    usb_base = map_from_iokit("usb-device"); 
+    gpio_base = map_from_iokit("gpio");
+    return (usb_base && gpio_base) ? 0 : -1;
 }
 
 /*static void poke_wdt() {
@@ -91,8 +132,9 @@ static void serial_putc(char c) {
 
 #else
 
-void uart_set_rate(uint32_t rate) {
+int uart_set_rate(uint32_t rate) {
     fancy_set_rate(0/*ignored!*/, rate);
+    return 0;
 }
 
 static void uart_putc(char c) {
