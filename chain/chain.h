@@ -1,11 +1,10 @@
 // Ignore all this manual target crap if you're not debugging!
-#define HOST_IPAD1_1_4_2_1
-#define TARGET_IPAD1_1_4_2_1
+#define HOST_IPHONE3_1_4_1
+#define TARGET_IPHONE3_1_4_1
 #define DEBUG 1
-#define DEBUG_VERBOSE 1
-#define DEBUG_VERY_VERBOSE 1
-#define PUTC 1
-#define HAVE_SERIAL 0
+#define DEBUG_VERBOSE 0
+#define PUTC 0
+#define HAVE_SERIAL 1
 
 #if DEBUG
 #ifdef TARGET_IPHONE3_1_4_1
@@ -47,7 +46,7 @@
 #include <unistd.h>
 
 #define stringify(line) #line
-#define trace_(file, line) do { if(DEBUG_VERY_VERBOSE) serial_putstring("trace: " file ":" stringify(line) "\n"); } while(0)
+#define trace_(file, line) do { if(1) serial_putstring("trace: " file ":" stringify(line) "\n"); } while(0)
 #define trace trace_(__FILE__, __LINE__)
 
 extern void IOLog(const char *, ...);
@@ -56,7 +55,9 @@ extern void IOSleep(unsigned int);
 // stuff.c
 extern void *map_from_iokit(const char *name);
 #if DEBUG
-// call this before clobbering the kernel kthx
+uint64_t current_time();
+void mdelay(uint32_t ms);
+// call uart_set_rate before clobbering the kernel kthx
 extern int uart_set_rate(uint32_t rate);
 extern void serial_putstring(const char *string);
 extern void serial_puthexbuf(void *buf, uint32_t size);

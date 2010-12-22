@@ -88,7 +88,35 @@ bool serial_important = false;
 
 #if !HAVE_SERIAL // USB
 
-static char *usb_base, *gpio_base;
+static char *usb_base, *gpio_base, *pmgr_base;
+
+uint64_t current_time() {
+    volatile uint32_t *p = (void *) (pmgr_base + 0x2000);
+    uint32_t hi, lo, hi_again;
+    do {
+        hi = p[1];
+        lo = p[0];
+        hi_again = p[1];
+    } while(hi != hi_again);
+    return (((uint64_t) hi) << 32) | lo;
+}
+
+static bool interrupts_enabled() {
+    uint32_t cpsr;
+    asm("mrs %0, cpsr" : "=r"(cpsr));
+    return 0 == (cpsr & (1 << 7));
+}
+
+void mdelay(uint32_t ms) {
+    if(interrupts_enabled()) {
+        IOSleep(ms);
+        return;
+    }
+    uint64_t nano = ((uint64_t) ms) * 1000000;
+    uint64_t ticks = (nano * 3) / 125;
+    uint64_t base_time = current_time();
+    while((current_time() - base_time) < ticks);
+}
 
 #ifdef HOST_IPHONE3_1_4_1
 static char *ringbuf_start = (char *) 0x807d8000;
@@ -101,6 +129,7 @@ static size_t ringbuf_size = 0x500;
 int uart_set_rate(uint32_t rate) {
     usb_base = map_from_iokit("usb-device"); 
     gpio_base = map_from_iokit("gpio");
+    pmgr_base = map_from_iokit("pmgr");
     return (usb_base && gpio_base) ? 0 : -1;
 }
 
@@ -118,12 +147,13 @@ static void serial_putbuf(const char *c, size_t size) {
     for(uintptr_t p = (uintptr_t) ringbuf; p < ((uintptr_t) ringbuf) + size; p += 0x10) {
         asm volatile("mcr p15, 0, %0, c7, c14, 1" :: "r"(p));
     }
-    //poke_wdt();
     while(*((volatile uint32_t *) (usb_base + 3*0x20 + 0x900)) & 0x80000000);
     *((volatile uint32_t *) (usb_base + 3*0x20 + 0x914)) = ((uint32_t)ringbuf) - 0x40000000;
     *((volatile uint32_t *) (usb_base + 3*0x20 + 0x910)) = (((size + 63) / 64) << 19) | size;
     *((volatile uint32_t *) (usb_base + 3*0x20 + 0x900)) |= 0x84000000;
     ringbuf += (size + 63) & ~63;
+
+    mdelay(100);
 }
 
 static void serial_putc(char c) {

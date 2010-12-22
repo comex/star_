@@ -90,6 +90,7 @@ static void flush_cache(void *start, size_t size) {
 
 __attribute__((noreturn))
 static void vita(uint32_t args_phys, uint32_t jump_phys) {
+    serial_putstring("vita\n");
     asm volatile("mcr p15, 0, r2, c7, c5, 0;" // redundantly kill icache
                  "mrc p15, 0, r2, c1, c0, 0;"
                  "bic r2, #0x1000;"
@@ -294,17 +295,19 @@ static void place_thing(const void *start, const void *end, uint32_t addr, uint3
     uint32_t s = (uint32_t) start;
     uint32_t e = (uint32_t) end;
     if(s & 1) start = (void *) (s - 1);
+    addr &= ~1;
     my_memcpy((void *) addr, start, e - s + 1);
+    if(s & 1) addr |= 1;
     uint32_t jump_to_fu_arm[] = {0xe51ff004, addr};
     uint16_t jump_to_fu_thumb_al4[] = {0xf8df, 0xf000, addr & 0xffff, addr >> 16};
     uint16_t jump_to_fu_thumb_notal4[] = {0xbf00, 0xf8df, 0xf000, addr & 0xffff, addr >> 16};
     switch(hookaddr & 3) {
+    case 1:
         my_memcpy((void *) (hookaddr - 1), jump_to_fu_thumb_al4, sizeof(jump_to_fu_thumb_al4));
         break;
     case 3:
         my_memcpy((void *) (hookaddr - 1), jump_to_fu_thumb_notal4, sizeof(jump_to_fu_thumb_notal4));
         break;
-    case 1:
     case 0:
     case 2:
         my_memcpy((void *) hookaddr, jump_to_fu_arm, sizeof(jump_to_fu_arm));
@@ -442,7 +445,7 @@ static int phase_2(unsigned int type) {
 #endif
     */
 
-    static const char c[] = "io=4095 sdio.log.level=65535 sdio.log.flags=1 kdp_match_name=serial "
+    static const char c[] = "-v io=4095 sdio.log.level=65535 sdio.log.flags=1 kdp_match_name=serial "
 #if 0
     "sdio.debug.init-delay=10000 "
 #endif
@@ -457,7 +460,7 @@ static int phase_2(unsigned int type) {
     my_memcpy(args_final->cmdline, c, sizeof(c));
 
 #if DEBUG
-    place_annoyance(SCRATCH + 0x8000, 0x801b229f); 
+    //place_annoyance(SCRATCH + 0x8000, 0x801b229f); 
 #endif
 
 #if PUTC
@@ -489,10 +492,11 @@ static int phase_2(unsigned int type) {
     uint32_t jump_phys = jump_addr + args_final->physbase - args_final->virtbase;
     uint32_t args_phys = ((uint32_t)args_final) + args_final->physbase - args_final->virtbase;
 
+    serial_putstring("boot args: "); serial_putstring(args_final->cmdline); serial_putstring("\n");
     serial_putstring("taking the plunge\n");
 
 #if PUTC
-    *((uint32_t *) 0x8000011c) = 0; // don't move backward
+    *((uint32_t *) 0x8000011c) = 0; // don't move this line up
 #endif
 
     ((void (*)(uint32_t, uint32_t)) 0x40000000)(args_phys, jump_phys);
