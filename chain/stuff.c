@@ -60,7 +60,7 @@ void *map_from_iokit(const char *name) {
         return NULL;
     }
     void *object, *regentry = NULL;
-    while(object = OSIterator_getNextObject(iterator)) {
+    while((object = OSIterator_getNextObject(iterator))) {
         if(!regentry) {
             regentry = object;
         } else {

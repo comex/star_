@@ -1,3 +1,4 @@
+// Ignore all this manual target crap if you're not debugging!
 #define HOST_IPAD1_1_4_2_1
 #define TARGET_IPAD1_1_4_2_1
 #define DEBUG 1
@@ -5,6 +6,32 @@
 #define DEBUG_VERY_VERBOSE 1
 #define PUTC 1
 #define HAVE_SERIAL 0
+
+#if DEBUG
+#ifdef TARGET_IPHONE3_1_4_1
+// 80069acc - _sleh_abort
+// 80064310 - prefetch abort in system mode
+// 800643c8 - data abort in system mode
+// 800152f1 - panic
+// 80067c59 - Debugger
+#define SCRATCH 0x807d5518
+#define CONSLOG_PUTC 0x8001abb5
+#define CONSDEBUG_PUTC 0x8001ab59
+#define PUTCHAR 0x8015f259
+#define CNPUTC 0x8006a93d
+#define IOLOG 0x801a706d
+
+#elif defined(TARGET_IPAD1_1_4_2_1) 
+
+#define SCRATCH 0x80851500
+#define CONSLOG_PUTC 0x8001ab41
+#define CONSDEBUG_PUTC 0x8001aae5
+#define PUTCHAR 0x80160b01
+#define CNPUTC 0x8006b951
+#define IOLOG 0x801a8a79
+
+#endif
+#endif // DEBUG
 
 #include <assert.h>
 #include <errno.h>
@@ -59,6 +86,8 @@ asm("__ZN9IOService19getMatchingServicesEP12OSDictionary");
 static inline void *OSIterator_getNextObject(void *iterator) {
     return ((void *(***)(void *)) iterator)[0][21](iterator);
 }
+
+extern void *IORegistryEntry_fromPath(const char *path, void *plane, char *residualPath, int *residualLength, void *fromEntry) asm("__ZN15IORegistryEntry8fromPathEPKcPK15IORegistryPlanePcPiPS_");
 
 void *IOService_mapDeviceMemoryWithIndex(void *service, unsigned int index, unsigned int options)
 asm("__ZN9IOService24mapDeviceMemoryWithIndexEjm");

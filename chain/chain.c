@@ -1,5 +1,7 @@
 #include "chain.h"
 
+#define put(x) do { serial_putstring(#x ": "); serial_puthex((uint32_t) x); serial_putstring("\n"); } while(0)
+
 #define CMD_ITERATE(hdr, cmd) for(struct load_command *cmd = (void *)((hdr) + 1), *end = (void *)((char *)(hdr) + (hdr)->sizeofcmds); cmd; cmd = (cmd->cmdsize > 0 && cmd->cmdsize < (uint32_t)((char *)end - (char *)cmd)) ? (void *)((char *)cmd + cmd->cmdsize) : NULL)
 
 extern int (*PE_halt_restart)(unsigned int type);
@@ -257,12 +259,16 @@ static int phase_1() {
 
     trace;
 
+    put(args_final);
+    put(devicetree_final);
+    put(pagetable_final);
+
     if(!args_final || !devicetree_final || !pagetable_final) {
         return -1;
     }
 
 
-#if DEBUG && 0
+#if 0
     serial_important = true;
     serial_putstring("New DeviceTree:\n");
     serial_puthexbuf((void *) devicetree, 0xde78);
@@ -270,13 +276,56 @@ static int phase_1() {
     serial_important = false;
 #endif
 
+#if !PUTC
     serial_putstring("calling PEHaltRestart\n");
 
     PE_halt_restart = phase_2;
     PEHaltRestart(kPERestartCPU);
+#else
+    serial_putstring("going directly to phase_2\n");
+    phase_2(0x1234);
+#endif
 
     return 0;
 }
+
+#if DEBUG || PUTC
+static void place_thing(const void *start, const void *end, uint32_t addr, uint32_t hookaddr) {
+    uint32_t s = (uint32_t) start;
+    uint32_t e = (uint32_t) end;
+    if(s & 1) start = (void *) (s - 1);
+    my_memcpy((void *) addr, start, e - s + 1);
+    uint32_t jump_to_fu_arm[] = {0xe51ff004, addr};
+    uint16_t jump_to_fu_thumb_al4[] = {0xf8df, 0xf000, addr & 0xffff, addr >> 16};
+    uint16_t jump_to_fu_thumb_notal4[] = {0xbf00, 0xf8df, 0xf000, addr & 0xffff, addr >> 16};
+    switch(hookaddr & 3) {
+        my_memcpy((void *) (hookaddr - 1), jump_to_fu_thumb_al4, sizeof(jump_to_fu_thumb_al4));
+        break;
+    case 3:
+        my_memcpy((void *) (hookaddr - 1), jump_to_fu_thumb_notal4, sizeof(jump_to_fu_thumb_notal4));
+        break;
+    case 1:
+    case 0:
+    case 2:
+        my_memcpy((void *) hookaddr, jump_to_fu_arm, sizeof(jump_to_fu_arm));
+        break;
+    }
+}
+
+static void place_annoyance(uint32_t addr, uint32_t hookaddr) {
+    if(hookaddr & 1) {
+        uint32_t hooksize = (hookaddr & 3) ? 12 : 8;
+        // .syntax unified; push {r0-r3, r9, r12, lr}; ldr lr, a; ldr r1, b; ldr r0, c; blx lr; pop {r0-r3, r9, r12, lr}; nop; nop; nop; nop; nop; nop; ldr pc, b; a: nop; nop; b: nop; nop; c: .asciz "%p\n"
+        uint16_t annoyance_template[] = {0xe92d, 0x520f, 0xf8df, 0xe01c, 0xf8df, 0x101c, 0x4807, 0x47f0, 0xe8bd, 0x520f, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0xf8df, 0xf004, IOLOG & 0xffff, IOLOG >> 16, (hookaddr + hooksize) & 0xffff, (hookaddr + hooksize) >> 16, 0x7025, 0x000a};
+        my_memcpy(annoyance_template + 0x14/2, (void *) (hookaddr - 1), hooksize);
+        place_thing(annoyance_template, annoyance_template + sizeof(annoyance_template)/sizeof(*annoyance_template), addr, hookaddr);
+    } else {
+        uint32_t annoyance_template[] = {0xe92d520f, 0xe59fe018, 0xe59f1018, 0xe59f0018, 0xe12fff3e, 0xe8bd520f, 0, 0, 0xe59ff000, IOLOG, hookaddr + 8, 0x000a7025};
+        my_memcpy(annoyance_template + 0x18/4, (void *) hookaddr, 8);
+        place_thing(annoyance_template, annoyance_template + sizeof(annoyance_template)/sizeof(*annoyance_template), addr, hookaddr);
+    }
+}
+#endif // DEBUG || PUTC
 
 static int phase_2(unsigned int type) {
     // no kanye 
@@ -284,12 +333,8 @@ static int phase_2(unsigned int type) {
 
     serial_putstring("phase_2\n");
 
-#define put(x) do { serial_putstring(#x ": "); serial_puthex((uint32_t) x); serial_putstring("\n"); } while(0)
     put(type);
     put(orig_args);
-    put(args_final);
-    put(devicetree_final);
-    put(pagetable_final);
     put(args_storage);
     put(pagetable_storage);
     
@@ -350,7 +395,7 @@ static int phase_2(unsigned int type) {
         if(cmd->cmd == LC_SEGMENT) {
             struct segment_command *seg = (void *) cmd;
             struct section *sections = (void *) (seg + 1);
-            serial_putstring(seg->segname); serial_putstring("\n");
+            serial_putstring(seg->segname);
 
             if(seg->filesize > 0) {
                 my_memcpy((void *) seg->vmaddr, ((char *) kern_hdr) + seg->fileoff, seg->filesize);
@@ -397,60 +442,30 @@ static int phase_2(unsigned int type) {
 #endif
     */
 
-    static const char c[] = "serial=0 io=4095 debug=0x25 sdio.debug.init-delay=10000 sdio.log.level=65535 sdio.log.flags=1 kdp_match_name=serial";
+    static const char c[] = "io=4095 sdio.log.level=65535 sdio.log.flags=1 kdp_match_name=serial "
+#if 0
+    "sdio.debug.init-delay=10000 "
+#endif
+#if DEBUG
+    "serial=1 "
+#endif
+#if HAVE_SERIAL && 0
+    " debug=0x25"
+#endif
+    ;
+
     my_memcpy(args_final->cmdline, c, sizeof(c));
 
-    // TODO fix this for armv6
-#define place_thing(thing, addr, hookaddr) \
-    do { \
-        extern void thing##_start(), thing##_end(); \
-        my_memcpy((void *) addr, (void *) thing##_start, ((uint32_t)thing##_end - (uint32_t)thing##_start)); \
-        static uint32_t jump_to_fu_arm[] = {0xe51ff004, addr}; \
-        static uint16_t jump_to_fu_thumb_al4[] = {0xf8df, 0xf000, addr & 0xffff, addr >> 16}; \
-        static uint16_t jump_to_fu_thumb_notal4[] = {0xbf00, 0xf8df, 0xf000, addr & 0xffff, addr >> 16}; \
-        switch(hookaddr & 3) { \
-        case 3: \
-            my_memcpy((void *) (hookaddr - 1), jump_to_fu_thumb_notal4, sizeof(jump_to_fu_thumb_notal4)); \
-            break; \
-        case 1: \
-            my_memcpy((void *) (hookaddr - 1), jump_to_fu_thumb_al4, sizeof(jump_to_fu_thumb_al4)); \
-            break; \
-        case 2: \
-        case 0: \
-            my_memcpy((void *) hookaddr, jump_to_fu_arm, sizeof(jump_to_fu_arm)); \
-            break; \
-        } \
-    } while(0)
-
-    //*((uint16_t *) 0x807261d4) = 0x4770; // patch idie
-
-#if PUTC
-#ifdef TARGET_IPHONE3_1_4_1
-// 80069acc - _sleh_abort
-// 80064310 - prefetch abort in system mode
-// 800643c8 - data abort in system mode
-// 800152f1 - panic
-// 80067c59 - Debugger
-#define SCRATCH 0x807d5518
-#define CONSLOG_PUTC 0x8001abb5
-#define CONSDEBUG_PUTC 0x8001ab59
-#define PUTCHAR 0x8015f259
-#define CNPUTC 0x8006a93d
-
-#elif defined(TARGET_IPAD1_1_4_2_1) 
-
-#define SCRATCH 0x80851500
-#define CONSLOG_PUTC 0x8001ab41
-#define CONSDEBUG_PUTC 0x8001aae5
-#define PUTCHAR 0x80160b01
-#define CNPUTC 0x8006b951
-
+#if DEBUG
+    place_annoyance(SCRATCH + 0x8000, 0x801b229f); 
 #endif
 
-    place_thing(putc, SCRATCH, CONSLOG_PUTC);
-    place_thing(putc, SCRATCH, CONSDEBUG_PUTC);
-    place_thing(putc, SCRATCH, PUTCHAR);
-    place_thing(putc, SCRATCH, CNPUTC);
+#if PUTC
+    extern void putc_start(), putc_end();
+    place_thing(putc_start, putc_end, SCRATCH, CONSLOG_PUTC);
+    place_thing(putc_start, putc_end, SCRATCH, CONSDEBUG_PUTC);
+    place_thing(putc_start, putc_end, SCRATCH, PUTCHAR);
+    place_thing(putc_start, putc_end, SCRATCH, CNPUTC);
     
     //place_thing(fffuuu, SCRATCH + 0x10000, 0x80867645);
 #endif // PUTC
@@ -474,13 +489,10 @@ static int phase_2(unsigned int type) {
     uint32_t jump_phys = jump_addr + args_final->physbase - args_final->virtbase;
     uint32_t args_phys = ((uint32_t)args_final) + args_final->physbase - args_final->virtbase;
 
-    serial_puthex(jump_phys);
-    serial_putstring(" ");
-    serial_puthex(args_phys);
-    serial_putstring("\n");
+    serial_putstring("taking the plunge\n");
 
 #if PUTC
-    *((uint32_t *) 0x8000011c) = 0; // for putc
+    *((uint32_t *) 0x8000011c) = 0; // don't move backward
 #endif
 
     ((void (*)(uint32_t, uint32_t)) 0x40000000)(args_phys, jump_phys);
