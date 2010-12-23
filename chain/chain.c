@@ -31,7 +31,7 @@ struct boot_args {
     uint32_t physbase; // 8
     uint32_t size; // c
     uint32_t pt_paddr; // 10: | 0x18 (eh, but we're 0x4000 off) -> ttbr1
-    uint32_t end; // 14 (-> PE_state+4 - v_baseAddr) 5f700000
+    uint32_t v_baseAddr; // 14 (-> PE_state+4 - v_baseAddr) 5f700000
     uint32_t v_display; // 18 (-> PE_state+0x18 - v_display) 1
     uint32_t v_rowBytes;  // 1c (-> PE_state+8 - v_rowBytes) 2560
     uint32_t v_width; // 20 (-> PE_state+0xc - v_width) 640
@@ -90,7 +90,7 @@ static void flush_cache(void *start, size_t size) {
 
 __attribute__((noreturn))
 static void vita(uint32_t args_phys, uint32_t jump_phys) {
-    serial_putstring("vita\n");
+    //serial_putstring("vita\n");
     asm volatile("mcr p15, 0, r2, c7, c5, 0;" // redundantly kill icache
                  "mrc p15, 0, r2, c1, c0, 0;"
                  "bic r2, #0x1000;"
@@ -137,25 +137,25 @@ static void *allocate_memory_area(char *memory_map_entry, const char *name, size
     return (void *) (max + orig_args->virtbase - orig_args->physbase);
 }
 
-static int find_orig_args() {
+static struct boot_args *find_orig_args() {
     uint32_t pt_phys;
     asm("mrc p15, 0, %0, c2, c0, 1" :"=r"(pt_phys)); // ttbr1
-    orig_args = (void *) (pt_phys + 0x40000000);
+    struct boot_args *oa = (void *) (pt_phys + 0x40000000);
     for(int i = 0; i < 0x10000; i++) {
-        if((orig_args->virtbase == 0x80000000 || orig_args->virtbase == 0xc0000000) && \
-           orig_args->physbase == 0x40000000 && \
-           orig_args->v_rowBytes == orig_args->v_width * 4) {
-            return 0;
+        if((oa->virtbase == 0x80000000 || oa->virtbase == 0xc0000000) && \
+           oa->physbase == 0x40000000 && \
+           oa->v_rowBytes == oa->v_width * 4) {
+            return oa;
         }
-        orig_args = (void *) (((uint32_t *) orig_args) - 1);
+        oa = (void *) (((uint32_t *) oa) - 1);
     }
 
     IOLog("Could not find orig_args\n");
-    return -1;
+    return NULL;
 }
 
 static int phase_1() {
-    if(find_orig_args()) return -1;
+    if(!(orig_args = find_orig_args())) return -1;
 
     if(!(vic = map_from_iokit("vic"))) return -1;
 
@@ -277,7 +277,7 @@ static int phase_1() {
     serial_important = false;
 #endif
 
-#if !PUTC
+#if !DEBUG
     serial_putstring("calling PEHaltRestart\n");
 
     PE_halt_restart = phase_2;
@@ -294,10 +294,19 @@ static int phase_1() {
 static void place_thing(const void *start, const void *end, uint32_t addr, uint32_t hookaddr) {
     uint32_t s = (uint32_t) start;
     uint32_t e = (uint32_t) end;
-    if(s & 1) start = (void *) (s - 1);
-    addr &= ~1;
+    bool thing_thumb = false;
+    if(s & 1) {
+        start = (void *) (s - 1);
+        thing_thumb = true;
+    }
+    if(addr & 1) {
+        addr &= ~1;
+        thing_thumb = true;
+    }
     my_memcpy((void *) addr, start, e - s + 1);
-    if(s & 1) addr |= 1;
+    if(thing_thumb) {
+        addr |= 1;
+    }
     uint32_t jump_to_fu_arm[] = {0xe51ff004, addr};
     uint16_t jump_to_fu_thumb_al4[] = {0xf8df, 0xf000, addr & 0xffff, addr >> 16};
     uint16_t jump_to_fu_thumb_notal4[] = {0xbf00, 0xf8df, 0xf000, addr & 0xffff, addr >> 16};
@@ -317,15 +326,15 @@ static void place_thing(const void *start, const void *end, uint32_t addr, uint3
 
 static void place_annoyance(uint32_t addr, uint32_t hookaddr) {
     if(hookaddr & 1) {
-        uint32_t hooksize = (hookaddr & 3) ? 12 : 8;
-        // .syntax unified; push {r0-r3, r9, r12, lr}; ldr lr, a; ldr r1, b; ldr r0, c; blx lr; pop {r0-r3, r9, r12, lr}; nop; nop; nop; nop; nop; nop; ldr pc, b; a: nop; nop; b: nop; nop; c: .asciz "%p\n"
-        uint16_t annoyance_template[] = {0xe92d, 0x520f, 0xf8df, 0xe01c, 0xf8df, 0x101c, 0x4807, 0x47f0, 0xe8bd, 0x520f, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0xf8df, 0xf004, IOLOG & 0xffff, IOLOG >> 16, (hookaddr + hooksize) & 0xffff, (hookaddr + hooksize) >> 16, 0x7025, 0x000a};
+        uint32_t hooksize = (hookaddr & 3) ? 10 : 8;
+        // .syntax unified; push {r0-r3, r9, r12, lr}; ldr lr, a; ldr r1, b; adr r0, c; blx lr; pop {r0-r3, r9, r12, lr}; nop; nop; nop; nop; nop; nop; ldr pc, b; a: nop; nop; b: nop; nop; c: .asciz "%p\n"
+        uint16_t annoyance_template[] = {0xe92d, 0x520f, 0xf8df, 0xe01c, 0xf8df, 0x101c, 0xa007, 0x47f0, 0xe8bd, 0x520f, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0xf8df, 0xf004, IOLOG & 0xffff, IOLOG >> 16, (hookaddr + hooksize) & 0xffff, (hookaddr + hooksize) >> 16, 0x7025, 0x000a};
         my_memcpy(annoyance_template + 0x14/2, (void *) (hookaddr - 1), hooksize);
-        place_thing(annoyance_template, annoyance_template + sizeof(annoyance_template)/sizeof(*annoyance_template), addr, hookaddr);
+        place_thing(annoyance_template, annoyance_template + sizeof(annoyance_template)/sizeof(*annoyance_template), addr | 1, hookaddr);
     } else {
-        uint32_t annoyance_template[] = {0xe92d520f, 0xe59fe018, 0xe59f1018, 0xe59f0018, 0xe12fff3e, 0xe8bd520f, 0, 0, 0xe59ff000, IOLOG, hookaddr + 8, 0x000a7025};
+        uint32_t annoyance_template[] = {0xe92d520f, 0xe59fe018, 0xe59f1018, 0xe28f0018, 0xe12fff3e, 0xe8bd520f, 0, 0, 0xe59ff000, IOLOG, hookaddr + 8, 0x000a7025};
         my_memcpy(annoyance_template + 0x18/4, (void *) hookaddr, 8);
-        place_thing(annoyance_template, annoyance_template + sizeof(annoyance_template)/sizeof(*annoyance_template), addr, hookaddr);
+        place_thing(annoyance_template, annoyance_template + sizeof(annoyance_template)/sizeof(*annoyance_template), addr & ~1, hookaddr);
     }
 }
 #endif // DEBUG || PUTC
@@ -449,18 +458,20 @@ static int phase_2(unsigned int type) {
 #if 0
     "sdio.debug.init-delay=10000 "
 #endif
-#if DEBUG
+#if HAVE_SERIAL || PUTC
     "serial=1 "
 #endif
 #if HAVE_SERIAL && 0
-    " debug=0x25"
+    "debug=0x225 "
+#else
+    "debug=0x400 "
 #endif
     ;
 
     my_memcpy(args_final->cmdline, c, sizeof(c));
 
 #if DEBUG
-    //place_annoyance(SCRATCH + 0x8000, 0x801b229f); 
+    place_annoyance(SCRATCH + 0x8000, 0x801b229d); 
 #endif
 
 #if PUTC
@@ -477,11 +488,16 @@ static int phase_2(unsigned int type) {
 
     serial_putstring("pagetable_final: "); serial_puthex((uint32_t) pagetable_final); serial_putstring("  old entry: "); serial_puthex(pagetable_final[0x400]);  serial_putstring("  at 80000000: "); serial_puthex(pagetable_final[0x800]); serial_putstring("\n");
 
-    for(uint32_t i = 0x400; i < 0x420; i++) {
+    for(uint32_t i = 0x400; i < 0x5e0; i++) {
         pagetable_final[i] = (i << 20) | 0x40c0e;
     }
 
+    for(uint32_t i = 0x5e0; i < 0x700; i++) {
+        pagetable_final[i] = (i << 20) | 0x40c02; // device
+    }
 
+    my_memset((void *) args_final->v_baseAddr, 0xff, args_final->v_height * args_final->v_rowBytes);
+    mdelay(1000);
 
     serial_putstring("invalidating stuff\n");
     flush_cache(pagetable_final, 0x2000*sizeof(uint32_t));

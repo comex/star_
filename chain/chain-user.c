@@ -54,9 +54,11 @@ int main() {
     void *devicetree;
     size_t devicetree_size;
 
-
     load("kern", &kern_hdr, &kern_size);
     load("devicetree", &devicetree, &devicetree_size);
+
+    // todo use reboot2
+    system("launchctl unload /System/Library/LaunchDaemons/com.apple.SpringBoard.plist");
 
     syscall(8, kern_hdr, kern_size, devicetree, devicetree_size);
     return 0;

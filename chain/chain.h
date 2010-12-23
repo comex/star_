@@ -1,10 +1,12 @@
 // Ignore all this manual target crap if you're not debugging!
-#define HOST_IPHONE3_1_4_1
-#define TARGET_IPHONE3_1_4_1
+//#define HOST_IPHONE3_1_4_1
+//#define TARGET_IPHONE3_1_4_1
+#define HOST_IPAD1_1_4_2_1
+#define TARGET_IPAD1_1_4_2_1
 #define DEBUG 1
-#define DEBUG_VERBOSE 0
-#define PUTC 0
-#define HAVE_SERIAL 1
+#define DEBUG_VERBOSE 1
+#define PUTC 1
+#define HAVE_SERIAL 0
 
 #if DEBUG
 #ifdef TARGET_IPHONE3_1_4_1
@@ -38,11 +40,8 @@
 #include <mach-o/loader.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <sys/syscall.h>
 #include <unistd.h>
 
 #define stringify(line) #line
