@@ -15,7 +15,7 @@
 // 800643c8 - data abort in system mode
 // 800152f1 - panic
 // 80067c59 - Debugger
-#define SCRATCH 0x807d5518
+#define SCRATCH 0x807d8000
 #define CONSLOG_PUTC 0x8001abb5
 #define CONSDEBUG_PUTC 0x8001ab59
 #define PUTCHAR 0x8015f259
@@ -24,7 +24,7 @@
 
 #elif defined(TARGET_IPAD1_1_4_2_1) 
 
-#define SCRATCH 0x80851500
+#define SCRATCH 0x80852000
 #define CONSLOG_PUTC 0x8001ab41
 #define CONSDEBUG_PUTC 0x8001aae5
 #define PUTCHAR 0x80160b01
@@ -45,22 +45,26 @@
 #include <unistd.h>
 
 #define stringify(line) #line
-#define trace_(file, line) do { if(1) serial_putstring("trace: " file ":" stringify(line) "\n"); } while(0)
+#define trace_(file, line) do { if(0) serial_putstring("trace: " file ":" stringify(line) "\n"); } while(0)
 #define trace trace_(__FILE__, __LINE__)
 
 extern void IOLog(const char *, ...);
 extern void IOSleep(unsigned int);
 
 // stuff.c
-extern void *map_from_iokit(const char *name);
+void *map_from_iokit(const char *name);
+
+void *phys_to_virt(uint32_t phys);
+uint32_t virt_to_phys(void *virt);
+
 #if DEBUG
 uint64_t current_time();
 void mdelay(uint32_t ms);
 // call uart_set_rate before clobbering the kernel kthx
-extern int uart_set_rate(uint32_t rate);
-extern void serial_putstring(const char *string);
-extern void serial_puthexbuf(void *buf, uint32_t size);
-extern void serial_puthex(uint32_t number);
+int uart_set_rate(uint32_t rate);
+void serial_putstring(const char *string);
+void serial_puthexbuf(void *buf, uint32_t size);
+void serial_puthex(uint32_t number);
 extern bool serial_important;
 #else
 #define uart_set_rate(x)
@@ -113,6 +117,9 @@ extern void fancy_set_rate(uint32_t, uint32_t) asm("$_80_40_2d_e9_00_70_8d_e2_XX
 
 extern void *kalloc(uint32_t size);
 extern void kfree(void *data, uint32_t size);
+extern void *IOMallocContiguous(uint32_t size, uint32_t alignment, void *physicalAddress);
+extern void IOFreeContiguous(void *address, uint32_t size);
+
 extern int copyin(const user_addr_t user_addr, void *kernel_addr, uint32_t nbytes);
 
 // dt.c

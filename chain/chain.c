@@ -161,7 +161,11 @@ static int phase_1() {
 
     uart_set_rate(115200);
 
-    serial_putstring("Hello\n");
+    serial_putstring("Hello... I am at ");
+    serial_puthex((uint32_t) phase_1);
+    serial_putstring(" aka ");
+    serial_puthex(virt_to_phys(phase_1));
+    serial_putstring("\n");
 
     trace;
 
@@ -296,14 +300,15 @@ static void place_thing(const void *start, const void *end, uint32_t addr, uint3
     uint32_t e = (uint32_t) end;
     bool thing_thumb = false;
     if(s & 1) {
-        start = (void *) (s - 1);
+        s &= ~1;
+        start = (void *) s;
         thing_thumb = true;
     }
     if(addr & 1) {
         addr &= ~1;
         thing_thumb = true;
     }
-    my_memcpy((void *) addr, start, e - s + 1);
+    my_memcpy((void *) addr, start, e - s);
     if(thing_thumb) {
         addr |= 1;
     }
@@ -324,17 +329,40 @@ static void place_thing(const void *start, const void *end, uint32_t addr, uint3
     }
 }
 
-static void place_annoyance(uint32_t addr, uint32_t hookaddr) {
+static void place_annoyance(uint32_t addr, uint32_t hookaddr, uint32_t hooksize) {
     if(hookaddr & 1) {
-        uint32_t hooksize = (hookaddr & 3) ? 10 : 8;
-        // .syntax unified; push {r0-r3, r9, r12, lr}; ldr lr, a; ldr r1, b; adr r0, c; blx lr; pop {r0-r3, r9, r12, lr}; nop; nop; nop; nop; nop; nop; ldr pc, b; a: nop; nop; b: nop; nop; c: .asciz "%p\n"
-        uint16_t annoyance_template[] = {0xe92d, 0x520f, 0xf8df, 0xe01c, 0xf8df, 0x101c, 0xa007, 0x47f0, 0xe8bd, 0x520f, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0x46c0, 0xf8df, 0xf004, IOLOG & 0xffff, IOLOG >> 16, (hookaddr + hooksize) & 0xffff, (hookaddr + hooksize) >> 16, 0x7025, 0x000a};
-        my_memcpy(annoyance_template + 0x14/2, (void *) (hookaddr - 1), hooksize);
-        place_thing(annoyance_template, annoyance_template + sizeof(annoyance_template)/sizeof(*annoyance_template), addr | 1, hookaddr);
+        if(hooksize > 16 || hooksize < (((hookaddr & 3) == 3) ? 10 : 8)) {
+            serial_putstring("place_annoyance: hooksize is wrong\n");
+            return;
+        }
+
+        extern void annoyance_start(), annoyance_end();
+        extern char annoyance_space[];
+        extern void *annoyance_iolog, *annoyance_come_from, *annoyance_return_to;
+        my_memset(annoyance_space, 0, 16);
+        my_memcpy(annoyance_space, (void *) (hookaddr - 1), hooksize);
+        annoyance_iolog = IOLog;
+        annoyance_come_from = (void *) hookaddr;
+        annoyance_return_to = (void *) (hookaddr + hooksize);
+
+        place_thing(annoyance_start, annoyance_end, addr | 1, hookaddr);
+        
+        serial_puthex(addr);
+        serial_putstring(": ");
+        serial_puthex(*((uint32_t *) addr));
+        serial_putstring("\n");
     } else {
-        uint32_t annoyance_template[] = {0xe92d520f, 0xe59fe018, 0xe59f1018, 0xe28f0018, 0xe12fff3e, 0xe8bd520f, 0, 0, 0xe59ff000, IOLOG, hookaddr + 8, 0x000a7025};
-        my_memcpy(annoyance_template + 0x18/4, (void *) hookaddr, 8);
-        place_thing(annoyance_template, annoyance_template + sizeof(annoyance_template)/sizeof(*annoyance_template), addr & ~1, hookaddr);
+        serial_important = true;
+        serial_putstring("place_annoyance: not thumb\n");
+        serial_important = false;
+    }
+}
+
+static void place_bxsp(uint32_t addr) {
+    if(addr & 1) {
+        *((uint16_t *) (addr - 1)) = 0x4768;
+    } else {
+        *((uint32_t *) addr) = 0xe12fff1d;
     }
 }
 #endif // DEBUG || PUTC
@@ -390,9 +418,25 @@ static int phase_2(unsigned int type) {
     serial_putstring("about to do the mcr, pt_paddr = "); serial_puthex(args_final->pt_paddr); serial_putstring("\n");
 
     asm volatile("mcr p15, 0, %0, c2, c0, 1" ::"r"(args_final->pt_paddr | 0x18)); // ttbr1
+    
+    invalidate_tlb();
+
+    for(uint32_t i = 0x400; i < 0x5e0; i++) {
+        pagetable_final[i] = (i << 20) | 0x40c0e;
+    }
+
+    for(uint32_t i = 0x5e0; i < 0x700; i++) {
+        pagetable_final[i] = (i << 20) | 0x40c02; // device
+    }
+
+    invalidate_tlb();
+    flush_cache(pagetable_final, 0x10000);
     invalidate_tlb();
 
     serial_putstring("did the mcr\n");
+
+    kern_hdr = (void *) virt_to_phys(kern_hdr);
+    serial_putstring("new "); put(kern_hdr);
 
     args_final->dt_vaddr = devicetree_final;
     args_final->v_display = 0; // verbose
@@ -412,15 +456,15 @@ static int phase_2(unsigned int type) {
             if(seg->filesize > 0) {
                 my_memcpy((void *) seg->vmaddr, ((char *) kern_hdr) + seg->fileoff, seg->filesize);
             }
-
-            for(uint32_t i = 0; i < seg->nsects; i++) {
-                struct section *sect = &sections[i];
-                if((sect->flags & SECTION_TYPE) == S_ZEROFILL) {
-                    my_memset((void *) sect->addr, 0, sect->size);
-                }
+            
+            if(seg->vmsize > seg->filesize) {
+                my_memset((char *) seg->vmaddr + seg->filesize, 0, seg->vmsize - seg->filesize);
             }
+            serial_putstring(" flush");
             
             flush_cache((void *) seg->vmaddr, seg->vmsize);
+
+            serial_putstring(" ok\n");
         } else if(cmd->cmd == LC_UNIXTHREAD) {
             struct {
                 uint32_t cmd;
@@ -435,12 +479,11 @@ static int phase_2(unsigned int type) {
                 jump_addr = (uint32_t) ut->state.__pc;
             }
         }
-        serial_putstring(" ok\n");
     }
 
     serial_putstring("total used: "); serial_puthex(placeholders_p - placeholders); serial_putstring("\n");
 
-    serial_putstring("jump_addr: "); serial_puthex((uint32_t) jump_addr); serial_putstring("\n");
+    put(jump_addr);
 
 /*
 #if PUTC || HAVE_SERIAL
@@ -471,7 +514,28 @@ static int phase_2(unsigned int type) {
     my_memcpy(args_final->cmdline, c, sizeof(c));
 
 #if DEBUG
-    place_annoyance(SCRATCH + 0x8000, 0x801b229d); 
+    // Note that for now it is necessary to ensure that the affected instruction range does not use PC, and ends on an instruction boundary.  Annoying, but...
+    place_annoyance(SCRATCH + 0x1000, 0x80790f45, 8); 
+    place_annoyance(SCRATCH + 0x1100, 0x80791001, 8); 
+    place_annoyance(SCRATCH + 0x1200, 0x80791047, 10); 
+    place_annoyance(SCRATCH + 0x1300, 0x807910a1, 8); 
+    place_annoyance(SCRATCH + 0x1400, 0x807911cd, 10);
+    place_annoyance(SCRATCH + 0x1500, 0x80791255, 10);
+    place_annoyance(SCRATCH + 0x1600, 0x80791267, 10);
+    place_annoyance(SCRATCH + 0x1700, 0x8079128d, 8);
+    place_annoyance(SCRATCH + 0x1800, 0x807912c5, 8);
+    place_annoyance(SCRATCH + 0x1900, 0x80791319, 8);
+    place_annoyance(SCRATCH + 0x1a00, 0x807913bf, 10);
+    place_annoyance(SCRATCH + 0x1b00, 0x807913d9, 8);
+    place_annoyance(SCRATCH + 0x1c00, 0x80791401, 8);
+    place_annoyance(SCRATCH + 0x1d00, 0x80791429, 8);
+    //place_annoyance(SCRATCH + 0x1e00, 0x80791447, 12);
+    //place_annoyance(SCRATCH + 0x1f00, 0x80791453, 12);
+    //place_bxsp(0x80791453);
+    //place_annoyance(SCRATCH + 0x2000, 0x807914bf, 10);
+    //place_annoyance(SCRATCH + 0x2100, 0x807914d1, 8);
+    //place_annoyance(SCRATCH + 0x2200, 0x807914f9, 12);
+    place_bxsp(0x8079152b);
 #endif
 
 #if PUTC
@@ -486,22 +550,7 @@ static int phase_2(unsigned int type) {
     
     // "In addition, if the physical address of the code that enables or disables the MMU differs from its MVA, instruction prefetching can cause complications. Therefore, ARM strongly recommends that any code that enables or disables the MMU has identical virtual and physical addresses."
 
-    serial_putstring("pagetable_final: "); serial_puthex((uint32_t) pagetable_final); serial_putstring("  old entry: "); serial_puthex(pagetable_final[0x400]);  serial_putstring("  at 80000000: "); serial_puthex(pagetable_final[0x800]); serial_putstring("\n");
-
-    for(uint32_t i = 0x400; i < 0x5e0; i++) {
-        pagetable_final[i] = (i << 20) | 0x40c0e;
-    }
-
-    for(uint32_t i = 0x5e0; i < 0x700; i++) {
-        pagetable_final[i] = (i << 20) | 0x40c02; // device
-    }
-
     my_memset((void *) args_final->v_baseAddr, 0xff, args_final->v_height * args_final->v_rowBytes);
-    mdelay(1000);
-
-    serial_putstring("invalidating stuff\n");
-    flush_cache(pagetable_final, 0x2000*sizeof(uint32_t));
-    invalidate_tlb();
     
     my_memcpy((void *) 0x40000000, (void *) (((uint32_t) vita) & ~1), 0x100);
 
@@ -524,22 +573,25 @@ static int phase_2(unsigned int type) {
 typedef uint32_t user_addr_t;
 
 struct args {
-    user_addr_t kern_hdr;
+    user_addr_t kern;
     size_t kern_size;
     user_addr_t devicetree;
     size_t devicetree_size;
 };
 
 int ok_go(void *p, struct args *uap, int32_t *retval) {
-    kern_hdr = kalloc(uap->kern_size);
-    copyin(uap->kern_hdr, kern_hdr, uap->kern_size);
+    kern_hdr = IOMallocContiguous(uap->kern_size, 1, NULL);
+    copyin(uap->kern, kern_hdr, uap->kern_size);
     devicetree = kalloc(uap->devicetree_size);
     devicetree_size = uap->devicetree_size;
     copyin(uap->devicetree, devicetree, uap->devicetree_size);
 
+    flush_cache(kern_hdr, uap->kern_size);
+    flush_cache(devicetree, uap->devicetree_size);
+
     *retval = phase_1();
     if(*retval) {
-        kfree(kern_hdr, uap->kern_size);
+        IOFreeContiguous(kern_hdr, uap->kern_size);
         kfree(devicetree, uap->devicetree_size);
     }
     return 0;

@@ -14,6 +14,7 @@ GCC_BIN = BIN + '/gcc-4.2'
 GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fno-blocks', '-mapcs-frame', '-fomit-frame-pointer']
 GCC = [GCC_BASE, '-arch', 'armv6', '-mthumb']
 GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7', '-mthumb']
+GCC_ARMV7 = [GCC_BASE, '-arch', 'armv7', '-mthumb']
 GCC_NATIVE = ['gcc', GCC_FLAGS]
 HEADERS = ROOT + '/headers'
 
@@ -98,9 +99,9 @@ def pf2():
 
 def chain():
     goto('chain')
-    cf = ['-marm', '-DUSE_ASM_FUNCS=1', '-fblocks']
+    cf = ['-marm', '-DUSE_ASM_FUNCS=0', '-fblocks']
     ldf=['-dynamiclib', '-nostdlib', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-read_only_relocs', 'suppress']
-    compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'annoyance.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', cflags=cf, ldflags=ldf, strip=False)
+    compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'annoyance.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', gcc=GCC_ARMV7, cflags=cf, ldflags=ldf, strip=False)
     compile_stuff(['chain-user.c'], 'chain-user', ldflags=['-framework', 'IOKit', '-framework', 'CoreFoundation'])
 
 data_files = ['binary.c', 'find.c', 'common.c', 'cc.c', 'lzss.c', 'running_kernel.c']

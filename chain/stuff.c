@@ -48,6 +48,44 @@ size_t my_strlen(const char *a) {
     return i;
 }
 
+void *phys_to_virt(uint32_t phys) {
+    return (void *) (phys - 0x40000000 + (((uint32_t) IOLog) & 0xf0000000));
+}
+
+uint32_t virt_to_phys(void *virt) {
+    uint32_t v = (uint32_t) virt;
+
+    uint32_t pt_phys;
+    asm("mrc p15, 0, %0, c2, c0, 1" :"=r"(pt_phys));
+    uint32_t *pt = phys_to_virt(pt_phys & ~0x3f);
+
+    uint32_t l1desc = pt[(v & 0xfff00000) >> 20];
+    switch(l1desc & 3) {
+    case 0:
+        return 0;
+    case 1: { // page table
+        uint32_t *pt2 = phys_to_virt(l1desc & ~0x3ff);
+        uint32_t l2desc = pt2[(v & 0xff000) >> 12];
+        switch(l2desc & 3) {
+        case 0:
+            return 0;
+        case 1: // large
+            return (l2desc & 0xffff0000) | (v & 0xffff);
+        case 2:
+        case 3: // small
+            return (l2desc & 0xfffff000) | (v & 0xfff);
+        }
+    }
+    case 2: // supersection
+        return (l1desc & 0xff000000) | (v & 0xffffff);
+    case 3:
+        return 0;
+    }
+    // not reached
+    return 0;
+}
+
+
 void *map_from_iokit(const char *name) {
     void *matching = IOService_nameMatching(name, NULL);
     if(!matching) {
@@ -119,9 +157,9 @@ void mdelay(uint32_t ms) {
 }
 
 #ifdef HOST_IPHONE3_1_4_1
-static char *ringbuf_start = (char *) 0x807d8000;
+static char *ringbuf_start = (char *) 0x807d6000;
 #elif defined(HOST_IPAD1_1_4_2_1) 
-static char *ringbuf_start = (char *) 0x80855000;
+static char *ringbuf_start = (char *) 0x80851500;
 #endif
 static char *ringbuf = NULL;
 static size_t ringbuf_size = 0x500;
@@ -151,9 +189,9 @@ static void serial_putbuf(const char *c, size_t size) {
     *((volatile uint32_t *) (usb_base + 3*0x20 + 0x914)) = ((uint32_t)ringbuf) - 0x40000000;
     *((volatile uint32_t *) (usb_base + 3*0x20 + 0x910)) = (((size + 63) / 64) << 19) | size;
     *((volatile uint32_t *) (usb_base + 3*0x20 + 0x900)) |= 0x84000000;
-    ringbuf += (size + 63) & ~63;
+    ringbuf += (size + 63) & ~63; // 63
 
-    mdelay(100);
+    mdelay(30);
 }
 
 static void serial_putc(char c) {
@@ -217,6 +255,10 @@ void serial_puthexbuf(void *buf, uint32_t size) {
 
 void serial_puthex(uint32_t number) {
     if(!DEBUG_VERBOSE && !serial_important) return;
+    if(number == 0) {
+        serial_putstring("0");
+        return;
+    }
     char digits[16];
     char *digitsp = digits;
     bool going = false;
