@@ -19,10 +19,8 @@ static struct boot_args *args_final;
 static char *devicetree_final;
 static uint32_t *pagetable_final;
     
-static struct boot_args *orig_args;
-
-static struct boot_args *const args_storage = (void *) 0x8000f000;
-static char *const pagetable_storage = (void *) 0x80010000;
+static struct boot_args args_storage;
+static char pagetable_storage[0x4000] __attribute__((section("__STORAGE,__storage"), aligned(0x4000)));
 
 struct boot_args {
     uint16_t something; // 0 - 1
@@ -101,6 +99,10 @@ static void vita(uint32_t args_phys, uint32_t jump_phys) {
 
      
     invalidate_tlb();
+    
+#if DEBUG
+    my_memset((void *) args_final->v_baseAddr, 0x88, args_final->v_height * args_final->v_rowBytes);
+#endif
 
     // This appears to work (and avoid GCC complaining about noreturn functions returning), but it also generates a warning.  I don't know how to get rid of it.
     //((void (__attribute__((noreturn)) *)(uint32_t)) jump_phys)(args_phys);
@@ -134,7 +136,7 @@ static void *allocate_memory_area(char *memory_map_entry, const char *name, size
         return NULL;
     }
 
-    return (void *) (max + orig_args->virtbase - orig_args->physbase);
+    return (void *) phys_to_virt(max);
 }
 
 static struct boot_args *find_orig_args() {
@@ -154,12 +156,20 @@ static struct boot_args *find_orig_args() {
     return NULL;
 }
 
-static int phase_1() {
-    if(!(orig_args = find_orig_args())) return -1;
+static void place_putc();
 
+static int phase_1() {
     if(!(vic = map_from_iokit("vic"))) return -1;
 
     uart_set_rate(115200);
+
+    // bam
+    memset((void *) 0x80342930, 0, 0x16);
+    flush_cache((void *) 0x80342900, 0x100);
+    memset((void *) 0x8034320a, 0, 0x10);
+    flush_cache((void *) 0x80343200, 0x100);
+    place_putc();
+    *((uint32_t *) 0x8000011c) = 0;
 
     serial_putstring("Hello... I am at ");
     serial_puthex((uint32_t) phase_1);
@@ -250,7 +260,7 @@ static int phase_1() {
             static char buf[32] = "Kernel-";
             my_memcpy(buf + 7, seg->segname, 16);
             struct memory_map_entry s;
-            s.address = (void *) (seg->vmaddr + orig_args->physbase - orig_args->virtbase);
+            s.address = (void *) virt_to_phys((void *) seg->vmaddr);
             s.size = seg->vmsize;
             dt_entry_set_prop(memory_map_entry, *placeholders_p++, buf, &s, sizeof(s));
         }
@@ -260,7 +270,7 @@ static int phase_1() {
 
     args_final = allocate_memory_area(memory_map_entry, "BootArgs", 0x1000);
     devicetree_final = allocate_memory_area(memory_map_entry, "DeviceTree", devicetree_size);
-    pagetable_final = allocate_memory_area(memory_map_entry, "PageTable", 0x10000); // just in case
+    pagetable_final = allocate_memory_area(memory_map_entry, "PageTable", 0x4000);
 
     trace;
 
@@ -271,6 +281,19 @@ static int phase_1() {
     if(!args_final || !devicetree_final || !pagetable_final) {
         return -1;
     }
+    
+    uint32_t ttbr1;
+    asm("mrc p15, 0, %0, c2, c0, 1" :"=r"(ttbr1));
+    uint32_t *orig_pt = phys_to_virt(ttbr1 & ~0x3fff);
+    put(orig_pt);
+    put(pagetable_storage);
+    my_memcpy(pagetable_storage, orig_pt, 0x4000);
+
+    struct boot_args *orig_args = find_orig_args();
+    if(!orig_args) return -1;
+    put(orig_args);
+    my_memcpy(&args_storage, orig_args, sizeof(struct boot_args));
+    serial_putstring("ok\n");
 
 
 #if 0
@@ -346,11 +369,6 @@ static void place_annoyance(uint32_t addr, uint32_t hookaddr, uint32_t hooksize)
         annoyance_return_to = (void *) (hookaddr + hooksize);
 
         place_thing(annoyance_start, annoyance_end, addr | 1, hookaddr);
-        
-        serial_puthex(addr);
-        serial_putstring(": ");
-        serial_puthex(*((uint32_t *) addr));
-        serial_putstring("\n");
     } else {
         serial_important = true;
         serial_putstring("place_annoyance: not thumb\n");
@@ -367,18 +385,19 @@ static void place_bxsp(uint32_t addr) {
 }
 #endif // DEBUG || PUTC
 
+#if PUTC
+static void place_putc() {
+    extern void putc_start(), putc_end();
+    place_thing(putc_start, putc_end, SCRATCH, CONSLOG_PUTC);
+    place_thing(putc_start, putc_end, SCRATCH, CONSDEBUG_PUTC);
+    place_thing(putc_start, putc_end, SCRATCH, PUTCHAR);
+    place_thing(putc_start, putc_end, SCRATCH, CNPUTC);
+} 
+#endif
+
 static int phase_2(unsigned int type) {
     // no kanye 
-    asm volatile("cpsid if");
-
-    serial_putstring("phase_2\n");
-
-    put(type);
-    put(orig_args);
-    put(args_storage);
-    put(pagetable_storage);
-    
-    // Anyway, at this point we can use the *_final pointers.
+    asm volatile("cpsid aif");
 
     // stuff from openiboot
     for(int i = 0; i <= 3; i++) {
@@ -391,59 +410,22 @@ static int phase_2(unsigned int type) {
         }
     }
 
-    serial_putstring("copying 1\n");
-    my_memcpy(args_storage, orig_args, sizeof(struct boot_args));
+    serial_putstring("phase_2\n");
 
-    uint32_t ttbr1;
-    asm("mrc p15, 0, %0, c2, c0, 1" :"=r"(ttbr1));
-    uint32_t *orig_pt = (void *) ((ttbr1 & ~0x3fff) + orig_args->virtbase - orig_args->physbase);
-    put(orig_pt);
-    my_memcpy(pagetable_storage, orig_pt, 0x10000);
-    flush_cache(pagetable_storage, 0x10000);
+    put(type); 
+    put(&args_storage);
+
+    // Anyway, at this point we can use the *_final pointers.
     
-    uint32_t pagetable_storage_paddr = ((uint32_t) pagetable_storage) - orig_args->virtbase + orig_args->physbase;
+    flush_cache(pagetable_storage, 0x4000);
+    
+    uint32_t pagetable_storage_paddr = virt_to_phys(pagetable_storage);
     put(pagetable_storage_paddr);
     asm volatile("mcr p15, 0, %0, c2, c0, 1" ::"r"(pagetable_storage_paddr | 0x18)); // ttbr1
+    asm volatile("mcr p15, 0, %0, c7, c10, 4;"
+                 "mcr p15, 0, %0, c7, c5, 4" :: "r"(0));
     invalidate_tlb();
-
-    serial_putstring("copying 2\n");
-    my_memcpy(args_final, args_storage, sizeof(struct boot_args));
-    my_memcpy(pagetable_final, pagetable_storage, 0x10000);
-    flush_cache(pagetable_final, 0x10000);
-
-    serial_putstring("okay\n");
-
-    args_final->pt_paddr = ((uint32_t) pagetable_final) - args_final->virtbase + args_final->physbase;
-
-    serial_putstring("about to do the mcr, pt_paddr = "); serial_puthex(args_final->pt_paddr); serial_putstring("\n");
-
-    asm volatile("mcr p15, 0, %0, c2, c0, 1" ::"r"(args_final->pt_paddr | 0x18)); // ttbr1
     
-    invalidate_tlb();
-
-    for(uint32_t i = 0x400; i < 0x5e0; i++) {
-        pagetable_final[i] = (i << 20) | 0x40c0e;
-    }
-
-    for(uint32_t i = 0x5e0; i < 0x700; i++) {
-        pagetable_final[i] = (i << 20) | 0x40c02; // device
-    }
-
-    invalidate_tlb();
-    flush_cache(pagetable_final, 0x10000);
-    invalidate_tlb();
-
-    serial_putstring("did the mcr\n");
-
-    kern_hdr = (void *) virt_to_phys(kern_hdr);
-    serial_putstring("new "); put(kern_hdr);
-
-    args_final->dt_vaddr = devicetree_final;
-    args_final->v_display = 0; // verbose
-    
-    my_memcpy(devicetree_final, devicetree, devicetree_size);
-    devicetree = devicetree_final;
-
     serial_putstring("copying segments\n");
     
     uint32_t jump_addr = 0;
@@ -481,9 +463,46 @@ static int phase_2(unsigned int type) {
         }
     }
 
-    serial_putstring("total used: "); serial_puthex(placeholders_p - placeholders); serial_putstring("\n");
 
-    put(jump_addr);
+
+    serial_putstring("copying 2\n");
+    my_memcpy(args_final, &args_storage, sizeof(struct boot_args));
+    my_memcpy(pagetable_final, pagetable_storage, 0x4000);
+
+    for(uint32_t i = 0x400; i < 0x5e0; i++) {
+        pagetable_final[i] = (i << 20) | 0x40c0e;
+    }
+
+    for(uint32_t i = 0x5e0; i < 0x700; i++) {
+        pagetable_final[i] = (i << 20) | 0x40c02; // device
+    }
+
+    flush_cache(pagetable_final, 0x4000);
+
+    serial_putstring("okay\n");
+
+    args_final->pt_paddr = virt_to_phys(pagetable_final);
+
+    serial_putstring("about to do the mcr, pt_paddr = "); serial_puthex(args_final->pt_paddr); serial_putstring("\n");
+
+    asm volatile("mcr p15, 0, %0, c2, c0, 1" ::"r"(args_final->pt_paddr | 0x18)); // ttbr1
+    asm volatile("mcr p15, 0, %0, c7, c10, 4;"
+                 "mcr p15, 0, %0, c7, c5, 4" :: "r"(0));
+    
+    invalidate_tlb();
+
+    serial_putstring("did the mcr\n");
+
+    //kern_hdr = (void *) virt_to_phys(kern_hdr);
+    serial_putstring("new "); put(kern_hdr);
+
+    args_final->dt_vaddr = devicetree_final;
+    args_final->v_display = 0; // verbose
+    
+    my_memcpy(devicetree_final, devicetree, devicetree_size);
+    devicetree = devicetree_final;
+
+    serial_putstring("total used: "); serial_puthex(placeholders_p - placeholders); serial_putstring("\n");
 
 /*
 #if PUTC || HAVE_SERIAL
@@ -515,7 +534,7 @@ static int phase_2(unsigned int type) {
 
 #if DEBUG
     // Note that for now it is necessary to ensure that the affected instruction range does not use PC, and ends on an instruction boundary.  Annoying, but...
-    place_annoyance(SCRATCH + 0x1000, 0x80790f45, 8); 
+    /*place_annoyance(SCRATCH + 0x1000, 0x80790f45, 8); 
     place_annoyance(SCRATCH + 0x1100, 0x80791001, 8); 
     place_annoyance(SCRATCH + 0x1200, 0x80791047, 10); 
     place_annoyance(SCRATCH + 0x1300, 0x807910a1, 8); 
@@ -528,34 +547,35 @@ static int phase_2(unsigned int type) {
     place_annoyance(SCRATCH + 0x1a00, 0x807913bf, 10);
     place_annoyance(SCRATCH + 0x1b00, 0x807913d9, 8);
     place_annoyance(SCRATCH + 0x1c00, 0x80791401, 8);
-    place_annoyance(SCRATCH + 0x1d00, 0x80791429, 8);
+    place_annoyance(SCRATCH + 0x1d00, 0x80791429, 8);*/
     //place_annoyance(SCRATCH + 0x1e00, 0x80791447, 12);
     //place_annoyance(SCRATCH + 0x1f00, 0x80791453, 12);
     //place_bxsp(0x80791453);
     //place_annoyance(SCRATCH + 0x2000, 0x807914bf, 10);
     //place_annoyance(SCRATCH + 0x2100, 0x807914d1, 8);
     //place_annoyance(SCRATCH + 0x2200, 0x807914f9, 12);
+    place_bxsp(0x807914cf);
     place_bxsp(0x8079152b);
 #endif
 
 #if PUTC
-    extern void putc_start(), putc_end();
-    place_thing(putc_start, putc_end, SCRATCH, CONSLOG_PUTC);
-    place_thing(putc_start, putc_end, SCRATCH, CONSDEBUG_PUTC);
-    place_thing(putc_start, putc_end, SCRATCH, PUTCHAR);
-    place_thing(putc_start, putc_end, SCRATCH, CNPUTC);
-    
+    place_putc();
+#endif  
     //place_thing(fffuuu, SCRATCH + 0x10000, 0x80867645);
-#endif // PUTC
     
     // "In addition, if the physical address of the code that enables or disables the MMU differs from its MVA, instruction prefetching can cause complications. Therefore, ARM strongly recommends that any code that enables or disables the MMU has identical virtual and physical addresses."
 
+#if DEBUG
     my_memset((void *) args_final->v_baseAddr, 0xff, args_final->v_height * args_final->v_rowBytes);
+#endif
     
     my_memcpy((void *) 0x40000000, (void *) (((uint32_t) vita) & ~1), 0x100);
+    flush_cache((void *) 0x40000000, 0x100);
 
-    uint32_t jump_phys = jump_addr + args_final->physbase - args_final->virtbase;
-    uint32_t args_phys = ((uint32_t)args_final) + args_final->physbase - args_final->virtbase;
+    uint32_t jump_phys = virt_to_phys((void *) jump_addr);
+    put(jump_phys);
+    uint32_t args_phys = virt_to_phys(args_final);
+    put(args_phys);
 
     serial_putstring("boot args: "); serial_putstring(args_final->cmdline); serial_putstring("\n");
     serial_putstring("taking the plunge\n");

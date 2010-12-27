@@ -34,7 +34,8 @@ flush_loop:
     str r1, [r0]
     # is this necessary? flush dcache
     mcr p15, 0, r0, c7, c14, 1
-    # Invalidate unified, data TLBs; DSB
+    # ISB; Invalidate unified, data TLBs; DSB
+    mcr p15, 0, r0, c7, c5, 4
     mcr p15, 0, r0, c8, c7, 0
     mcr p15, 0, r0, c8, c6, 0
     mcr p15, 0, r0, c7, c10, 4
