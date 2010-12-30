@@ -40,7 +40,7 @@ addr_t find_scratch(struct binary *binary) {
 addr_t find_sysctl(struct binary *binary, const char *name) {
     addr_t cs = find_string(b_macho_segrange(binary, "__TEXT"), name, 0, true);
     addr_t csref = find_int32(b_macho_segrange(binary, "__DATA"), cs, true);
-    return read32(binary, csref - 8);
+    return b_read32(binary, csref - 8);
 }
 
 void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
@@ -50,7 +50,7 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     // patches
 #ifdef IN_PLACE_PATCH
     patch(PATCH_KERNEL_PMAP_NX_ENABLED,
-          read32(binary, b_sym(binary, "_kernel_pmap", false)) + 0x420,
+          b_read32(binary, b_sym(binary, "_kernel_pmap", false)) + 0x420,
           uint32_t, {0});
 #else
     // the second ref to mem_size
@@ -100,8 +100,8 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     preplace32(sandbox, CONFIG_IS_ARMV7, (uint32_t) is_armv7);
     preplace32(sandbox, CONFIG_VN_GETPATH, b_sym(binary, "_vn_getpath", true));
     preplace32(sandbox, CONFIG_MEMCMP, b_sym(binary, "_memcmp", true));
-    preplace32(sandbox, CONFIG_SB_EVALUATE_ORIG1, read32(binary, sb_evaluate));
-    preplace32(sandbox, CONFIG_SB_EVALUATE_ORIG2, read32(binary, sb_evaluate + 4));
+    preplace32(sandbox, CONFIG_SB_EVALUATE_ORIG1, b_read32(binary, sb_evaluate));
+    preplace32(sandbox, CONFIG_SB_EVALUATE_ORIG2, b_read32(binary, sb_evaluate + 4));
     preplace32(sandbox, CONFIG_SB_EVALUATE_JUMPTO, sb_evaluate + (is_armv7 ? 9 : 8));
     preplace32(sandbox, CONFIG_DVP_STRUCT_OFFSET, find_dvp_struct_offset(binary));
     

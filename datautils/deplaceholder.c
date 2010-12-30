@@ -15,7 +15,7 @@ static int count_ones(uint32_t number) {
 }
 
 // ldmib<cond> r11/r11!, {.., .., .., sp, pc}
-addr_t find_kinit(struct binary *binary, uint32_t cond) {
+addr_t find_init_ldmib(struct binary *binary, uint32_t cond) {
     range_t range;
     for(int i = 0; (range = b_dyldcache_nth_segment(binary, i)).start; i++) {
         uint32_t *p = rangeconv(range).start;
@@ -35,11 +35,16 @@ addr_t find_kinit(struct binary *binary, uint32_t cond) {
     die("didn't find kinit /anywhere/"); 
 }
 
+//ldmia<cond> r0!, {.., .., sp, (.., ){,2} pc}
+addr_t find_init_ldm(struct binary *binary) {
+    
+}
+
 void do_dyldcache(prange_t pr, struct binary *binary) {
     bool is_armv7 = b_is_armv7(binary);
     preplace32(pr, CONFIG_IS_ARMV7, (uint32_t) is_armv7);
-    // hexydec
     int align = is_armv7 ? 2 : 4;
+
     preplace32(pr, CONFIG_K4, b_dyldcache_find_anywhere(binary, is_armv7 ? "+ 00 68 b0 bd" : "- 00 00 90 e5 b0 80 bd e8", align));
     preplace32(pr, CONFIG_K5, b_dyldcache_find_anywhere(binary, is_armv7 ? "+ 20 60 90 bd" : "- 00 00 84 e5 90 80 bd e8", align));
     preplace32(pr, CONFIG_K6, b_dyldcache_find_anywhere(binary, is_armv7 ? "+ 20 44 90 bd" : "- 00 00 84 e0 90 80 bd e8", align));
@@ -54,7 +59,9 @@ void do_dyldcache(prange_t pr, struct binary *binary) {
     preplace32(pr, CONFIG_K17, b_dyldcache_find_anywhere(binary, is_armv7 ? "+ 25 60 b0 bd" : "- 00 50 84 e5 b0 80 bd e8", align));
     preplace32(pr, CONFIG_K18, b_dyldcache_find_anywhere(binary, "+ 10 bd", 2));
     preplace32(pr, CONFIG_K19, b_dyldcache_find_anywhere(binary, "+ 80 bd", 2));
-    preplace32(pr, CONFIG_KINIT, find_kinit(binary, is_armv7 ? 4 /* MI */ : 5 /* PL */));
+    preplace32(pr, CONFIG_KINIT, find_init_ldmib(binary, is_armv7 ? 4 /* MI */ : 5 /* PL */));
+
+    preplace32(pr, CONFIG_REMAP_FROM, find_kernel_ldm(binary));
     //b_dyldcache_load_macho(binary, "/usr/lib/libSystem.B.dylib");
     //preplace32(pr, 0xfeed1001, b_sym(binary, "_sysctlbyname", true));
     //preplace32(pr, 0xfeed1002, b_sym(binary, "_execve", true));
@@ -67,7 +74,7 @@ void do_dyld(prange_t pr, struct binary *binary) {
 void do_kernel(prange_t pr, struct binary *binary) {
     addr_t sysent = find_data(b_macho_segrange(binary, "__DATA"), "21 00 00 00 00 10 86 00 -", 0, true);
     preplace32(pr, CONFIG_SYSENT_PATCH, sysent + 4);
-    addr_t sysent_patch_orig = read32(binary, sysent + 4);
+    addr_t sysent_patch_orig = b_read32(binary, sysent + 4);
     preplace32(pr, CONFIG_SYSENT_PATCH_ORIG, sysent_patch_orig);
     preplace32(pr, CONFIG_TARGET_ADDR, (sysent_patch_orig & 0x00ffffff) | 0x2f000000);
 
@@ -91,12 +98,16 @@ int main(int argc, char **argv) {
             b_load_dyldcache(&cache, p[1], false);
             p += 2;
             break;
-        case 'k': {
+        case 'k':
             if(!p[1]) goto usage;
             b_load_macho(&kernel, p[1], false);
             p += 2;
             break;
-        }
+        case 'd':
+            if(!p[1]) goto usage;
+            b_load_macho(&dyld, p[1], false);
+            p += 2;
+            break;
         case 'K': {
             b_running_kernel_load_macho(&kernel);  
             p++;
@@ -123,7 +134,7 @@ int main(int argc, char **argv) {
             mode_t mode;
             prange_t pr = load_file(p[0], true, &mode);
             if(cache.valid) do_dyldcache(pr, &cache);
-            //if(kernel.valid) do_kernel(pr, &kernel);
+            if(kernel.valid) do_kernel(pr, &kernel);
             if(dyld.valid) do_dyld(pr, &dyld);
             check_no_placeholders(pr);
             store_file(pr, p[1], mode);
@@ -134,7 +145,7 @@ int main(int argc, char **argv) {
     return 0;
 
     usage:
-    fprintf(stderr, "Usage: data [-c cache | -C] [-k kc | -K"
+    fprintf(stderr, "Usage: data [-c cache | -C] [-d dyld] [-k kc | -K"
 #ifdef IMG3_SUPPORT
     " | -i kernel_img3 key iv"
 #endif
