@@ -1,5 +1,7 @@
 #!/opt/local/bin/python2.6
 
+import mmap, hashlib, os, re, struct
+
 class basebin:
     def lookup_addr(self, off):
         for startaddr, startoff, size, prot in self.sects:

@@ -104,22 +104,25 @@ def chain():
     compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'annoyance.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', gcc=GCC_ARMV7, cflags=cf, ldflags=ldf, strip=False)
     compile_stuff(['chain-user.c'], 'chain-user', ldflags=['-framework', 'IOKit', '-framework', 'CoreFoundation'])
 
-data_files = ['binary.c', 'find.c', 'common.c', 'cc.c', 'lzss.c', 'running_kernel.c']
-
-def data(gcc=GCC, ldid=True):
+def data(native=True):
     goto('data')
-    compile_stuff(data_files + ['deplaceholder.c'], 'deplaceholder', cflags='-DIMG3_SUPPORT', gcc=gcc, ldid=ldid)
-    compile_stuff(data_files + ['kernel_patcher.c'], 'kernel_patcher', 'ent.plist', cflags='-DIMG3_SUPPORT', gcc=gcc, ldid=ldid)
-    compile_stuff(['dyld_to_pwn.c'], 'dyld_to_pwn', gcc=gcc, ldid=ldid)
+    run_multiple(['make', 'clean'], ['make', 'GCC=gcc' if native else 'all'])
 
-def upgrade_data():
-    data_upgrade()
-    goto('upgrade-data')
-    compile_stuff(['lol_mkdir.c'], 'lol_mkdir', '../data/ent.plist')
-    run('./build-deb.sh')
+def datautils(native=False):
+    data(native)
+    goto('datautils')
 
-def data_native():
-    data(GCC_NATIVE, False)
+    gcc = GCC_NATIVE if native else GCC
+    ldid = not native
+    def cds(files, output):
+        return compile_stuff(files, output, cflags=['-DIMG3_SUPPORT', '-I..'], ldflags=['-L../data', '-ldata'], gcc=gcc, ldid=ldid)
+
+    cds(['deplaceholder.c'], 'deplaceholder')
+    cds(['kernel_patcher.c'], 'kernel_patcher')
+    cds(['dyld_to_pwn.c'], 'dyld_to_pwn')
+
+def datautils_native():
+    datautils(True)
 
 def sandbox2():
     goto('sandbox2')
