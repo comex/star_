@@ -20,7 +20,13 @@ static char *devicetree_final;
 static uint32_t *pagetable_final;
     
 static struct boot_args args_storage;
-static char pagetable_storage[0x4000] __attribute__((section("__STORAGE,__storage"), aligned(0x4000)));
+// WARNING WARNING WARNING WARNING
+// If you use __attribute__((aligned)), you can get a binary like this:
+//  http://pastie.org/private/qamosrgse9ufzsxsvyehaw
+// The section is outside of the segment!
+// To easily see if that's happening, run check_sanity from the data repository.
+
+static char *pagetable_storage;
 
 struct boot_args {
     uint16_t something; // 0 - 1
@@ -100,10 +106,6 @@ static void vita(uint32_t args_phys, uint32_t jump_phys) {
      
     invalidate_tlb();
     
-#if DEBUG
-    my_memset((void *) args_final->v_baseAddr, 0x88, args_final->v_height * args_final->v_rowBytes);
-#endif
-
     // This appears to work (and avoid GCC complaining about noreturn functions returning), but it also generates a warning.  I don't know how to get rid of it.
     //((void (__attribute__((noreturn)) *)(uint32_t)) jump_phys)(args_phys);
     __attribute__((noreturn)) void (*ptr)(uint32_t) = (void *) jump_phys;
@@ -162,14 +164,6 @@ static int phase_1() {
     if(!(vic = map_from_iokit("vic"))) return -1;
 
     uart_set_rate(115200);
-
-    // bam
-    memset((void *) 0x80342930, 0, 0x16);
-    flush_cache((void *) 0x80342900, 0x100);
-    memset((void *) 0x8034320a, 0, 0x10);
-    flush_cache((void *) 0x80343200, 0x100);
-    place_putc();
-    *((uint32_t *) 0x8000011c) = 0;
 
     serial_putstring("Hello... I am at ");
     serial_puthex((uint32_t) phase_1);
@@ -376,11 +370,11 @@ static void place_annoyance(uint32_t addr, uint32_t hookaddr, uint32_t hooksize)
     }
 }
 
-static void place_bxsp(uint32_t addr) {
+static void place_blxsp(uint32_t addr) {
     if(addr & 1) {
-        *((uint16_t *) (addr - 1)) = 0x4768;
+        *((uint16_t *) (addr - 1)) = 0x47e8;
     } else {
-        *((uint32_t *) addr) = 0xe12fff1d;
+        *((uint32_t *) addr) = 0xe12fff3d;
     }
 }
 #endif // DEBUG || PUTC
@@ -397,7 +391,7 @@ static void place_putc() {
 
 static int phase_2(unsigned int type) {
     // no kanye 
-    asm volatile("cpsid aif");
+    asm volatile("cpsid if");
 
     // stuff from openiboot
     for(int i = 0; i <= 3; i++) {
@@ -516,7 +510,7 @@ static int phase_2(unsigned int type) {
 #endif
     */
 
-    static const char c[] = "-v io=4095 sdio.log.level=65535 sdio.log.flags=1 kdp_match_name=serial "
+    static const char c[] = "-v io=8 " //sdio.log.level=65535 sdio.log.flags=1 "
 #if 0
     "sdio.debug.init-delay=10000 "
 #endif
@@ -550,12 +544,15 @@ static int phase_2(unsigned int type) {
     place_annoyance(SCRATCH + 0x1d00, 0x80791429, 8);*/
     //place_annoyance(SCRATCH + 0x1e00, 0x80791447, 12);
     //place_annoyance(SCRATCH + 0x1f00, 0x80791453, 12);
-    //place_bxsp(0x80791453);
     //place_annoyance(SCRATCH + 0x2000, 0x807914bf, 10);
     //place_annoyance(SCRATCH + 0x2100, 0x807914d1, 8);
     //place_annoyance(SCRATCH + 0x2200, 0x807914f9, 12);
-    place_bxsp(0x807914cf);
-    place_bxsp(0x8079152b);
+    //place_blxsp(0x80791453);
+    //place_blxsp(0x80791481);
+    place_blxsp(0x80791499);
+    place_blxsp(0x807914cf);
+    place_blxsp(0x8079152b);
+    place_blxsp(0x807914f9);
 #endif
 
 #if PUTC
@@ -601,6 +598,7 @@ struct args {
 
 int ok_go(void *p, struct args *uap, int32_t *retval) {
     kern_hdr = IOMallocContiguous(uap->kern_size, 1, NULL);
+    pagetable_storage = IOMallocContiguous(0x4000, 0x4000, NULL);
     copyin(uap->kern, kern_hdr, uap->kern_size);
     devicetree = kalloc(uap->devicetree_size);
     devicetree_size = uap->devicetree_size;
@@ -612,6 +610,7 @@ int ok_go(void *p, struct args *uap, int32_t *retval) {
     *retval = phase_1();
     if(*retval) {
         IOFreeContiguous(kern_hdr, uap->kern_size);
+        IOFreeContiguous(pagetable_storage, 0x4000);
         kfree(devicetree, uap->devicetree_size);
     }
     return 0;
