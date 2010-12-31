@@ -2,8 +2,9 @@
 #include <data/find.h>
 #include <data/binary.h>
 #include <data/cc.h>
-#include <data/placeholder.h>
+#include <config/placeholder.h>
 #include <data/running_kernel.h>
+#include <data/dyld_cache_format.h>
 
 // count the number of set bits
 static int count_ones(uint32_t number) {
@@ -32,12 +33,74 @@ addr_t find_init_ldmib(struct binary *binary, uint32_t cond) {
             return addr; 
         }
     }
-    die("didn't find kinit /anywhere/"); 
+    die("didn't find ldmib /anywhere/"); 
 }
 
-//ldmia<cond> r0!, {.., .., sp, (.., ){,2} pc}
-addr_t find_init_ldm(struct binary *binary) {
-    
+// ldmia<cond> r0/r0!, {.., .., sp,( lr,)? pc}
+// OR
+// ldmib<cond> r0/r0!, {.., sp,( lr,)? pc}
+// aligned to 0x1000
+// each set of two bits in valid_conds is:
+//  0 - known false
+//  1 - known true
+//  2 - unknown
+
+addr_t find_kernel_ldm(struct binary *binary, uint32_t valid_conds) {
+    range_t range;
+    uint32_t my_valid_conds = valid_conds;
+    for(int i = 0; (range = b_dyldcache_nth_segment(binary, i)).start; i++) {
+        if(!(binary->dyld_mappings[i].sfm_init_prot & PROT_EXEC)) continue;
+        char *p = rangeconv(range).start;
+        for(addr_t addr = range.start; addr + 4 <= (range.start + range.size); my_valid_conds = valid_conds, addr = (addr + 0x1000) & ~0xfff) {
+            back:;
+            uint32_t val = *((uint32_t *) (p + (addr - range.start)));
+            uint32_t cond = ((val & 0xf0000000) >> 28);
+            
+            bool harmless = false;
+            if(cond != 15 && 0 == (my_valid_conds & (3 << (2*cond)))) {
+                harmless = true;
+            } else if(!(val & 0xc000000)) { // data processing
+                uint32_t rd = (val & 0xf000) >> 12;
+                if(rd != 0 && rd != 15) {
+                    harmless = true;
+                    if(!(val & (1 << 20))) my_valid_conds = 0x1aaaaaaa; // AL known 1, others unknown
+                } else if(rd == 0) {
+                    uint32_t op = ((val & 0x1f00000) >> 20);
+                    if(op == 17 || op == 19 || op == 21 || op == 23) {
+                        harmless = true;
+                        my_valid_conds = 0x1aaaaaaa;
+                    }
+                }
+            }
+
+            if(harmless) {
+                //printf("@ %08x: %08x is harmless (vc=%08x)\n", addr, val, my_valid_conds);
+                addr += 4;
+                goto back;
+            }
+
+            if(cond == 15 || (1u << (2*cond)) != (my_valid_conds & (3 << (2*cond)))) {
+                continue;
+            }
+
+            //printf("ready to test %08x @ %08x\n", val, addr);
+
+            bool ldmib;
+            if((val & 0xf9fa000) == 0x890a000) {
+                ldmib = false;
+            } else if((val & 0xf9fa000) == 0x990a000) {
+                ldmib = true;
+            } else {
+                continue;
+            }
+            //printf("%08x -> %08x (%s)\n", addr, val, ldmib ? "ib" : "ia");
+            uint32_t reglist = val & 0x1fff;
+            if(count_ones(reglist) != (ldmib ? 1 : 2)) continue;
+            printf(":) %08x = %08x\n", addr, val);
+            return addr; 
+        }
+    }
+    die("didn't find ldm /anywhere/"); 
 }
 
 void do_dyldcache(prange_t pr, struct binary *binary) {
@@ -61,7 +124,9 @@ void do_dyldcache(prange_t pr, struct binary *binary) {
     preplace32(pr, CONFIG_K19, b_dyldcache_find_anywhere(binary, "+ 80 bd", 2));
     preplace32(pr, CONFIG_KINIT, find_init_ldmib(binary, is_armv7 ? 4 /* MI */ : 5 /* PL */));
 
-    preplace32(pr, CONFIG_REMAP_FROM, find_kernel_ldm(binary));
+    // NE, CS, MI, VC, HI, LT, LE, AL = 0b110100110010110
+    // >>> ''.join('0' + i for i in '110100110010110')
+    preplace32(pr, CONFIG_REMAP_FROM, find_kernel_ldm(binary, 0x14414114));
     //b_dyldcache_load_macho(binary, "/usr/lib/libSystem.B.dylib");
     //preplace32(pr, 0xfeed1001, b_sym(binary, "_sysctlbyname", true));
     //preplace32(pr, 0xfeed1002, b_sym(binary, "_execve", true));

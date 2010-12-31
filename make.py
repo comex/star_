@@ -113,12 +113,13 @@ def datautils(native=False):
     goto('datautils')
 
     gcc = GCC_NATIVE if native else GCC
-    ldid = not native
+    ldid = strip = not native
     def cds(files, output):
-        return compile_stuff(files, output, cflags=['-DIMG3_SUPPORT', '-I..'], ldflags=['-L../data', '-ldata'], gcc=gcc, ldid=ldid)
+        return compile_stuff(files, output, cflags=['-DIMG3_SUPPORT', '-I..'], ldflags=['-L../data', '-ldata'], gcc=gcc, ldid=ldid, strip=strip)
 
     cds(['deplaceholder.c'], 'deplaceholder')
-    cds(['kernel_patcher.c'], 'kernel_patcher')
+    cds(['make_kernel_patchfile.c'], 'make_kernel_patchfile')
+    cds(['apply_patchfile.c'], 'apply_patchfile')
     cds(['dyld_to_pwn.c'], 'dyld_to_pwn')
 
 def datautils_native():
