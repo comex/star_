@@ -1,3 +1,5 @@
+// TODO make this accept a patchfile
+
 #define PF 1
 #define PRIVATE 1
 #include <fcntl.h>

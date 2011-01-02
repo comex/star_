@@ -96,7 +96,7 @@ addr_t find_kernel_ldm(struct binary *binary, uint32_t valid_conds) {
             //printf("%08x -> %08x (%s)\n", addr, val, ldmib ? "ib" : "ia");
             uint32_t reglist = val & 0x1fff;
             if(count_ones(reglist) != (ldmib ? 1 : 2)) continue;
-            printf(":) %08x = %08x\n", addr, val);
+            //printf(":) %08x = %08x\n", addr, val);
             return addr; 
         }
     }

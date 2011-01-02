@@ -115,7 +115,7 @@ def datautils(native=False):
     gcc = GCC_NATIVE if native else GCC
     ldid = strip = not native
     def cds(files, output):
-        return compile_stuff(files, output, cflags=['-DIMG3_SUPPORT', '-I..'], ldflags=['-L../data', '-ldata'], gcc=gcc, ldid=ldid, strip=strip)
+        return compile_stuff(files, output, cflags=['-DIMG3_SUPPORT', '-I..', '-O3'], ldflags=['-L../data', '-ldata'], gcc=gcc, ldid=ldid, strip=strip)
 
     cds(['deplaceholder.c'], 'deplaceholder')
     cds(['make_kernel_patchfile.c'], 'make_kernel_patchfile')

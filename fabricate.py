@@ -665,18 +665,18 @@ static char *careful_realpath(const char *path, char *path_buf) {
     return ret;
 }
 
-#define do_open(name) \
-int name(const char *path, int oflag, ...);\
-int my_##name(const char *path, int oflag, int x) { \
-	int ret = name(path, oflag, x); \
-    /* malloc sometimes calls open for arc4_stir; this breaks malloc in careful_realpath and fprintf... no good.  but /dev/urandom isn't part of the project, so we can just ignore it */ \
-    if(!strncmp(path, "/dev/urandom", PATH_MAX)) return ret; \
-    pthread_once(&once, init); \
-    char buf[PATH_MAX+1]; \
-	char *path_ = careful_realpath(path, buf); \
-	if(path_) { output("!%s.open %s\\n", oflag & (O_WRONLY | O_RDWR) ? "write" : "read", path_); } \
-    return ret; \
-} \
+#define do_open(name) \\
+int name(const char *path, int oflag, ...);\\
+int my_##name(const char *path, int oflag, int x) { \\
+	int ret = name(path, oflag, x); \\
+    /* malloc sometimes calls open for arc4_stir; this breaks malloc in careful_realpath and fprintf... no good.  but /dev/urandom isn't part of the project, so we can just ignore it */ \\
+    if(!strncmp(path, "/dev/urandom", PATH_MAX)) return ret; \\
+    pthread_once(&once, init); \\
+    char buf[PATH_MAX+1]; \\
+	char *path_ = careful_realpath(path, buf); \\
+	if(path_) { output("!%s.open %s\\n", oflag & (O_WRONLY | O_RDWR) ? "write" : "read", path_); } \\
+    return ret; \\
+} \\
 DYLD_INTERPOSE(my_##name, name)
 
 #ifdef __LP64__
@@ -688,15 +688,15 @@ do_open(open$UNIX2003)
 do_open(open$NOCANCEL$UNIX2003)
 #endif
 
-#define do_stat(name) \
-int name(const char *path, struct stat *buf); \
-int my_##name(const char *path, struct stat *buf) { \
-    pthread_once(&once, init); \
-    char buf[PATH_MAX+1]; \
-	char *path_ = careful_realpath(path, buf); \
-	if(path_) { output("!read.stat %s\\n", path_); } \
-	return name(path, buf); \
-} \
+#define do_stat(name) \\
+int name(const char *path, struct stat *st); \\
+int my_##name(const char *path, struct stat *buf) { \\
+    pthread_once(&once, init); \\
+    char buf[PATH_MAX+1]; \\
+	char *path_ = careful_realpath(path, buf); \\
+	if(path_) { output("!read.stat %s\\n", path_); } \\
+	return name(path, st); \\
+} \\
 DYLD_INTERPOSE(my_##name, name)
 
 do_stat(stat)
