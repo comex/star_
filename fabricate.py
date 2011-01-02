@@ -690,7 +690,7 @@ do_open(open$NOCANCEL$UNIX2003)
 
 #define do_stat(name) \\
 int name(const char *path, struct stat *st); \\
-int my_##name(const char *path, struct stat *buf) { \\
+int my_##name(const char *path, struct stat *st) { \\
     pthread_once(&once, init); \\
     char buf[PATH_MAX+1]; \\
 	char *path_ = careful_realpath(path, buf); \\
