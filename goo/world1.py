@@ -1,61 +1,58 @@
 from goo import *
 
-import config
-cfg = config.openconfig()
-cache = cfg['#dyld'] if cfg.has_key('#dyld') else cfg['#cache']
-syms = config.binary_open(cache['@binary'])
+from config import *
 
 def load_r0_r0():
-    set_fwd('PC', cache['k4'])
+    set_fwd('PC', CONFIG_K4)
     exhaust_fwd('R4', 'R5', 'R7')
     heapadd(fwd('R4'), fwd('R5'), fwd('R7'), fwd('PC'))
 
 def load_r0_from(address):
-    set_fwd('PC', cache['k16'])
+    set_fwd('PC', CONFIG_K16)
     set_fwd('R4', address)
     exhaust_fwd('R7')
     heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
 
 def store_r0_to(address):
-    set_fwd('PC', cache['k5'])
+    set_fwd('PC', CONFIG_K5)
     set_fwd('R4', address)
     exhaust_fwd('R7')
     heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
 
 def store_val(val, to):
-    set_fwd('PC', cache['k17'])
+    set_fwd('PC', CONFIG_K17)
     set_fwd('R5', val)
     set_fwd('R4', to)
     exhaust_fwd('R7')
     heapadd(fwd('R4'), fwd('R5'), fwd('R7'), fwd('PC'))
 
 def add_r0_const(addend):
-    set_fwd('PC', cache['k6'])
+    set_fwd('PC', CONFIG_K6)
     set_fwd('R4', addend)
     exhaust_fwd('R7')
     heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
 
 def set_r0to3(r0, r1, r2, r3):
-    set_fwd('PC', cache['k7'])
+    set_fwd('PC', CONFIG_K7)
     heapadd(r0, r1, r2, r3, fwd('PC'))
 
 def set_r1to3(r1, r2, r3):
-    set_fwd('PC', cache['k9'])
+    set_fwd('PC', CONFIG_K9)
     heapadd(r1, r2, r3, fwd('PC'))
 
 def set_sp_to(sp):
-    set_fwd('PC', cache['k10'])
+    set_fwd('PC', CONFIG_K10)
     set_fwd('R7', sp)
     clear_fwd() # pop {r7, pc} but that's not in this stack
 
 # Make some registers available but do nothing.
 def make_avail():
-    set_fwd('PC', cache['k11'])
+    set_fwd('PC', CONFIG_K11)
     heapadd(*(fwd(i, True) for i in ['R4', 'R5', 'R6', 'R7', 'PC']))
 
 # Make only r4 available.
 def make_r4_avail():
-     set_fwd('PC', cache['k18'])
+     set_fwd('PC', CONFIG_K18)
      exhaust_fwd('R4')
      heapadd(fwd('R4'), fwd('PC'))
 
@@ -79,7 +76,7 @@ def funcall(funcname, *args, **kwargs):
 
     if not turing_complete:
         if len(args) <= 7 and cache.has_key('k12'):
-            set_fwd('PC', cache['k12'])
+            set_fwd('PC', CONFIG_K12)
             set_fwd('R4', funcaddr)
             exhaust_fwd('R5', 'R7')
             heapadd(fwd('R4'), fwd('R5'), fwd('R7'), fwd('PC'))
@@ -98,7 +95,7 @@ def funcall(funcname, *args, **kwargs):
         # func stack: mynewstackbase [R7] [PC=k12] <- dirty zone <- [R4/arg4] [R5/arg5] ([R7/arg6] [PC=k19]) [R7=addr to go back to] [PC=k10]
         #                                                                   
         if len(args) <= 7 and cache.has_key('k12'):
-            store_val(cache['k12'], to=(mynewstackbase + 1*4))
+            store_val(CONFIG_K12, to=(mynewstackbase + 1*4))
             markerval, markeroff = stackunkpair()
             if len(args) > 4:
                 store_val(args[4], to=(mynewstackbase + 2*4))
@@ -106,16 +103,16 @@ def funcall(funcname, *args, **kwargs):
                 store_val(args[5], to=(mynewstackbase + 3*4))
             if len(args) > 6:
                 store_val(args[6], to=(mynewstackbase + 4*4))
-                store_val(cache['k19'], to=(mynewstackbase + 5*4))
+                store_val(CONFIG_K19, to=(mynewstackbase + 5*4))
                 store_val(markeroff, to=(mynewstackbase + 6*4))
-                store_val(cache['k10'], to=(mynewstackbase + 7*4))
+                store_val(CONFIG_K10, to=(mynewstackbase + 7*4))
             else:
                 store_val(markeroff, to=(mynewstackbase + 4*4))
-                store_val(cache['k10'], to=(mynewstackbase + 5*4))
+                store_val(CONFIG_K10, to=(mynewstackbase + 5*4))
             # okay, time to actually go
             set_fwd('R4', funcaddr)
             set_fwd('R7', mynewstackbase)
-            set_fwd('PC', cache['k10'])
+            set_fwd('PC', CONFIG_K10)
             exhaust_fwd('R5', 'R7')
             # this is from k10
             heapadd(markerval*0 + fwd('R7'), fwd('PC'))
@@ -130,7 +127,7 @@ def funcall(funcname, *args, **kwargs):
 def store_to_r0(value):
     set_fwd('R4', value)
     exhaust_fwd('R7')
-    set_fwd('PC', cache['k15'])
+    set_fwd('PC', CONFIG_K15)
     heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
 
 
@@ -141,12 +138,12 @@ def store_deref_plus_offset(deref, offset, value):
     store_to_r0(value)
 
 def and_r0_1():
-    set_fwd('PC', cache['k3'])
+    set_fwd('PC', CONFIG_K3)
     exhaust_fwd('R7')
     heapadd(fwd('R7'), fwd('PC'))
 
 def load_r0_base_r0_lsl2(base):
-    set_fwd('PC', cache['k2'])
+    set_fwd('PC', CONFIG_K2)
     set_fwd('R4', base)
     exhaust_fwd('R5', 'R7')
     heapadd(fwd('R4'), fwd('R5'), fwd('R7'), fwd('PC'))

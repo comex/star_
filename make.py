@@ -38,8 +38,13 @@ def compile_to_bin(output, input=None, flags=[]):
     run(GCC, '-o', ofile, input, flags, '-nostdlib', '-nodefaultlibs', '-nostartfiles')
     run(ROOT + '/machdump/machdump', ofile, binfile)
 
+def config():
+    goto('.')
+    run('python', 'config/generate_config.py')
+
 def pmap():
-    goto('star/pmap')
+    config()
+    goto('pmap')
     for x in ['pmap2', 'pmaparb', 'shelltester']:
         run(GCC_UNIVERSAL, '-o', x, x + '.c', '-I', headers, F('IOKit', 'CoreFoundation', 'IOSurface'))
 
@@ -94,6 +99,7 @@ def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=
         run(gcc, '-o', output, objs, ldflags, '-dead_strip')
 
 def pf2():
+    config()
     goto('pf2')
     compile_stuff(['pf2.c', '../sandbox2/sandbox.S'], 'pf2')
 
@@ -101,7 +107,7 @@ def chain():
     goto('chain')
     cf = ['-marm', '-DUSE_ASM_FUNCS=0', '-fblocks']
     ldf=['-dynamiclib', '-nostdlib', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-read_only_relocs', 'suppress']
-    compile_stuff(['start.s', 'chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'annoyance.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', gcc=GCC_ARMV7, cflags=cf, ldflags=ldf, strip=False)
+    compile_stuff(['chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'annoyance.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', gcc=GCC_ARMV7, cflags=cf, ldflags=ldf, strip=False)
     compile_stuff(['chain-user.c'], 'chain-user', ldflags=['-framework', 'IOKit', '-framework', 'CoreFoundation'])
 
 def data(native=True):
@@ -109,6 +115,7 @@ def data(native=True):
     run_multiple(['make', 'clean'], ['make', 'GCC=gcc' if native else 'all'])
 
 def datautils(native=False):
+    config()
     data(native)
     goto('datautils')
 

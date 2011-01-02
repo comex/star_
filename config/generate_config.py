@@ -4,6 +4,7 @@ os.chdir(os.path.dirname(os.path.realpath(sys.argv[0])))
 minimum_number = number = 0xfeed0000
 ch = open('config.h', 'w')
 cah = open('config_asm.h', 'w')
+cp = open('config.py', 'w')
 
 for line in open('config.txt'):
     line = re.sub('//.*$', '', line).strip()
@@ -16,4 +17,5 @@ for line in open('config.txt'):
     number += 1
     print >> ch, 'static volatile const unsigned int %s = %s;' % (line, val)
     print >> cah, '#define %s %s' % (line, val)
+    print >> cp, '%s = %s' % (line, val)
 
