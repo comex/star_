@@ -11,18 +11,13 @@ make_avail()
 zero = ptrI(0)
 
 name2oid_oid = ptrI(0, 3)
-real_oid = ptrI(*([0] * 14))
+real_oid = ptrI(0, 0, 0)
+oidlenp = ptrI(0)
 
 def s(name):
-    oidlen, oidlenp = stackunkpair()
-    oidlen2, oidlen2p = stackunkpair()
     funcall('_syscall', 202, name2oid_oid, 8, real_oid, oidlenp, ptr(name, True), len(name))
-    make_avail()
-    set_r0_to(oidlen)
-    lsr_r0_2()
-    store_r0_to(oidlen2p)
-    funcall('_syscall', 202, real_oid, oidlen2, 0, 0, zero, 4)
-    make_avail()
+    # the id might change, but the length won't- it's 3
+    funcall('_syscall', 202, real_oid, 3, 0, 0, zero, 4)
 
 s('security.mac.proc_enforce')
 s('security.mac.vnode_enforce')

@@ -47,6 +47,7 @@ def set_r0to3(r0, r1=0, r2=0, r3=0):
         heapadd(r0, r1, r2, r3, fwd('PC'))
 
 def set_r1to3(r1, r2, r3):
+    exhaust_fwd('R7')
     set_fwd('PC', dmini.find_basic('+ 8e bd'))
     heapadd(r1, r2, r3, fwd('R7'), fwd('PC'))
 
@@ -81,7 +82,11 @@ def funcall(funcaddr, *args, **kwargs):
         del kwargs['load_r0']
     assert kwargs == {}
 
-    if len(args) <= 7:
+    try:
+        m = marker()
+    except:
+        # lame way
+        assert len(args) <= 7
         set_fwd('PC', dmini.find_multiple('+ a0 47 b0 bd', '- 34 ff 2f e1 b0 80 bd e8'))
         set_fwd('R4', funcaddr)
         exhaust_fwd('R5', 'R7')
@@ -93,7 +98,12 @@ def funcall(funcaddr, *args, **kwargs):
         if len(args) > 6:
             set_fwd('R7', args[6])
     else:
-        assert False
+        set_fwd('PC', dmini.find_multiple('+ a0 47 a7 f1 04 0d 90 bd', '??'))
+        set_fwd('R4', funcaddr)
+        set_fwd('R7', m + 4)
+        heapadd(*args[4:])
+        m.mark()
+        heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
 
 def store_to_r0(value):
     set_fwd('R4', value)
@@ -107,8 +117,4 @@ def store_deref_plus_offset(deref, offset, value):
     add_r0_const(offset)
     store_to_r0(value)
 
-def lsr_r0_2():
-    set_fwd('PC', dmini.find_basic('+ 80 08 80 bd'))
-    exhaust_fwd('R7')
-    heapadd(fwd('R7'), fwd('PC'))
 

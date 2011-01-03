@@ -20,7 +20,7 @@ def heapadd(*stuff):
     heapstuff += list(stuff)
 
 def finalize(heapaddr_=None):
-    global heapstuff, hidx, sheap, sheapaddr, heapaddr, heapdbgnames
+    global heapstuff, sheap, sheapaddr, heapaddr, heapdbgnames
     clear_fwd()
     heapaddr._val = heapaddr_
     if heapaddr_ is not None:
@@ -41,9 +41,9 @@ def finalize(heapaddr_=None):
 
     return struct.pack('<'+'I'*len(heapstuff), *heapstuff) + sheap
 
-def heapdump(cache):
+def heapdump(names):
     dbginfo.append((10000, '?'))
-    reverse = dict((v, k) for (k, v) in cache.iteritems())
+    reverse = dict((v, k) for (k, v) in names.iteritems())
     stackunktargets = set()
     for i, entry in enumerate(heapstuff):
         if i >= dbginfo[0][0]:
@@ -120,11 +120,11 @@ class later(car):
     def val(self):
         return self.func()
 
-sp_off = lambda: later(lambda: 4*hidx)
-
 class stackunk(car):
+    def __init__(self):
+        self.hidx = len(heapstuff)
     def val(self):
-        self.addr = int(heapaddr) + 4*hidx
+        self.addr = int(heapaddr) + 4*self.hidx
         return 0
 class stackunkptr(car):
     def __init__(self, unk):
@@ -165,8 +165,10 @@ class ptr(car):
         return ret
 
 class marker(car):
+    def __init__(self):
+        assert heapaddr is not None
     def mark(self):
-        self._val = 4 * len(heapstuff)
+        self._val = heapaddr + 4 * len(heapstuff)
         return self
     def val(self):
         raise ValueError("marker didn't mark")
