@@ -21,10 +21,5 @@ def set_r0to3(r0, r1, r2, r3):
     heapadd(r0, r1, r2, r3, fwd('R7'), fwd('LR'), dontcare, dontcare)
     m._val = fwd('PC')
 
-def load_r0_r0():
-    set_fwd('PC', CONFIG_K24)
-    exhaust_fwd('R7')
-    heapadd(fwd('R7'), fwd('PC'))
-
-world1.set_r0to3 = set_r0to3
-world1.load_r0_r0 = load_r0_r0
+#world1.load_r0_from = load_r0_from
+#world1.set_r0to3 = set_r0to3

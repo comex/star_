@@ -21,10 +21,11 @@ static inline void patch_with_range(const char *name, addr_t addr, prange_t pr) 
        patch_with_range(name, addr, (prange_t) {&to_[0], sizeof(to_)}); })
 
 uint32_t find_dvp_struct_offset(struct binary *binary) {
+    bool is_armv7 = binary->actual_cpusubtype == 9;
     range_t range = b_macho_segrange(binary, "__PRELINK_TEXT");
-    addr_t derive_vnode_path = find_bof(range, find_int32(range, find_string(range, "path", 0, true), true), b_is_armv7(binary));
-    uint8_t byte = b_read8(binary, find_data((range_t){binary, derive_vnode_path, 1024}, !b_is_armv7(binary) ? "00 00 50 e3 02 30 a0 11 - .. 00 94 e5" : "- .. 69 6a 46", 0, true));
-    if(b_is_armv7(binary)) {
+    addr_t derive_vnode_path = find_bof(range, find_int32(range, find_string(range, "path", 0, true), true), is_armv7);
+    uint8_t byte = b_read8(binary, find_data((range_t){binary, derive_vnode_path, 1024}, !is_armv7 ? "00 00 50 e3 02 30 a0 11 - .. 00 94 e5" : "- .. 69 6a 46", 0, true));
+    if(is_armv7) {
         return (4 | (byte >> 6)) << 2;
     } else {
         return byte;
@@ -52,7 +53,7 @@ addr_t find_sysctl(struct binary *binary, const char *name) {
 }
 
 void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
-    bool is_armv7 = b_is_armv7(binary);
+    bool is_armv7 = binary->actual_cpusubtype == 9;
 
 //#define IN_PLACE_PATCH
     // patches
@@ -124,6 +125,11 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
                      scratch,
                      sandbox);
 
+    addr_t sysent = find_data(b_macho_segrange(binary, "__DATA"), "21 00 00 00 00 10 86 00 -", 0, true);
+    addr_t sysent_patch_orig = b_read32(binary, sysent + 4);
+    patch("sysent patch", 0, uint32_t, {sysent + 4});
+    patch("sysent patch orig", 0, uint32_t, {sysent_patch_orig});
+
     fprintf(stderr, "scratch = %x\n", scratch);
 }
 
@@ -139,7 +145,7 @@ int main(int argc, char **argv) {
     if(patchfd == -1) {
         edie("could not open patchfd");
     }
-    
+
     do_kernel(kernel, sandbox, &binary);
 
     close(patchfd);

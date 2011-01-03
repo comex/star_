@@ -5,7 +5,7 @@ import fabricate
 fabricate.default_builder.deps # do this before we chdir
 import sys, os
 ROOT = os.path.realpath(os.path.dirname(sys.argv[0]))
-os.environ['PYTHONPATH'] = ROOT + '/goo'
+os.environ['PYTHONPATH'] = 'ROOT/datautils:ROOT/goo:ROOT/config'.replace('ROOT', ROOT)
 
 GCC_FLAGS = ['-std=gnu99', '-gdwarf-2', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wall', '-Wextra', '-Wreturn-type', '-Wno-unused', '-Os']
 SDK = '/var/sdk'
@@ -71,12 +71,14 @@ def installui():
     run(GCC, '-dynamiclib', '-o', 'installui.dylib', files, F('Foundation', 'UIKit', 'IOKit', 'CoreGraphics'), '-lz')
 
 def goo():
-    pass
+    config()
+    goto('goo')
+    #run('python', 'setup.py'
 
 def goo_pf():
     goo()
     goto('goo/pf')
-    run('python', 'transe.py')
+    run('python', 'just_sysctl.py')
     run('python', '../one.py', 'transeboot.txt')
 
 def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True):
@@ -124,7 +126,7 @@ def datautils(native=False):
     def cds(files, output):
         return compile_stuff(files, output, cflags=['-DIMG3_SUPPORT', '-I..', '-O3'], ldflags=['-L../data', '-ldata'], gcc=gcc, ldid=ldid, strip=strip)
 
-    cds(['deplaceholder.c'], 'deplaceholder')
+    cds(['dmini.c'], 'dmini')
     cds(['make_kernel_patchfile.c'], 'make_kernel_patchfile')
     cds(['apply_patchfile.c'], 'apply_patchfile')
     cds(['dyld_to_pwn.c'], 'dyld_to_pwn')

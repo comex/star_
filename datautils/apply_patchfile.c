@@ -26,15 +26,18 @@ int main(int argc, char **argv) {
         
         addr_t addr;
         assert(read(patchfd, &addr, sizeof(addr)) == sizeof(addr));
+
         uint32_t size;
         assert(read(patchfd, &size, sizeof(size)) == sizeof(size));
         assert(size < 0x1000000);
         
         void *stuff = malloc(size);
         assert(read(patchfd, stuff, size) == (ssize_t) size);
-
-        printf("%s\n", name);
-        memcpy((char *) kernel.start + range_to_off_range((range_t) {&binary, addr, size}).start, stuff, size);
+        
+        if(addr != 0) {
+            printf("%s\n", name);
+            memcpy((char *) kernel.start + range_to_off_range((range_t) {&binary, addr, size}).start, stuff, size);
+        }
 
         free(name);
         free(stuff);
