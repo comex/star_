@@ -2,7 +2,7 @@
 import sys
 import dmini
 dmini.init(sys.argv[1:])
-from world2 import *
+from world1 import *
 from config import *
 
 init('PC')
@@ -17,16 +17,18 @@ def s(name):
     oidlen, oidlenp = stackunkpair()
     oidlen2, oidlen2p = stackunkpair()
     funcall('_syscall', 202, name2oid_oid, 8, real_oid, oidlenp, ptr(name, True), len(name))
+    make_avail()
     set_r0_to(oidlen)
     lsr_r0_2()
     store_r0_to(oidlen2p)
     funcall('_syscall', 202, real_oid, oidlen2, 0, 0, zero, 4)
+    make_avail()
 
 s('security.mac.proc_enforce')
 s('security.mac.vnode_enforce')
 def e(name):
     p = ptr(name, True)
-    funcall(CONFIG_SYSCALL, 59, name, ptrI(name, 0), zero)
+    funcall('_syscall', 59, p, ptrI(p, 0), zero)
 e('./pf2')
 e('/usr/lib/pf2')
 

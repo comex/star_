@@ -103,6 +103,8 @@ void main_loop() {
         } else if(mode == 1) {
             result = b_sym(&binary, arg, true);
         } else if(mode == 2) {
+            result = b_private_sym(&binary, arg, true);
+        } else if(mode == 3) {
             b_dyldcache_load_macho(&binary, arg);
             result = 0;
         } else die("mode?");

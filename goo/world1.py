@@ -25,19 +25,30 @@ def store_val(val, to):
     exhaust_fwd('R7')
     heapadd(fwd('R4'), fwd('R5'), fwd('R7'), fwd('PC'))
 
-def add_r0_const(addend):
+def add_r0_by(addend):
     set_fwd('PC', dmini.find_multiple('+ 20 44 90 bd', '- 00 00 84 e0 90 80 bd e8'))
     set_fwd('R4', addend)
     exhaust_fwd('R7')
     heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
 
-def set_r0to3(r0, r1, r2, r3):
-    set_fwd('PC', dmini.find_multiple('+ 0f bd', '- 0f 80 bd e8'))
-    heapadd(r0, r1, r2, r3, fwd('PC'))
+def set_r0_to(r0):
+    set_fwd('PC', dmini.find_multiple('+ 20 46 90 bd', '- 04 00 a0 e1 90 80 bd e8'))
+    set_fwd('R4', r0)
+    exhaust_fwd('R7')
+    heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
+
+def set_r0to3(r0, r1=0, r2=0, r3=0):
+    try:
+        set_fwd('PC', dmini.find_multiple('+ 0f bd', '- 0f 80 bd e8'))
+    except dmini.DminiError:
+        set_r0_to(r0)
+        set_r1to3(r1, r2, 3)
+    else:
+        heapadd(r0, r1, r2, r3, fwd('PC'))
 
 def set_r1to3(r1, r2, r3):
-    set_fwd('PC', dmini.find_basic('+ 0e bd'))
-    heapadd(r1, r2, r3, fwd('PC'))
+    set_fwd('PC', dmini.find_basic('+ 8e bd'))
+    heapadd(r1, r2, r3, fwd('R7'), fwd('PC'))
 
 def set_sp_to(sp):
     set_fwd('PC', dmini.find_multiple('+ a7 f1 00 0d 80 bd', '- 00 d0 47 e2 80 80 bd e8'))
