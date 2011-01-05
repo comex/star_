@@ -33,31 +33,28 @@ addr_t find_kernel_ldm(struct binary *binary, uint32_t valid_conds) {
         if(!(binary->dyld_mappings[i].sfm_init_prot & PROT_EXEC)) continue;
         char *p = rangeconv(range).start;
         for(addr_t addr = range.start; addr + 4 <= (range.start + range.size); my_valid_conds = valid_conds, addr = (addr + 0x1000) & ~0xfff) {
-            back:;
+            harmless:;
             uint32_t val = *((uint32_t *) (p + (addr - range.start)));
             uint32_t cond = ((val & 0xf0000000) >> 28);
             
             bool harmless = false;
-            if(cond != 15 && 0 == (my_valid_conds & (3 << (2*cond)))) {
-                harmless = true;
-            } else if(!(val & 0xc000000)) { // data processing
-                uint32_t rd = (val & 0xf000) >> 12;
-                if(rd != 0 && rd != 15) {
-                    harmless = true;
-                    if(!(val & (1 << 20))) my_valid_conds = 0x1aaaaaaa; // AL known 1, others unknown
-                } else if(rd == 0) {
-                    uint32_t op = ((val & 0x1f00000) >> 20);
-                    if(op == 17 || op == 19 || op == 21 || op == 23) {
-                        harmless = true;
-                        my_valid_conds = 0x1aaaaaaa;
+
+            if((addr & 0xfff) != 0xffc) {
+                if(cond != 15 && 0 == (my_valid_conds & (3 << (2*cond)))) {
+                    addr += 4; goto harmless;
+                } else if(!(val & 0xc000000)) { // data processing
+                    uint32_t rd = (val & 0xf000) >> 12;
+                    if(rd != 0 && rd != 15) {
+                        if(!(val & (1 << 20))) my_valid_conds = 0x1aaaaaaa; // AL known 1, others unknown
+                        addr += 4; goto harmless;
+                    } else if(rd == 0) {
+                        uint32_t op = ((val & 0x1f00000) >> 20);
+                        if(op == 17 || op == 19 || op == 21 || op == 23) {
+                            my_valid_conds = 0x1aaaaaaa;
+                            addr += 4; goto harmless;
+                        }
                     }
                 }
-            }
-
-            if(harmless) {
-                //printf("@ %08x: %08x is harmless (vc=%08x)\n", addr, val, my_valid_conds);
-                addr += 4;
-                goto back;
             }
 
             if(cond == 15 || (1u << (2*cond)) != (my_valid_conds & (3 << (2*cond)))) {
@@ -67,15 +64,22 @@ addr_t find_kernel_ldm(struct binary *binary, uint32_t valid_conds) {
             //printf("ready to test %08x @ %08x\n", val, addr);
 
             bool ldmib;
-            if((val & 0xf9fa000) == 0x890a000) {
+            if((val & 0xf9f8000) == 0x8908000) {
                 ldmib = false;
-            } else if((val & 0xf9fa000) == 0x990a000) {
+            } else if((val & 0xf9f8000) == 0x9908000) {
                 ldmib = true;
             } else {
                 continue;
             }
-            //printf("%08x -> %08x (%s)\n", addr, val, ldmib ? "ib" : "ia");
-            uint32_t reglist = val & 0x1fff;
+            printf("%08x -> %08x (%s)\n", addr, val, ldmib ? "ib" : "ia");
+            uint32_t reglist = val & 0x7fff;
+            int ones = count_ones(reglist);
+            if(ldmib) ones--;
+            if(ones < 3 || ones > 5) continue;
+            // figure out 
+
+
+            printf("%d\n", count_ones(reglist));
             if(count_ones(reglist) != (ldmib ? 1 : 2)) continue;
             //printf(":) %08x = %08x\n", addr, val);
             return addr; 
@@ -107,6 +111,8 @@ void main_loop() {
         } else if(mode == 3) {
             b_dyldcache_load_macho(&binary, arg);
             result = 0;
+        } else if(mode == 4) {
+            result = find_kernel_ldm(&binary, atoi(arg));
         } else die("mode?");
 
         printf("+ %x\n", result);
@@ -167,11 +173,11 @@ int main(int argc, char **argv) {
     return 0;
 
     usage:
-    fprintf(stderr, "Usage: dmini [-c cache | -C] [-d dyld] [-k kc | -K"
+    fprintf(stderr, "Usage: dmini (-c cache | -C | -d dyld | -k kc | -K"
 #ifdef IMG3_SUPPORT
     " | -i kernel_img3 key iv"
 #endif
-    "]\n");
+    ")\n");
     return 1;
 }
 

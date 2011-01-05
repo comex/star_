@@ -3,7 +3,6 @@ import sys
 import dmini
 dmini.init(sys.argv[1:])
 from world1 import *
-from config import *
 
 init('PC')
 make_avail()
