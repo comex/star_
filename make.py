@@ -42,11 +42,9 @@ def config():
     goto('.')
     run('python', 'config/generate_config.py')
 
-def pmap():
-    config()
-    goto('pmap')
-    for x in ['pmap2', 'pmaparb', 'shelltester']:
-        run(GCC_UNIVERSAL, '-o', x, x + '.c', '-I', headers, F('IOKit', 'CoreFoundation', 'IOSurface'))
+def shelltester():
+    goto('shelltester')
+    compile_stuff(['shelltester.c'], 'shelltester')
 
 def machdump():
     goto('machdump')
@@ -77,9 +75,10 @@ def goo():
 
 def goo_pf():
     goo()
-    goto('goo/pf')
-    run('python', 'just_sysctl.py')
-    run('python', '../one.py', 'transeboot.txt')
+    datautils_native()
+    goto('goo/just_sysctl')
+    run('python', 'just_sysctl.py', '-d', '../../config/cur/dyld')
+    run('../../datautils/dyld_to_pwn', '../../config/cur/dyld', 'just_sysctl_output.txt', 'just_sysctl_launchd')
 
 def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True):
     objs = []

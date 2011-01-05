@@ -651,8 +651,6 @@ static void init() {
         write(2, error, strlen(error));
         abort();
     }
-    //extern char ***_NSGetArgv();
-    //output("hi I am %s\\n", **_NSGetArgv());
 }
 
 static char *careful_realpath(const char *path, char *path_buf) {
