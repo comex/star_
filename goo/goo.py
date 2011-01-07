@@ -16,8 +16,9 @@ def heapadd(*stuff):
     global heapstuff
     # so we know where we came from
     dbginfo.append((len(heapstuff), sys._getframe().f_back.f_code.co_name))
-    
-    heapstuff += list(stuff)
+    for a in stuff:
+        if hasattr(a, 'added'): a.added()
+        heapstuff.append(a)
 
 def finalize(heapaddr_=None):
     global heapstuff, sheap, sheapaddr, heapaddr, heapdbgnames
@@ -28,20 +29,22 @@ def finalize(heapaddr_=None):
         print hex(sheapaddr)
     sheap = ''
     heapdbgnames = [(obj.name if hasattr(obj, 'name') else None) for obj in heapstuff]
-    for pass_num in xrange(2):
-        for hidx in xrange(len(heapstuff)):
-            thing = heapstuff[hidx]
-            if not isinstance(thing, int):
-                try:
-                    thing = int(thing)
-                except NotYetError:
-                    pass
-                else:
-                    heapstuff[hidx] = thing
+    heapstuff = map(int, heapstuff)
+#    for pass_num in xrange(2):
+#        for hidx in xrange(len(heapstuff)):
+#            thing = heapstuff[hidx]
+#            if not isinstance(thing, int):
+#                try:
+#                    thing = int(thing)
+#                except NotYetError:
+#                    pass
+#                else:
+#                    heapstuff[hidx] = thing
 
     return struct.pack('<'+'I'*len(heapstuff), *heapstuff) + sheap
 
-def heapdump(names):
+def heapdump(names=None):
+    if names is None: names = {}
     dbginfo.append((10000, '?'))
     reverse = dict((v, k) for (k, v) in names.iteritems())
     stackunktargets = set()
@@ -121,21 +124,23 @@ class later(car):
         return self.func()
 
 class stackunk(car):
-    def __init__(self):
-        self.hidx = len(heapstuff)
+    def added(self):
+        self.addr = heapaddr + 4 * len(heapstuff)
     def val(self):
-        self.addr = int(heapaddr) + 4*self.hidx
         return 0
 class stackunkptr(car):
-    def __init__(self, unk):
+    def __init__(self, unk, name=None):
         self.unk = unk
+        self.name = name
     def val(self):
-        if not hasattr(self.unk, 'addr'): raise NotYetError
+        if not hasattr(self.unk, 'addr'):
+            raise NotYetError(self.name)
         return self.unk.addr
 # [0] evaluates to 0 (initially), [1] evaluates to the address of [0]
 def stackunkpair():
     unk = stackunk()
-    unkptr = stackunkptr(unk)
+    name = 'line %d' % sys._getframe().f_back.f_lineno
+    unkptr = stackunkptr(unk, name)
     return unk, unkptr
 
 class ptrI(car):

@@ -44,7 +44,7 @@ def config():
 
 def shelltester():
     goto('shelltester')
-    compile_stuff(['shelltester.c'], 'shelltester')
+    compile_stuff(['shelltester.c'], 'shelltester', strip=False)
 
 def machdump():
     goto('machdump')
@@ -79,6 +79,14 @@ def goo_pf():
     goto('goo/just_sysctl')
     run('python', 'just_sysctl.py', '-d', '../../config/cur/dyld')
     run('../../datautils/dyld_to_pwn', '../../config/cur/dyld', 'just_sysctl_output.txt', 'just_sysctl_launchd')
+
+def goo_catalog():
+    goo()
+    datautils_native()
+    sandbox2()
+    goto('goo/catalog')
+    run('../../datautils/make_kernel_patchfile', '../../config/cur/kern', '../../sandbox2/sandbox.bin', 'patchfile')
+    run('python', 'catalog.py', '-c ../../config/cur/cache', '-k ../../config/cur/kern', 'patchfile')
 
 def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True):
     objs = []

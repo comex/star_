@@ -17,72 +17,121 @@ static int count_ones(uint32_t number) {
     return result;
 }
 
-// ldmia<cond> r0/r0!, {.., .., sp,( lr,)? pc}
-// OR
-// ldmib<cond> r0/r0!, {.., sp,( lr,)? pc}
-// aligned to 0x1000
+static int position_of_nth_one(uint32_t number, int n) {
+    for(int pos = 0; pos < 32; pos++) {
+        if((number & (1 << pos)) && !n--) return pos;
+    }
+    die("no nth one (%08x, n=%d)", number, n);
+}
+
+
+// similar to below, but no alignment restriction
+// must include r0, lr, and pc, but not r7
+
+void find_second_ldm(struct binary *binary, uint32_t valid_conds, int reg, addr_t *addrp, int *num_before_r0, int *num_after_r0) {
+    //printf("reg=%d\n", reg);
+    range_t range;
+    for(int i = 0; (range = b_nth_segment(binary, i)).binary; i++) {
+        if(!(binary->dyld_mappings[i].sfm_init_prot & PROT_EXEC)) continue;
+        uint32_t *p = rangeconv(range).start;
+        for(addr_t addr = range.start; addr + 4 <= range.start + range.size; p++, addr += 4) {
+            uint32_t val = *p; 
+            uint32_t cond = ((val & 0xf0000000) >> 28);
+            if(cond == 15 || (1u << (2*cond)) != (valid_conds & (3 << (2*cond)))) {
+                continue;
+            }
+
+            int offset;
+            if((val & 0xfdfc081) == 0x890c001) {
+                offset = 0;
+            } else if((val & 0xfdfc081) == 0x990c001) {
+                offset = 1;
+            } else {
+                continue;
+            }
+
+            *addrp = addr;
+            *num_before_r0 = offset;
+            *num_after_r0 = count_ones(val & 0x3f7e);
+            return;
+        }
+    }
+    die("didn't find second ldm /anywhere/"); 
+}
+
+// ldmi[ab]<cond> r[05]!?, ...
+// - aligned to 0x1000
+// - includes pc, but not r7
+// - PC is at position 3-5
 // each set of two bits in valid_conds is:
 //  0 - known false
 //  1 - known true
 //  2 - unknown
 
-addr_t find_kernel_ldm(struct binary *binary, uint32_t valid_conds) {
+void find_kernel_ldm(struct binary *binary, uint32_t valid_conds, addr_t *addrp, uint32_t *condsp, int *regp) {
     range_t range;
     uint32_t my_valid_conds = valid_conds;
     for(int i = 0; (range = b_nth_segment(binary, i)).binary; i++) {
         if(!(binary->dyld_mappings[i].sfm_init_prot & PROT_EXEC)) continue;
         char *p = rangeconv(range).start;
-        for(addr_t addr = range.start; addr + 4 <= (range.start + range.size); my_valid_conds = valid_conds, addr = (addr + 0x1000) & ~0xfff) {
-            harmless:;
-            uint32_t val = *((uint32_t *) (p + (addr - range.start)));
+        addr_t addr = (range.start + 0xfff) & ~0xfff;
+        while(addr + 4 <= range.start + range.size) {
+            if((addr & 0xfff) == 0) {
+                my_valid_conds = valid_conds;
+            }
+            uint32_t val = *((uint32_t *) (p + addr - range.start));
             uint32_t cond = ((val & 0xf0000000) >> 28);
-            
-            bool harmless = false;
 
-            if((addr & 0xfff) != 0xffc) {
-                if(cond != 15 && 0 == (my_valid_conds & (3 << (2*cond)))) {
-                    addr += 4; goto harmless;
-                } else if(!(val & 0xc000000)) { // data processing
-                    uint32_t rd = (val & 0xf000) >> 12;
-                    if(rd != 0 && rd != 15) {
-                        if(!(val & (1 << 20))) my_valid_conds = 0x1aaaaaaa; // AL known 1, others unknown
-                        addr += 4; goto harmless;
-                    } else if(rd == 0) {
-                        uint32_t op = ((val & 0x1f00000) >> 20);
-                        if(op == 17 || op == 19 || op == 21 || op == 23) {
-                            my_valid_conds = 0x1aaaaaaa;
-                            addr += 4; goto harmless;
-                        }
+            if(cond != 15 && 0 == (my_valid_conds & (3 << (2*cond)))) {
+                goto harmless;
+            } else if(cond != 15 && !(val & 0xc000000) && (val & 0xe100000) != 0xc100000) { // data processing, but not LDC
+                uint32_t rd = (val & 0xf000) >> 12;
+                if(rd != 0 && rd != 13 && rd != 15) {
+                    if(!(val & (1 << 20))) my_valid_conds = 0x1aaaaaaa; // AL known 1, others unknown
+                    goto harmless;
+                } else if(rd == 0) {
+                    uint32_t op = ((val & 0x1f00000) >> 20);
+                    if(op == 17 || op == 19 || op == 21 || op == 23) {
+                        my_valid_conds = 0x1aaaaaaa;
+                        goto harmless;
                     }
                 }
             }
 
             if(cond == 15 || (1u << (2*cond)) != (my_valid_conds & (3 << (2*cond)))) {
-                continue;
+                goto nope;
             }
 
-            //printf("ready to test %08x @ %08x\n", val, addr);
 
-            bool ldmib;
-            if((val & 0xf9f8000) == 0x8908000) {
-                ldmib = false;
-            } else if((val & 0xf9f8000) == 0x9908000) {
-                ldmib = true;
+            // 0xfdf to be strict about user registers, 0xf9f otherwise
+            int offset;
+            if((val & 0xfd0c080) == 0x890c000) {
+                // ldmia
+                offset = 0;
+            } else if((val & 0xfd0c080) == 0x990c000) {
+                // ldmib
+                offset = 1;
             } else {
-                continue;
+                goto nope;
             }
-            printf("%08x -> %08x (%s)\n", addr, val, ldmib ? "ib" : "ia");
-            uint32_t reglist = val & 0x7fff;
-            int ones = count_ones(reglist);
-            if(ldmib) ones--;
-            if(ones < 3 || ones > 5) continue;
-            // figure out 
 
+            uint32_t rn = (val & 0xf0000) >> 16;
+            uint32_t reglist = val & 0x7f7f;
+            int ones = count_ones(reglist) + offset; // ones = offset of PC
+            
+            printf("addr=%x rn=%u ones=%d val=%x\n", addr, rn, ones, val);
+            if(rn != 0 && rn != 5) goto nope;
 
-            printf("%d\n", count_ones(reglist));
-            if(count_ones(reglist) != (ldmib ? 1 : 2)) continue;
-            //printf(":) %08x = %08x\n", addr, val);
-            return addr; 
+            //printf("rn=%u ones=%d\n", rn, ones);
+            if(ones < 3 || ones > 5) goto nope;
+
+            *addrp = addr;
+            *condsp = my_valid_conds;
+            *regp = position_of_nth_one(reglist, 2);
+            return;
+
+            nope: /*printf("%08x nope\n", addr);*/ addr = (addr + 0x1000) & ~0xfff; continue;
+            harmless: /*printf("%08x harmless\n", addr);*/ addr += 4; continue;
         }
     }
     die("didn't find ldm /anywhere/"); 
@@ -112,7 +161,13 @@ void main_loop() {
             b_dyldcache_load_macho(&binary, arg);
             result = 0;
         } else if(mode == 4) {
-            result = find_kernel_ldm(&binary, atoi(arg));
+            addr_t first, second; int reg, num_before_r0, num_after_r0;
+            uint32_t conds = (uint32_t) strtoll(arg, NULL, 16);
+            find_kernel_ldm(&binary, conds, &first, &conds, &reg);
+            find_second_ldm(&binary, conds, reg, &second, &num_before_r0, &num_after_r0);
+            printf("+ %x %x %x %x\n", first, second, num_before_r0, num_after_r0);
+            fflush(stdout);
+            continue;
         } else die("mode?");
 
         printf("+ %x\n", result);
