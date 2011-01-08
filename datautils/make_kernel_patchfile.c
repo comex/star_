@@ -129,8 +129,7 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     addr_t sysent_patch_orig = b_read32(binary, sysent + 4);
     patch("sysent patch", 0, uint32_t, {sysent + 4});
     patch("sysent patch orig", 0, uint32_t, {sysent_patch_orig});
-
-    fprintf(stderr, "scratch = %x\n", scratch);
+    patch("scratch", 0, uint32_t, {(scratch + sandbox.size + 0xfff) & ~0xfff});
 }
 
 

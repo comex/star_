@@ -166,7 +166,7 @@ class ptr(car):
         ret = sheapaddr + len(sheap)
         sheap += self.str
         if self.null_terminate: sheap += '\0'
-        while len(sheap) % 4 != 0: sheap += '\0'
+        sheap += '\0' * (-len(sheap) & 3)
         return ret
 
 class marker(car):

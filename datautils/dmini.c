@@ -42,11 +42,16 @@ void find_second_ldm(struct binary *binary, uint32_t valid_conds, int reg, addr_
             }
 
             int offset;
-            if((val & 0xfdfc081) == 0x890c001) {
+            if((val & 0xfd0c081) == 0x890c001) {
                 offset = 0;
-            } else if((val & 0xfdfc081) == 0x990c001) {
+            } else if((val & 0xfd0c081) == 0x990c001) {
                 offset = 1;
             } else {
+                continue;
+            }
+            
+            uint32_t rn = (val & 0xf0000) >> 16;
+            if((int) rn != reg) {
                 continue;
             }
 
@@ -105,10 +110,10 @@ void find_kernel_ldm(struct binary *binary, uint32_t valid_conds, addr_t *addrp,
 
             // 0xfdf to be strict about user registers, 0xf9f otherwise
             int offset;
-            if((val & 0xfd0c080) == 0x890c000) {
+            if((val & 0xfd08080) == 0x8908000) {
                 // ldmia
                 offset = 0;
-            } else if((val & 0xfd0c080) == 0x990c000) {
+            } else if((val & 0xfd08080) == 0x9908000) {
                 // ldmib
                 offset = 1;
             } else {
@@ -119,7 +124,7 @@ void find_kernel_ldm(struct binary *binary, uint32_t valid_conds, addr_t *addrp,
             uint32_t reglist = val & 0x7f7f;
             int ones = count_ones(reglist) + offset; // ones = offset of PC
             
-            printf("addr=%x rn=%u ones=%d val=%x\n", addr, rn, ones, val);
+            //printf("addr=%x rn=%u ones=%d val=%x\n", addr, rn, ones, val);
             if(rn != 0 && rn != 5) goto nope;
 
             //printf("rn=%u ones=%d\n", rn, ones);

@@ -107,10 +107,10 @@ def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=
     else:
         run(gcc, '-o', output, objs, ldflags, '-dead_strip')
 
-def pf2():
+def catalog2():
     config()
-    goto('pf2')
-    compile_stuff(['pf2.c', '../sandbox2/sandbox.S'], 'pf2')
+    goto('catalog2')
+    compile_stuff(['catalog2.c'], 'catalog2', cflags=['-marm'])
 
 def chain():
     goto('chain')

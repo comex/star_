@@ -18,7 +18,7 @@ def store_r0_to(address):
     exhaust_fwd('R7')
     heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
 
-def store_val(val, to):
+def store_val_to(val, to):
     set_fwd('PC', dmini.cur.find_multiple('+ 25 60 b0 bd', '- 00 50 84 e5 b0 80 bd e8'))
     set_fwd('R5', val)
     set_fwd('R4', to)

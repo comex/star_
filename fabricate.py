@@ -631,28 +631,20 @@ class InterposingRunner(Runner):
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
 #include <limits.h>
+#include <mach-o/dyld.h>
 // from dyld-interposing.h
 #define DYLD_INTERPOSE(_replacement,_replacee)    __attribute__((used)) static struct{ const void* replacement; const void* replacee; } _interpose_##_replacee             __attribute__ ((section ("__DATA,__interpose"))) = { (const void*)(unsigned long)&_replacement, (const void*)(unsigned long)&_replacee };
 
 static pthread_key_t recursion_key;
 static pthread_once_t once = PTHREAD_ONCE_INIT;
-static int outf;
+static int outf = -1;
 // sometimes files are opened very early in a fork - in this case, fprintf doesn't work
 #define output(fmt, args...) do { char obuf[1024]; write(outf, obuf, snprintf(obuf, 1024, fmt, ##args)); } while(0)
-static void init() {
-    pthread_key_create(&recursion_key, NULL);
-    outf = open(getenv("TRAIN_OUTPUT"), O_WRONLY | O_CREAT | O_APPEND, 0755);
-    if(outf == -1) {
-        char *error = "Could not open TRAIN_OUTPUT\\n";
-        write(2, error, strlen(error));
-        abort();
-    }
-}
-
 static char *careful_realpath(const char *path, char *path_buf) {
     if(!outf || pthread_getspecific(recursion_key) != NULL) {
         return NULL;
@@ -663,16 +655,35 @@ static char *careful_realpath(const char *path, char *path_buf) {
     return ret;
 }
 
+static void init() {
+    pthread_key_create(&recursion_key, NULL);
+    outf = open(getenv("TRAIN_OUTPUT"), O_WRONLY | O_CREAT | O_APPEND, 0755);
+    if(outf == -1) {
+        char *error = "Could not open TRAIN_OUTPUT\\n";
+        write(2, error, strlen(error));
+        abort();
+    }
+    char buf[PATH_MAX+1], buf2[PATH_MAX+1];
+    uint32_t bufsize = sizeof(buf);
+    if(!_NSGetExecutablePath(buf, &bufsize)) {
+        buf[bufsize] = 0;
+        char *path = careful_realpath(buf, buf2);
+        if(path) {
+            output("!read.init %s\\n", path);
+        }
+    }
+}
+
 #define do_open(name) \\
 int name(const char *path, int oflag, ...);\\
 int my_##name(const char *path, int oflag, int x) { \\
 	int ret = name(path, oflag, x); \\
     /* malloc sometimes calls open for arc4_stir; this breaks malloc in careful_realpath and fprintf... no good.  but /dev/urandom isn't part of the project, so we can just ignore it */ \\
     if(!strncmp(path, "/dev/urandom", PATH_MAX)) return ret; \\
-    pthread_once(&once, init); \\
+    if(outf == -1) pthread_once(&once, init); \\
     char buf[PATH_MAX+1]; \\
 	char *path_ = careful_realpath(path, buf); \\
-	if(path_) { output("!%s.open %s\\n", oflag & (O_WRONLY | O_RDWR) ? "write" : "read", path_); } \\
+	if(path_) output("!%s.open %s\\n", oflag & (O_WRONLY | O_RDWR) ? "write" : "read", path_); \\
     return ret; \\
 } \\
 DYLD_INTERPOSE(my_##name, name)
@@ -689,10 +700,10 @@ do_open(open$NOCANCEL$UNIX2003)
 #define do_stat(name) \\
 int name(const char *path, struct stat *st); \\
 int my_##name(const char *path, struct stat *st) { \\
-    pthread_once(&once, init); \\
+    if(outf == -1) pthread_once(&once, init); \\
     char buf[PATH_MAX+1]; \\
 	char *path_ = careful_realpath(path, buf); \\
-	if(path_) { output("!read.stat %s\\n", path_); } \\
+	if(path_) output("!read.stat %s\\n", path_); \\
 	return name(path, st); \\
 } \\
 DYLD_INTERPOSE(my_##name, name)
@@ -703,22 +714,22 @@ do_stat(lstat)
 do_stat(lstat$INODE64)
 
 int my_mkdir(const char * path, mode_t mode) {
-    pthread_once(&once, init);
+    if(outf == -1) pthread_once(&once, init);
     char buf[PATH_MAX+1];
 	char *path_ = careful_realpath(path, buf);
-	if(path_) { output("!write.mkdir %s\\n", path_); }
+	if(path_) output("!write.mkdir %s\\n", path_);
 	return mkdir(path, mode);
 }
 DYLD_INTERPOSE(my_mkdir, mkdir)
 
 int my_rename(const char *old, const char *new) {
-    pthread_once(&once, init);
+    if(outf == -1) pthread_once(&once, init);
     char buf[PATH_MAX+1];
     char *path_ = careful_realpath(old, buf);
-    if(path_) { output("!read.rename %s\\n", path_); }
+    if(path_) output("!read.rename %s\\n", path_);
     int ret = rename(old, new);
     path_ = careful_realpath(new, buf);
-    if(path_) { output("!write.rename %s\\n", path_); }
+    if(path_) output("!write.rename %s\\n", path_);
     return ret;
 }
 DYLD_INTERPOSE(my_rename, rename)
