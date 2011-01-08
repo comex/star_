@@ -92,7 +92,8 @@ while True:
         sysent_patch_orig, = struct.unpack('I', data)
     elif name == 'scratch':
         scratch, = struct.unpack('I', data)
-    if addr == 0: continue
+    if addr == 0 or name.startswith('+'): # in place only
+        continue
     if len(data) == 4:
         store_val_to(struct.unpack('I', data)[0], addr)
     else:

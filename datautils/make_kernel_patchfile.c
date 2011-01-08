@@ -55,15 +55,13 @@ addr_t find_sysctl(struct binary *binary, const char *name) {
 void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     bool is_armv7 = binary->actual_cpusubtype == 9;
 
-//#define IN_PLACE_PATCH
+    // '+' = in place only, '-' = in advance only
     // patches
-#ifdef IN_PLACE_PATCH
-    patch("kernel_pmap.nx_enabled",
+    patch("+kernel_pmap.nx_enabled",
           b_read32(binary, b_sym(binary, "_kernel_pmap", false)) + 0x420,
           uint32_t, {0});
-#else
     // the second ref to mem_size
-    patch("kernel_pmap.nx_enabled initializer",
+    patch("-kernel_pmap.nx_enabled initializer",
           find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "03 68 - c3 f8 20 24" : "84 23 db 00 - d5 50 22 68", 0, true),
           uint32_t, {is_armv7 ? 0xc420f8c3 : 0x682250d0});
 
@@ -71,10 +69,9 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
           find_sysctl(binary, "proc_enforce"),
           uint32_t, {0});*/
 
-    patch("lunchd",
+    patch("-lunchd",
           find_string(b_macho_segrange(binary, "__DATA"), "/sbin/launchd", 0, true),
           char, "/sbin/lunchd");
-#endif
 
     // vm_map_enter (patch1) - allow RWX pages
     patch("vm_map_enter",
@@ -130,6 +127,7 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     patch("sysent patch", 0, uint32_t, {sysent + 4});
     patch("sysent patch orig", 0, uint32_t, {sysent_patch_orig});
     patch("scratch", 0, uint32_t, {(scratch + sandbox.size + 0xfff) & ~0xfff});
+    //patch("IOLog", 0, uint32_t, {b_sym(binary, "_IOLog", true)});
 }
 
 

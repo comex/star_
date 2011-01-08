@@ -107,10 +107,12 @@ def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=
     else:
         run(gcc, '-o', output, objs, ldflags, '-dead_strip')
 
+static = ['-static', '-nostartfiles', '-nostdlib', '-L/usr/src/Libc-594.9.4-staticarm', '-lc_static', '../crt0.o']
 def catalog2():
     config()
     goto('catalog2')
-    compile_stuff(['catalog2.c'], 'catalog2', cflags=['-marm'])
+    # -pagezero_size 0 is harmless with ld but not ld_classic (-static); not required either way
+    compile_stuff(['catalog2.c'], 'catalog2', cflags=['-static', '-marm'], ldflags=['-segaddr', '__ZERO', '0', '-segprot', '__ZERO', 'rx', 'rx', '-segaddr', '__TEXT', '0x1000', '-framework', 'IOKit'])
 
 def chain():
     goto('chain')
