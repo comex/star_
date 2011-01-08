@@ -111,8 +111,11 @@ static = ['-static', '-nostartfiles', '-nostdlib', '-L/usr/src/Libc-594.9.4-stat
 def catalog2():
     config()
     goto('catalog2')
+    
+    run('python', 'gen_syscalls.c.py')
+
     # -pagezero_size 0 is harmless with ld but not ld_classic (-static); not required either way
-    compile_stuff(['catalog2.c'], 'catalog2', cflags=['-static', '-marm'], ldflags=['-segaddr', '__ZERO', '0', '-segprot', '__ZERO', 'rx', 'rx', '-segaddr', '__TEXT', '0x1000', '-framework', 'IOKit'])
+    compile_stuff(['catalog2.c', 'syscalls.c', 'iokitUser.c', 'libc.c'], 'catalog2', cflags=['-static', '-marm'], ldflags=['-static', '-segaddr', '__ZERO', '0', '-segprot', '__ZERO', 'rx', 'rx', '-segaddr', '__TEXT', '0x1000', '-L.'])
 
 def chain():
     goto('chain')

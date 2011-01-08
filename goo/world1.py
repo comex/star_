@@ -71,7 +71,6 @@ def funcall(funcaddr, *args, **kwargs):
     if isinstance(funcaddr, basestring): # actually a symbol
         funcaddr = dmini.cur.sym(funcaddr)
         
-    # This wastes a lot of space!  I should make the old behavior an option.
     while len(args) < 4: args += (dontcare,)
     if args[0] is None:
         set_r1to3(args[1], args[2], args[3])

@@ -14,20 +14,28 @@
 #include <unistd.h>
 #include <sys/sysctl.h>
 #include <mach/mach.h>
+#include <signal.h>
+#include "iokit.h"
 
 #undef assert
 #define assert(x) do { if(!(x)) failz(__LINE__); } while(0)
 
+//#define trace(fmt, args...) do { if(console_file) fprintf(console_file, fmt "\n", ##args); fflush(console_file); } while(0)
+#define trace(fmt, args...) ((void) 0)
 
-kern_return_t IOCatalogueSendData(mach_port_t masterPort, uint32_t flag, const char *buffer, uint32_t size);
 static const uint32_t kIOCatalogAddDrivers = 1;
 static const int kIOMasterPortDefault = 0;
+
+static void exec_lunchd() {
+    char *argv[] = {"/sbin/lunchd", NULL};
+    char *envp[] = {NULL};
+    execve(argv[0], argv, envp);
+}
 
 static void failz(int line) {
     line += 10000;
     sysctlbyname("net.inet6.ip6.hdrnestlimit", NULL, 0, &line, sizeof(line));
-    setenv("DYLD_INSERT_LIBRARIES", "", 1);
-    execl("/sbin/launchd", "/sbin/launchd", NULL);
+    exec_lunchd();
 }
 
 static void *patchfile;
@@ -78,29 +86,47 @@ void *ok_go() { // actually dict->getObject
 }
 
 int main() {
-    int fd = open("/usr/share/jailbreak/cur/patchfile", O_RDONLY);
+    //FILE *console_file = fopen("/dev/console", "w");
+    trace("catalog2 hi I am pid %d", getpid());
+    int fd = open("/Library/Jailbreak/CurrentVersion/patchfile", O_RDONLY);
+    trace("fd=%d", fd);
     assert(fd != -1);
     off_t off = lseek(fd, 0, SEEK_END);
     assert(off != -1 && off < 1048576);
     patchfile_size = (size_t) off;
+    trace("ps=%zd", patchfile_size);
     patchfile = mmap(NULL, patchfile_size, PROT_READ, MAP_SHARED, fd, 0);
+    trace("pf=%p", patchfile);
     assert(patchfile);
 
-    assert(!mlock(patchfile, patchfile_size));
-    assert(!mlock((void *) 0, 0x1000));
+    int result;
+    result = mlock(patchfile, patchfile_size);
+    trace("1=%d", result);
+    assert(!result);
+    result = mlock((void *) 0, 0x1000);
+    trace("2=%d", result);
+    assert(!result);
 
     //execl("/sbin/lunchd", "/sbin/lunchd", NULL);
     
     const char *str = "<array><data></data></array>";
-    assert(!IOCatalogueSendData(kIOMasterPortDefault, kIOCatalogAddDrivers, str, strlen(str)));
+    kern_return_t kr;
+    assert(!io_catalog_send_data(kIOMasterPortDefault, kIOCatalogAddDrivers, (char *) str, strlen(str), &kr));
+    assert(!kr);
+
+    trace("hi %d", patches_made);
 
     assert(ok_go_invoked);
 
-    syslog(LOG_INFO, "made %d kernel patches", patches_made);
+    //syslog(LOG_INFO, "made %d kernel patches", patches_made);
         
     // turn this fancy stuff back on
     int one = 1;
     assert(!sysctlbyname("security.mac.vnode_enforce", NULL, 0, &one, sizeof(one)));
+    
+    trace("done");
+    
+    exec_lunchd();
 
     return 0;
 }

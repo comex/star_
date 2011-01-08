@@ -17,11 +17,10 @@ def heapadd(*stuff):
     # so we know where we came from
     dbginfo.append((len(heapstuff), sys._getframe().f_back.f_code.co_name))
     for a in stuff:
-        if hasattr(a, 'added'): a.added()
         heapstuff.append(a)
 
 def finalize(heapaddr_=None):
-    global heapstuff, sheap, sheapaddr, heapaddr, heapdbgnames
+    global heapstuff, sheap, sheapaddr, heapaddr, heapdbgnames, hidx
     clear_fwd()
     heapaddr._val = heapaddr_
     if heapaddr_ is not None:
@@ -29,17 +28,16 @@ def finalize(heapaddr_=None):
         print hex(sheapaddr)
     sheap = ''
     heapdbgnames = [(obj.name if hasattr(obj, 'name') else None) for obj in heapstuff]
-    heapstuff = map(int, heapstuff)
-#    for pass_num in xrange(2):
-#        for hidx in xrange(len(heapstuff)):
-#            thing = heapstuff[hidx]
-#            if not isinstance(thing, int):
-#                try:
-#                    thing = int(thing)
-#                except NotYetError:
-#                    pass
-#                else:
-#                    heapstuff[hidx] = thing
+    for pass_num in xrange(2):
+        for hidx in xrange(len(heapstuff)):
+            thing = heapstuff[hidx]
+            if not isinstance(thing, int):
+                try:
+                    thing = int(thing)
+                except NotYetError:
+                    pass
+                else:
+                    heapstuff[hidx] = thing
 
     return struct.pack('<'+'I'*len(heapstuff), *heapstuff) + sheap
 
@@ -124,9 +122,8 @@ class later(car):
         return self.func()
 
 class stackunk(car):
-    def added(self):
-        self.addr = heapaddr + 4 * len(heapstuff)
     def val(self):
+        self.addr = heapaddr + 4 * hidx
         return 0
 class stackunkptr(car):
     def __init__(self, unk, name=None):
