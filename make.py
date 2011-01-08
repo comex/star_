@@ -73,7 +73,7 @@ def goo():
     goto('goo')
     #run('python', 'setup.py'
 
-def goo_pf():
+def goo_just_sysctl():
     goo()
     datautils_native()
     goto('goo/just_sysctl')

