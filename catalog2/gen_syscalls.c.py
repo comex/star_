@@ -9,7 +9,10 @@ def go(num, name):
         return
     seen[name] = num
     print >> f, 'void sc_%s() asm("_%s");' % (name, name)
-    print >> f, '__attribute__((naked)) void sc_%s() { asm volatile("ldrsh r12, 1f; svc #0x80; bx lr; 1: .short %d"); }' % (name, num)
+    # HACK
+    ev = ''
+    #if name in ['exit', '__sysctl', 'execve', 'lseek', 'mach_msg_trap', 'mach_reply_port', 'memcpy', 'mlock', 'mmap', 'open']: ev = ', externally_visible'
+    print >> f, '__attribute__((naked%s)) void sc_%s() { asm volatile("mov r12, sp; stmfd sp!, {r4-r6, r8}; ldmia r12, {r4-r6}; ldrsh r12, 1f; svc #0x80; ldmfd sp!, {r4-r6, r8}; bx lr; 1: .short %d"); }' % (ev, name, num)
         
 for line in open('syscalls.master'):
     m = re.match('^([0-9]+)\s*AU.*{[^\(]* ([a-zA-Z0-9_]+)\(', line)

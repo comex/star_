@@ -88,26 +88,24 @@ def goo_catalog():
     run('../../datautils/make_kernel_patchfile', '../../config/cur/kern', '../../sandbox2/sandbox.bin', 'patchfile')
     run('python', 'catalog.py', '-c ../../config/cur/cache', '-k ../../config/cur/kern', 'patchfile')
 
-def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True):
+def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True, combine=False):
     objs = []
-    for inp in files:
-        obj = chext(os.path.basename(inp), '.o')
-        objs.append(obj)
-        if obj == inp: continue
-        run(gcc, '-c', '-o', obj, inp, cflags)
-    if strip:
-        run(gcc, '-o', output + '_', objs, ldflags, '-dead_strip')
-        if ldid:
-            run_multiple(['cp', output + '_', output],
-                         ['strip', '-Sx', output],
-                         ['ldid', '-S' + ent, output])
-        else:
-            run_multiple(['cp', output + '_', output],
-                         ['strip', '-Sx', output])
+    output_ = (output + '_' if strip or ldid else output)
+    if combine:
+        run(gcc, '-o', output_, files, cflags, ldflags, '-dead_strip', '-combine', '-fwhole-program')
     else:
-        run(gcc, '-o', output, objs, ldflags, '-dead_strip')
+        for inp in files:
+            obj = chext(os.path.basename(inp), '.o')
+            objs.append(obj)
+            if obj == inp: continue
+            run(gcc, '-c', '-o', obj, inp, cflags)
+        run(gcc, '-o', output_, objs, ldflags, '-dead_strip')
+    if strip or ldid:
+        commands = [['cp', output + '_', output]]
+        if strip: commands.append(['strip', '-ur', output])
+        if ldid: commands.append(['ldid', '-S' + ent, output])
+        run_multiple(*commands)
 
-static = ['-static', '-nostartfiles', '-nostdlib', '-L/usr/src/Libc-594.9.4-staticarm', '-lc_static', '../crt0.o']
 def catalog2():
     config()
     goto('catalog2')
@@ -115,7 +113,11 @@ def catalog2():
     run('python', 'gen_syscalls.c.py')
 
     # -pagezero_size 0 is harmless with ld but not ld_classic (-static); not required either way
-    compile_stuff(['catalog2.c', 'syscalls.c', 'iokitUser.c', 'libc.c'], 'catalog2', cflags=['-static', '-marm'], ldflags=['-static', '-segaddr', '__ZERO', '0', '-segprot', '__ZERO', 'rx', 'rx', '-segaddr', '__TEXT', '0x1000', '-L.'])
+    if False:
+        static = ['-dynamic', '-mdynamic-no-pic']
+    else:
+        static = ['-static']
+    compile_stuff(['catalog2.c', 'syscalls.c', 'iokitUser.c', 'mach_hostUser.c', 'libc.c'], 'catalog2', cflags=[static, '-marm'], ldflags=[static, '-segaddr', '__ZERO', '0', '-segprot', '__ZERO', 'rx', 'rx', '-segaddr', '__TEXT', '0x1000', '-L.'], combine=False)
 
 def chain():
     goto('chain')

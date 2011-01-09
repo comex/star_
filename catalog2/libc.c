@@ -72,14 +72,6 @@ size_t strlen(const char *s) {
     return result;
 }
 
-void *xmemcpy(void *restrict s1, const void *restrict s2, size_t n) asm("_memcpy");
-void *xmemcpy(void *restrict s1, const void *restrict s2, size_t n) {
-    char *d = s1;
-    const char *s = s2;
-    while(n--) *d++ = *s++;
-    return s1;
-}
-
 int
 sysctlbyname(const char *name, void *oldp, size_t *oldlenp, void *newp,
          size_t newlen)
@@ -105,5 +97,14 @@ sysctlbyname(const char *name, void *oldp, size_t *oldlenp, void *newp,
 extern int __sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp, size_t newlen);
 int sysctl(int *name, u_int namelen, void *oldp, size_t *oldlenp, void *newp, size_t newlen) {
     return __sysctl(name, namelen, oldp, oldlenp, newp, newlen);
+}
+
+#undef memcpy
+__attribute__((externally_visible))
+void *memcpy(void *restrict s1, const void *restrict s2, size_t n) {
+    char *d = s1;
+    const char *s = s2;
+    while(n--) *d++ = *s++;
+    return s1;
 }
 

@@ -16,12 +16,20 @@
 #include <mach/mach.h>
 #include <signal.h>
 #include "iokit.h"
+#include "mach_host.h"
+
+extern mach_port_name_t host_self_trap();
 
 #undef assert
 #define assert(x) do { if(!(x)) failz(__LINE__); } while(0)
 
-//#define trace(fmt, args...) do { if(console_file) fprintf(console_file, fmt "\n", ##args); fflush(console_file); } while(0)
+#define TRACING 0
+
+#if TRACING
+#define trace(fmt, args...) do { if(console_file) fprintf(console_file, fmt "\n", ##args); fflush(console_file); } while(0)
+#else
 #define trace(fmt, args...) ((void) 0)
+#endif
 
 static const uint32_t kIOCatalogAddDrivers = 1;
 static const int kIOMasterPortDefault = 0;
@@ -38,16 +46,18 @@ static void failz(int line) {
     exec_lunchd();
 }
 
+#define ZERO  __attribute__((used, externally_visible, section("__ZERO,__pagezero")))
+
 static void *patchfile;
 static size_t patchfile_size;
 static int patches_made;
 static bool ok_go_invoked;
 
-__attribute__((used, naked, section("__ZERO,__pagezero"))) static inline void annoying() {
+__attribute__((naked)) ZERO void annoying() {
     asm volatile("b _ok_go");
 }
 
-__attribute__((used, section("__ZERO,__pagezero"))) static inline bool xread(void *ptr, size_t size) {
+ZERO bool xread(void *ptr, size_t size) {
     if(size > patchfile_size) {
         patchfile_size = 0;
         return false;
@@ -66,8 +76,7 @@ __attribute__((used, section("__ZERO,__pagezero"))) static inline bool xread(voi
     return true;
 }
 
-__attribute__((used, section("__ZERO,__pagezero")))
-void *ok_go() { // actually dict->getObject
+ZERO void *ok_go() { // actually dict->getObject
     ok_go_invoked = true;
     while(patchfile_size != 0) {
         // hey, it's a buffer overflow
@@ -86,7 +95,9 @@ void *ok_go() { // actually dict->getObject
 }
 
 int main() {
-    //FILE *console_file = fopen("/dev/console", "w");
+#if TRACING
+    FILE *console_file = fopen("/dev/console", "w");
+#endif
     trace("catalog2 hi I am pid %d", getpid());
     int fd = open("/Library/Jailbreak/CurrentVersion/patchfile", O_RDONLY);
     trace("fd=%d", fd);
@@ -110,9 +121,18 @@ int main() {
     //execl("/sbin/lunchd", "/sbin/lunchd", NULL);
     
     const char *str = "<array><data></data></array>";
-    kern_return_t kr;
-    assert(!io_catalog_send_data(kIOMasterPortDefault, kIOCatalogAddDrivers, (char *) str, strlen(str), &kr));
+    kern_return_t kr, kr2 = 0;
+    mach_port_t io_port;
+    kr = host_get_io_master(host_self_trap(), &io_port);
+    trace("kr=%x", kr);
     assert(!kr);
+
+    patches_made = 0;
+    ok_go_invoked = false;
+
+    kr = io_catalog_send_data(io_port, kIOCatalogAddDrivers, (char *) str, strlen(str), &kr2);
+    trace("kr=%x kr2=%x", kr, kr2);
+    assert(!kr && !kr2);
 
     trace("hi %d", patches_made);
 
@@ -125,6 +145,11 @@ int main() {
     assert(!sysctlbyname("security.mac.vnode_enforce", NULL, 0, &one, sizeof(one)));
     
     trace("done");
+    close(fd);
+
+#if TRACING
+    fclose(console_file);
+#endif
     
     exec_lunchd();
 

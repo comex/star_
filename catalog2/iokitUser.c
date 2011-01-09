@@ -8038,8 +8038,9 @@ mig_external kern_return_t io_make_matching
 
 
 
-mig_internal kern_return_t __MIG_check__Reply__io_catalog_send_data_t(__Reply__io_catalog_send_data_t *Out0P)
+mig_internal kern_return_t __MIG_check__Reply__io_catalog_send_data_t(void *Out0P_)
 {
+    __Reply__io_catalog_send_data_t *Out0P = Out0P_;
 
 	typedef __Reply__io_catalog_send_data_t __Reply;
 #if	__MigTypeCheck

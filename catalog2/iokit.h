@@ -1,14 +1,7 @@
 #ifndef	_iokit_user_
 #define	_iokit_user_
 
-// xxx inserted manually
-#define IOKIT
-#include <device/device_types.h>
-typedef io_object_t io_connect_t;
-typedef io_object_t io_enumerator_t;
-typedef io_object_t io_iterator_t;
-typedef io_object_t io_registry_entry_t;
-typedef io_object_t io_service_t;
+#include "mach_lol.h"
 
 /* Module iokit */
 
