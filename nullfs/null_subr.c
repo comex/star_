@@ -116,6 +116,7 @@ struct proc *curproc;
 /*
  * Return a vnode_get'ed alias for lower vnode if already exists, else 0.
  */
+// x: vnode_gets upper, does not affect lower
 static struct vnode *
 null_node_find(mp, lowervp)
     struct mount *mp;
@@ -158,6 +159,7 @@ int iocount(struct vnode *vp) {
  * Vp is the alias vnode, lofsvp is the lower vnode.
  * Maintain a reference to (lowervp).
  */
+// x: new upper, vnode_get lower
 static int
 null_node_alloc(mp, lowervp, vpp, markroot)
     struct mount *mp;
@@ -191,9 +193,11 @@ null_node_alloc(mp, lowervp, vpp, markroot)
         return (error);
     }
     vp = *vpp;
-    printf("I just created it; it has usecount %d\n", vp->v_usecount);
-    printf("iocount %d\n", vp->v_iocount);
+    // newly created guys have usecount 0 iocount 1
+    //printf("I just created it; it has usecount %d\n", vp->v_usecount);
+    //printf("iocount %d\n", vp->v_iocount);
 
+    //vp->v_lflag |= VL_MARKTERM; // x: just for test
     vp->v_type = lowervp->v_type;
     xp->null_vnode = vp;
     vp->v_data = xp;
@@ -214,8 +218,8 @@ null_node_alloc(mp, lowervp, vpp, markroot)
     };
     /*if (vp->v_type == VREG) vnode_create already does this!
         ubc_info_init(vp);*/
-    //*((int *) 0x000fdfdf) = 0x10101010;
     vnode_get(lowervp);   /* Extra vnode_get will be vnode_put'd in null_node_create */
+    vnode_ref(lowervp);
     hd = NULL_NHASH(lowervp);
     LIST_INSERT_HEAD(hd, xp, null_hash);
     return 0;
@@ -227,6 +231,7 @@ null_node_alloc(mp, lowervp, vpp, markroot)
  * to it, otherwise make a new null_node vnode which
  * contains a reference to the lower vnode.
  */
+// x: result is got, lower is effectively put
 int
 null_node_create(mp, lowervp, newvpp, markroot)
     struct mount *mp;
@@ -267,7 +272,6 @@ null_node_create(mp, lowervp, newvpp, markroot)
     }
 
     vnode_put(lowervp);
-    printf("usecount = %d\n", lowervp->v_usecount);
 
 #if DIAGNOSTIC
     if (lowervp->v_usecount < 1) {

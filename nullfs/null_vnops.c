@@ -213,8 +213,6 @@
 #include "null.h"
 
 
-int null_bug_bypass = 0;   /* for debugging: enables bypass printf'ing */
-
 /*
  * This is the 10-Apr-92 bypass routine.
  *    This version has been optimized for speed, throwing away some
@@ -256,8 +254,9 @@ null_bypass(ap)
     struct vnodeop_desc *descp = ap->a_desc;
     int reles, i;
 
-    if (null_bug_bypass)
-        printf ("null_bypass: %s\n", descp->vdesc_name);
+#ifdef NULLFS_DIAGNOSTIC
+        printf("null_bypass called from %p, %p, %p: %s\n", __builtin_return_address(0), __builtin_return_address(1), __builtin_return_address(2), descp->vdesc_name);
+#endif
 
 #ifdef SAFETY
     /*
@@ -288,8 +287,10 @@ null_bypass(ap)
             (*this_vp_p)->v_op != null_vnodeop_p)) {
             old_vps[i] = NULL;
         } else {
+#ifdef NULLFS_DIAGNOSTIC
+            printf("bypass: %d'th vp: %p ioc=%d reles=%d\n", i, *this_vp_p, (*this_vp_p)->v_iocount, reles);
+#endif
             old_vps[i] = *this_vp_p;
-            *(vps_p[i]) = NULLVPTOLOWERVP(*this_vp_p);
             /*
              * XXX - Several operations have the side effect
              * of vnode_put'ing their vp's.  We must account for
@@ -297,6 +298,9 @@ null_bypass(ap)
              */
             if (reles & 1)
                 vnode_get(*this_vp_p);
+            
+            // x: er, these things alias... moving to after the reles thing, was before
+            *(vps_p[i]) = NULLVPTOLOWERVP(*this_vp_p);
         }
             
     }
@@ -341,11 +345,20 @@ null_bypass(ap)
             goto out;
         vppp = VOPARG_OFFSETTO(struct vnode***,
                  descp->vdesc_vpp_offset,ap);
-        vnode_ref(**vppp);
+        //vnode_ref(**vppp);
+        // x: we don't want a reference to it anymore, since it's hidden in the structure
+        // x: so null_node_create gets rid of the reference
+#ifdef NULLFS_DIAGNOSTIC
+        printf("calling null_node_create on someone (%p) with use=%d io=%d\n", **vppp, (**vppp)->v_usecount, (**vppp)->v_iocount);
         error = null_node_create(old_vps[0]->v_mount, **vppp, *vppp, 0);
+        printf("   result: %p use=%d io=%d\n", **vppp, (**vppp)->v_usecount, (**vppp)->v_iocount);
+#endif
     }
 
  out:
+#ifdef NULLFS_DIAGNOSTIC
+    printf("bypass ending: error=%d\n", error);
+#endif
     return (error);
 }
 
@@ -459,6 +472,7 @@ null_inactive(ap)
         vfs_context_t a_context;
     } */ *ap;
 {
+    //vnode_recycle(ap->a_vp); // x: just for test
     /*
      * Do nothing (and _don't_ bypass).
      * Wait to vnode_put lowervp until reclaim,
@@ -484,6 +498,10 @@ null_reclaim(ap)
     struct vnode *vp = ap->a_vp;
     struct null_node *xp = VTONULL(vp);
     struct vnode *lowervp = xp->null_lowervp;
+    
+#ifdef NULLFS_DIAGNOSTIC
+    printf("null_reclaim: %p\n", vp);
+#endif
 
     /*
      * Note: in vnop_reclaim, vp->v_op == dead_vnodeop_p,
@@ -494,7 +512,8 @@ null_reclaim(ap)
     LIST_REMOVE(xp, null_hash);
     FREE(vp->v_data, M_TEMP);
     vp->v_data = NULL;
-    vnode_put (lowervp);
+    vnode_rele(lowervp);
+    vnode_put(lowervp);
     return (0);
 }
 

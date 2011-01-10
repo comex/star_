@@ -201,16 +201,16 @@ nullfs_mount(mp, devvp, data, context)
     /*
      * Sanity check on lower vnode
      */
+    // this comes getted.
+    // if I get it here, iocount goes steadily up
+    // null_node_create gets rid of it
     lowerrootvp = nd.ni_vp;
-    vnode_get(lowerrootvp);
-    vnode_ref(lowerrootvp);
-
-    //vnode_put(nd.ni_dvp);
-    nd.ni_dvp = NULL;
+    //vnode_get(lowerrootvp);
     
-    printf("lowerrootvp->v_type = %d\n", lowerrootvp->v_type);
-    printf("lowerrootvp->v_usecount = %d\n", lowerrootvp->v_usecount);
-    printf("lowerrootvp->v_iocount = %d\n", lowerrootvp->v_iocount);
+    printf("coming in, lowerrootvp->v_type = %d  ->v_usecount = %d  ->v_iocount = %d\n", lowerrootvp->v_type, lowerrootvp->v_usecount, lowerrootvp->v_iocount);
+
+    vnode_put(nd.ni_dvp);
+    nd.ni_dvp = NULL;
 
     xmp = (struct null_mount *) _MALLOC(sizeof(struct null_mount),
                 M_UFSMNT, M_WAITOK);    /* XXX */
@@ -224,15 +224,18 @@ nullfs_mount(mp, devvp, data, context)
      * Save reference.  Each mount also holds
      * a reference on the root vnode.
      */
+    // `
     error = null_node_create(mp, lowerrootvp, &vp, 1);
     /*
      * Make sure the node alias worked
      */
     if (error) {
+        // x: dunno if this is right
         vnode_put(lowerrootvp);
         FREE(xmp, M_UFSMNT);    /* XXX */
         return (error);
     }
+
 
     /*
      * Keep a held reference to the root vnode.
@@ -297,28 +300,35 @@ nullfs_unmount(mp, mntflags, context)
 
     if ( (nullm_rootvp->v_usecount > 1) && !force )
         return (EBUSY);
+    
+    struct vnode *lowerrootvp = NULLVPTOLOWERVP(nullm_rootvp);
+    printf("coming *out* (but before put), lowerrootvp->v_type = %d  ->v_usecount = %d  ->v_iocount = %d\n", lowerrootvp->v_type, lowerrootvp->v_usecount, lowerrootvp->v_iocount);
+    printf("also, nullm_rootvp->v_type = %d  ->v_usecount = %d  ->v_iocount = %d\n", nullm_rootvp->v_type, nullm_rootvp->v_usecount, nullm_rootvp->v_iocount);
+    
+    vnode_put(nullm_rootvp);
+    
     /*
      * Release reference on underlying root vnode
      */
-    vnode_put(nullm_rootvp);
+    // x: specifically, this has the effect of releasing all existing null nodes, which releases the equivalent lowers
     if ( (error = vflush(mp, NULLVP, flags)) && !force )
         return (error);
 
-    printf("ok we flushed it\n");
+    //printf("ok we flushed it\n");
 #ifdef NULLFS_DIAGNOSTIC
     //vprint("alias root of lower", nullm_rootvp);
 #endif     
     /*
      * And blow it away for future re-use
      */
-    // XXX
+    // x: don't need to do this this way
     //vnode_reclaim(nullm_rootvp);
     /*
      * Finally, throw away the null_mount structure
      */
     FREE(mp->mnt_data, M_UFSMNT);    /* XXX */
     mp->mnt_data = 0;
-    printf("all done\n");
+
     return 0;
 }
 
