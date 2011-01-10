@@ -45,6 +45,7 @@ def config():
 def shelltester():
     goto('shelltester')
     compile_stuff(['shelltester.c'], 'shelltester', strip=False)
+    compile_stuff(['ghost.c'], 'ghost', strip=False, ldflags=['-framework', 'CoreFoundation', '-framework', 'CoreGraphics', '-framework', 'ImageIO'])
 
 def machdump():
     goto('machdump')
@@ -160,6 +161,11 @@ def mroib():
     goto('mroib')
     run(GCC, '-c', '-o', 'clean.o', 'clean.c', '-marm')
     run(GCC, '-dynamiclib', '-o', 'mroib.dylib', 'power.c', 'timer.c', 'usb.c', 'mroib.c', 'clean.o', '-combine', '-fwhole-program', '-nostdinc', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-I.', '-Iincludes', '-DCONFIG_IPHONE_4G')
+
+def dejavu():
+    goto('dejavu')
+    run('python', 'gen_dejavu.raw.py')
+    run('t1asm', 'dejavu.raw', 'dejavu.pfb')
 
 def clean():
     autoclean()
