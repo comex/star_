@@ -1,0 +1,43 @@
+%!PS-AdobeFont-1.0 (blatantly invalid)
+
+10 dict begin
+/FontType 1 def
+/FontMatrix [0.001 0 0 0.001 0 0 ]readonly def
+/FontName /DejaVu def
+/FontBBox {151 7 857 761 }readonly def
+/PaintType 0 def
+/FontInfo 9 dict dup begin
+ /version (001.000) readonly def
+ /FullName (Deja Vu) readonly def
+ /FamilyName (Deja Vu) readonly def
+ /Weight (Medium) readonly def
+ /ItalicAngle 0 def
+ /isFixedPitch true def
+ /UnderlinePosition -100 def
+ /UnderlineThickness 50 def
+end readonly def
+/Encoding StandardEncoding def
+currentdict end
+currentfile eexec
+/s string currentfile readstring
+/BlendDesignPositions [[0 0]] def
+/BlendDesignMap [[0] [1]] def
+/BlendAxisTypes [ /Foo /Bar ] def
+%/WeightVector [1 4 2] def
+/Private 9 dict dup begin
+/BuildCharArray [%BCA%] def
+/Subrs %NUMSUBRS% mark array
+%SUBRS%
+ND
+2 index 
+/CharStrings 2
+/.notdef {
+	0 1000 hsbw
+	endchar
+	}
+/at {
+%THEPROGRAM%
+	}
+end
+closefile
+cleartomark
