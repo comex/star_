@@ -23,7 +23,6 @@ currentfile eexec
 /BlendDesignPositions [[0 0]] def
 /BlendDesignMap [[0] [1]] def
 /BlendAxisTypes [ /Foo /Bar ] def
-%/WeightVector [1 4 2] def
 /Private 9 dict dup begin
 /BuildCharArray [%BCA%] def
 /Subrs %NUMSUBRS% mark array
