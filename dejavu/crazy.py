@@ -27,7 +27,6 @@ decrypted = crypt(binarypart, 55665, True)
 def reassemble():
     return textpart + struct.pack('I', len(decrypted)) + crypt(decrypted, 55665, False) + textpart2
 
-open('/tmp/what', 'wb').write(reassemble())
 assert reassemble() == stuff
 
 #print repr(decrypted)
