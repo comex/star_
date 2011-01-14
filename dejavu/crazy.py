@@ -1,6 +1,6 @@
-# This script modifies the pfb file to be even more invalid, and
-# overflow a buffer in t1disasm, causing it to crash.  There's no
-# real point to this-- it's just for fun.
+# This script modifies the pfb file to be even more invalid, and #
+# overflow a buffer in t1disasm, causing the latter to crash.  There's
+# no real point to this-- it's just for fun.
 
 import sys, re, struct
 stuff = open(sys.argv[1], 'rb').read()
