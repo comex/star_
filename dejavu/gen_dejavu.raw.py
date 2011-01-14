@@ -21,6 +21,8 @@
 # then use THAT to overwrite hint_mode and parse_callback
 # then use seac, which will call parse_callback(decoder, glyph idx)
 
+import struct
+
 def to_signed_dec(number):
     number %= (2**32)
     if number >= (2**31): number -= (2**32)
@@ -45,7 +47,7 @@ subrs[1] = encode_unknown(file1)
 subrs[2] = '0 1 callothersubr ' + '0 2 callothersubr '*7 + 'return'
 
 # start flex, call a certain subr, then come down from 5b4 to bottom of stack - 337 down
-subrs[3] = '2 callsubr callsubr ''hstem3 '*14 + '250 42 callothersubr return'
+subrs[3] = '2 callsubr callsubr ' + 'hstem3 '*14 + '250 42 callothersubr return'
 
 # the first run up
 subrs[4] = '''3 0 setcurrentpoint
@@ -73,13 +75,19 @@ main = '''0 0 setcurrentpoint
           0                    % start the <= chain
           '''
 
-addies = {0x30000000: 'return', 0x31000000: 'return', 0x32000000: 'return'}
+addies = {0x33825249: '\x85\x5e\x13\x34', 0x31000000: 'return', 0x34000000: 'return'}
 
-subrno = max(filter(lambda a: isinstance(a, int), subrs.keys()))
-for addy, subr in sorted(addies.items()):
+subrno = max(filter(lambda a: isinstance(a, int), subrs.keys())) + 1
+for addy, data in sorted(addies.items()):
+    parse_callback, = struct.unpack('I', data[:4])
+    data = data[4:]
+    assert parse_callback > 32000
+    subrs[subrno] = '0 %s setcurrentpoint return' % to_signed_dec(parse_callback)
+    #subrs[subrno+1] = encode_unknown(data)
     subrno += 1
-    subrs[subrno] = subr
-    main += str(subrno) + ' 1 25 callothersubr pop ' + to_signed_dec(addy) + ' 4 27 callothersubr pop\n'
+
+    assert addy > 32000
+    main += '\n' + str(subrno) + ' 1 1 25 callothersubr pop ' + to_signed_dec(addy - 1) + ' 4 27 callothersubr pop\n'
 
 main += '''callsubr         % call the selected subr (which should push stuff, set y to an appropriate parse_callback,
                             % then come back down
@@ -98,7 +106,7 @@ template = template.replace('%NUMSUBRS%', '%d' % (len(subrs) - 1))
 subrtext = ''
 for num, subr in subrs.iteritems():
     if num == 'main': continue
-    subrtext += 'dup %d {\n\t%s\n\t} mark\n' % (num, subr)
+    subrtext += 'dup %d {\n\t%s\n\t} put\n' % (num, subr)
 template = template.replace('%SUBRS%', subrtext)
 
 open('dejavu.raw', 'w').write(template)

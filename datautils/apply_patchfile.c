@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
         void *stuff = malloc(size);
         assert(read(patchfd, stuff, size) == (ssize_t) size);
         
-        if(addr != 0) {
+        if(addr != 0 && name[0] != '+') {
             printf("%s\n", name);
             memcpy((char *) kernel.start + range_to_off_range((range_t) {&binary, addr, size}).start, stuff, size);
         }
