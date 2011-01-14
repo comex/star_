@@ -39,7 +39,7 @@ kernstuff += '\0' * ((-len(kernstuff) & 0xfff) + (stub & 0xfff))
 
 plist = '<array><data>%s</data></array>' % base64.b64encode(kernstuff)
 
-init('R7', 'PC')
+init('PC')
 make_avail()
 
 # before we remap, save 0x1000 so we can have it back
