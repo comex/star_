@@ -166,7 +166,8 @@ def dejavu():
     goto('dejavu')
     run('python', 'gen_dejavu.raw.py')
     run('t1asm', 'dejavu.raw', 'dejavu_.pfb')
-    run('python', 'crazy.py', 'dejavu_.pfb', 'dejavu.pfb')
+    run(GCC_NATIVE, '-o', 'crazy', 'crazy.c')
+    run('./crazy', 'dejavu_.pfb', 'dejavu.pfb')
 
 def clean():
     autoclean()

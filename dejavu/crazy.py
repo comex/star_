@@ -18,7 +18,9 @@ def crypt(encrypted, r, decrypt):
     for c in encrypted:
         c = ord(c)
         new_c = (c ^ (r >> 8)) & 0xff
+        #print hex(c), hex(new_c)
         decrypted += chr(new_c)
+        #print r
         r = (((c if decrypt else new_c) + r)*c1 + c2) & 0xffff
     return decrypted
 

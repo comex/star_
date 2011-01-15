@@ -25,7 +25,7 @@ currentfile eexec
 /BlendAxisTypes [ /Foo /Bar ] def
 /Private 9 dict dup begin
 /BuildCharArray [%BCA%] def
-/Subrs %NUMSUBRS% mark array
+/Subrs %NUMSUBRS% array
 %SUBRS%
 ND
 2 index 
