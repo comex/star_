@@ -27,6 +27,7 @@ def store_val_to(val, to):
 
 def add_r0_by(addend):
     set_fwd('PC', dmini.cur.find_multiple('+ 20 44 90 bd', '- 00 00 84 e0 90 80 bd e8'))
+    if isinstance(addend, (int, long)): addend %= (2**32)
     set_fwd('R4', addend)
     exhaust_fwd('R7')
     heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
@@ -55,6 +56,12 @@ def set_sp_to(sp):
     set_fwd('PC', dmini.cur.find_multiple('+ a7 f1 00 0d 80 bd', '- 00 d0 47 e2 80 80 bd e8'))
     set_fwd('R7', sp)
     clear_fwd() # pop {r7, pc} but that's not in this stack
+
+def fancy_set_sp_to(sp):
+    # ditto for r8, r10, r11, r4-r7, pc
+    set_fwd('PC', dmini.cur.find_multiple('+ a7 f1 18 0d bd e8 00 0d f0 bd', '- 18 d0 47 e2 00 0d bd e8 f0 80 bd e8'))
+    set_fwd('R7', sp + 24)
+    clear_fwd()
 
 # Make some registers available but do nothing.
 def make_avail():

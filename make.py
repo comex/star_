@@ -88,6 +88,7 @@ def goo_catalog():
     goto('goo/catalog')
     run('../../datautils/make_kernel_patchfile', '../../config/cur/kern', '../../sandbox2/sandbox.bin', 'patchfile')
     run('python', 'catalog.py', '-c ../../config/cur/cache', '-k ../../config/cur/kern', 'patchfile')
+    run('python', 'stub.py', '-c', '../../config/cur/cache')
 
 def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True, combine=False):
     objs = []

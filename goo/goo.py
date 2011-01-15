@@ -25,7 +25,7 @@ def finalize(heapaddr_=None):
     heapaddr._val = heapaddr_
     if heapaddr_ is not None:
         sheapaddr = heapaddr_ + 4*len(heapstuff)
-        print hex(sheapaddr)
+        #print hex(sheapaddr)
     sheap = ''
     heapdbgnames = [(obj.name if hasattr(obj, 'name') else None) for obj in heapstuff]
     for pass_num in xrange(2):
