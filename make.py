@@ -62,7 +62,8 @@ def install():
 def locutus():
     goto('locutus')
     run('mig', 'locutus.defs')
-    compile_stuff(['locutus.c', 'inject.c'], 'locutus', cflags=['-fblocks', '-Wno-parentheses'], ldid=False)
+    compile_stuff(['locutus_server.c', 'LocutusServer.c'], 'locutus_server.dylib', ldflags=['-dynamiclib'], ldid=False)
+    compile_stuff(['locutus.c', 'inject.c', 'LocutusUser.c'], 'locutus', cflags=['-fblocks', '-Wno-parentheses'], ldid=False)
 
 def goo():
     config()

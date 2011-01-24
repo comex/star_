@@ -30,9 +30,9 @@ static void *lock_wait_thread(void *ignored) {
 static pid_t find_springboard() {
     static int name[] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
     size_t length;
-    _assert(sysctl(&name[0], sizeof(name) / sizeof(*name), NULL, &length, NULL, 0) != -1);
+    _assert(!sysctl(&name[0], sizeof(name) / sizeof(*name), NULL, &length, NULL, 0));
     struct kinfo_proc *proc = malloc(length);
-    _assert(sysctl(&name[0], sizeof(name) / sizeof(*name), proc, &length, NULL, 0) != -1);
+    _assert(!sysctl(&name[0], sizeof(name) / sizeof(*name), proc, &length, NULL, 0));
     for(size_t i = 0; i < length; i++) {
         if(!strncmp(proc[i].kp_proc.p_comm, "SpringBoard", sizeof(proc[i].kp_proc.p_comm))) {
             pid_t result = proc[i].kp_proc.p_pid;
@@ -42,8 +42,18 @@ static pid_t find_springboard() {
     }
     abort();
 }
+    
+
+__attribute__((naked)) static uint64_t thread_selfid() {
+    asm volatile("mov r12, #0x174; svc #0x80; bx lr");
+}
 
 int main() {
+    printf("thread_self: %llx\n", thread_selfid());
+
+    uint32_t one = 1;
+    _assert(!sysctlbyname("security.mac.vnode_enforce", NULL, NULL, &one, sizeof(one));
+
     notify_post("go-away-locutus");
 
     notify_register_signal("go-away-locutus", SIGTERM, &notify_token);

@@ -1,0 +1,6 @@
+subsystem Locutus 1000;
+
+#include <mach/std_types.defs>
+
+routine go_away(port : mach_port_t);
+
