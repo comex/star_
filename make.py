@@ -7,7 +7,7 @@ import sys, os
 ROOT = os.path.realpath(os.path.dirname(sys.argv[0]))
 os.environ['PYTHONPATH'] = 'ROOT/datautils:ROOT/goo:ROOT/config'.replace('ROOT', ROOT)
 
-GCC_FLAGS = ['-std=gnu99', '-gdwarf-2', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wall', '-Wextra', '-Wreturn-type', '-Wno-unused', '-Os']
+GCC_FLAGS = ['-std=gnu99', '-gstabs', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wall', '-Wextra', '-Wreturn-type', '-Wno-unused', '-Os']
 SDK = '/var/sdk'
 BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
 GCC_BIN = BIN + '/gcc-4.2'
@@ -61,7 +61,8 @@ def install():
 
 def locutus():
     goto('locutus')
-    compile_stuff(['locutus.c'], 'locutus', ldid=False)
+    run('mig', 'locutus.defs')
+    compile_stuff(['locutus.c', 'inject.c'], 'locutus', cflags=['-fblocks', '-Wno-parentheses'], ldid=False)
 
 def goo():
     config()
