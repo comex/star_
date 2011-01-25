@@ -8,6 +8,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+extern bool NSAddLibrary(const char *);
+
 #define ARM_THREAD_STATE 1
 //#define ARM_THREAD_STATE_COUNT 17
 struct arm_thread_state {
@@ -20,15 +22,23 @@ struct arm_thread_state {
 
 static const mach_vm_size_t stack_size = 32*1024;
 
-#define FAIL(x) exit(x)
-#define TRY(x) do { if(kr = x) { exit(kr); } } while(0)
+#define DEBUG 1
+
+#define FAIL(x) do { if(DEBUG) fprintf(stderr, "fail on line %d: %x\n", __LINE__, (x)); abort(); } while(0)
+#define TRY(x) do { if(kr = x) { FAIL(kr);} } while(0)
 #define address_cast(x) ((mach_vm_address_t) (uintptr_t) (x))
 
-kern_return_t inject(pid_t pid, const char *path, kern_return_t (^waiter)()) {
+kern_return_t inject(pid_t pid, const char *path, mach_port_t *gssd) {
     kern_return_t kr = 0;
 
     task_t task;
     TRY(task_for_pid(mach_task_self(), (int) pid, &task));
+    
+    mach_port_t its_gssd;
+    TRY(mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &its_gssd));
+    mach_msg_type_name_t polypoly;
+    TRY(mach_port_extract_right(task, its_gssd, MACH_MSG_TYPE_PORT_SEND, gssd, &polypoly));
+    TRY(task_set_special_port(task, TASK_GSSD_PORT, *gssd));
 
     mach_vm_address_t stack_address = 0;
     TRY(mach_vm_allocate(task, &stack_address, stack_size, VM_FLAGS_ANYWHERE));
@@ -68,10 +78,9 @@ kern_return_t inject(pid_t pid, const char *path, kern_return_t (^waiter)()) {
     TRY(mach_msg_overwrite(NULL, MACH_RCV_MSG, 0, sizeof(msg), exc, MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL, (void *) &msg, sizeof(msg)));
     TRY(thread_terminate(thread));
 
-    TRY(waiter());
-    // this should only be reached when the library is up and dlopen is complete
-    
-    vm_deallocate(task, stack_address, stack_size);
+    // hope dlopen never returns
+
+    // leak it vm_deallocate(task, stack_address, stack_size);
     mach_port_deallocate(mach_task_self(), exc);
     mach_port_deallocate(mach_task_self(), thread);
     mach_port_deallocate(mach_task_self(), task);

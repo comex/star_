@@ -7,6 +7,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <fcntl.h>
+#include "inject.h"
+#include <servers/bootstrap.h>
+#include "bzlib.h"
+#include "Locutus.h"
+
+extern char packed_server_bz2[];
+extern unsigned int packed_server_bz2_len;
 
 static void _assert(bool x) {
     if(!x) {
@@ -44,15 +51,15 @@ static pid_t find_springboard() {
 }
     
 
-__attribute__((naked)) static uint64_t thread_selfid() {
-    asm volatile("mov r12, #0x174; svc #0x80; bx lr");
-}
+/*__attribute__((naked))
+static uint64_t thread_selfid() {
+    asm volatile("mov r0, #93; lsl r0, #2; mov r12, r0; movsvc #0x80; bx lr");
+    return 0;
+}*/
 
 int main() {
-    printf("thread_self: %llx\n", thread_selfid());
-
     uint32_t one = 1;
-    _assert(!sysctlbyname("security.mac.vnode_enforce", NULL, NULL, &one, sizeof(one));
+    _assert(!sysctlbyname("security.mac.vnode_enforce", NULL, NULL, &one, sizeof(one)));
 
     notify_post("go-away-locutus");
 
@@ -65,7 +72,36 @@ int main() {
     _assert(!flock(fd, LOCK_EX));
     got_lock = true;
 
+    // dump our load
+    const char *name = tempnam("/tmp/", "locutus.dylib-");
+    int dylib_fd = open(name, O_WRONLY | O_CREAT, 0644);
+    _assert(dylib_fd >= 0);
+    unsigned int stuff_len = 0x10000;
+    char *stuff = malloc(stuff_len);
+    _assert(!BZ2_bzBuffToBuffDecompress(stuff, &stuff_len, packed_server_bz2, packed_server_bz2_len, 0, 0));
+
+    for(unsigned int i = 0; i < stuff_len - 32; i++) {
+        if(!memcmp(stuff + i, "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX", 32)) {
+            memcpy(stuff + i, name, 32);
+        }
+    }
+
+    _assert(write(dylib_fd, stuff, stuff_len) == (ssize_t) stuff_len);
+    close(dylib_fd);
+    free(stuff);
+
     pid_t pid = find_springboard();
     printf("pid = %d\n", (int) pid);
+
+    mach_port_t port;
+
+    inject(pid, name, &port);
+
+    unlink(name);
+
+    printf("OK\n");
+
+    printf("test=%d\n", test(port));
+
     return 0;
 }
