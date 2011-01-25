@@ -28,7 +28,7 @@ static void init() {
         fprintf(stderr, "s/k\n");
         mach_port_deallocate(mach_task_self(), locutus_port);
         locutus_port = 0;
-        notify_cancel(token);
+        notify_cancel(token_);
     });
 
     if(task_get_special_port(mach_task_self(), TASK_GSSD_PORT, &locutus_port)) abort();
@@ -36,7 +36,7 @@ static void init() {
     fprintf(stderr, "l_p=%d\n", locutus_port);
     while(locutus_port) {
         //fprintf(stderr, "mmso\n");
-        fprintf(stderr, "mmso %d\n", mach_msg_server_once(Locutus_server, 8192, locutus_port, 0));
+        fprintf(stderr, "mmso %x\n", mach_msg_server_once(Locutus_server, 8192, locutus_port, 0));
         break;
     }
     thread_terminate(mach_thread_self());

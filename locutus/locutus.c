@@ -101,7 +101,7 @@ int main() {
 
     printf("OK\n");
 
-    printf("test=%d\n", test(port));
+    printf("test=%x\n", test(port));
 
     return 0;
 }

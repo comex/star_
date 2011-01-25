@@ -34,10 +34,10 @@ kern_return_t inject(pid_t pid, const char *path, mach_port_t *gssd) {
     task_t task;
     TRY(task_for_pid(mach_task_self(), (int) pid, &task));
     
-    mach_port_t its_gssd;
-    TRY(mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &its_gssd));
-    mach_msg_type_name_t polypoly;
-    TRY(mach_port_extract_right(task, its_gssd, MACH_MSG_TYPE_PORT_SEND, gssd, &polypoly));
+    mach_port_name_t name;
+    mach_msg_type_name_t poly;
+    TRY(mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &name));
+    TRY(mach_port_extract_right(task, name, MACH_MSG_TYPE_MAKE_SEND, gssd, &poly));
     TRY(task_set_special_port(task, TASK_GSSD_PORT, *gssd));
 
     mach_vm_address_t stack_address = 0;
