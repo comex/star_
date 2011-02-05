@@ -19,8 +19,8 @@ def heapadd(*stuff):
     for a in stuff:
         heapstuff.append(a)
 
-def finalize(heapaddr_=None):
-    global heapstuff, sheap, sheapaddr, heapaddr, heapdbgnames, hidx
+def finalize(heapaddr_=None, relocs=False):
+    global heapstuff, sheap, sheapaddr, heapaddr, heapdbgnames, hidx, all_relocs
     clear_fwd()
     heapaddr._val = heapaddr_
     if heapaddr_ is not None:
@@ -28,6 +28,7 @@ def finalize(heapaddr_=None):
         #print hex(sheapaddr)
     sheap = ''
     heapdbgnames = [(obj.name if hasattr(obj, 'name') else None) for obj in heapstuff]
+    all_relocs = {}
     for pass_num in xrange(2):
         for hidx in xrange(len(heapstuff)):
             thing = heapstuff[hidx]
@@ -35,11 +36,17 @@ def finalize(heapaddr_=None):
                 try:
                     thing = int(thing)
                 except NotYetError:
-                    pass
+                    if pass_num == 1:
+                        raise Exception("%r doesn't want to be an int" % thing)
                 else:
                     heapstuff[hidx] = thing
+    hidx = None
 
-    return struct.pack('<'+'I'*len(heapstuff), *heapstuff) + sheap
+    text = struct.pack('<'+'I'*len(heapstuff), *heapstuff) + sheap
+    if relocs:
+        return (text, all_relocs)
+    else:
+        return text
 
 def heapdump(names=None):
     if names is None: names = {}
@@ -49,7 +56,7 @@ def heapdump(names=None):
     for i, entry in enumerate(heapstuff):
         if i >= dbginfo[0][0]:
             print
-            print '%08x %s:' % (heapaddr._val + 4*i, dbginfo.pop(0)[1].ljust(15)),
+            print '%08x %s:' % (int(heapaddr._val + 4*i), dbginfo.pop(0)[1].ljust(15)),
         if heapdbgnames[i] is not None:
             sys.stdout.write(' %s=' % heapdbgnames[i])
         if heapaddr._val <= entry <= heapaddr._val + 4*len(heapstuff):
@@ -99,19 +106,19 @@ class car:
             self._val = int(self.val())
         return int(self._val)
     def __add__(self, other):
-        return later(lambda: (int(self) + int(other)) % (2**32))
+        return later(lambda: int(self) + other)
     def __sub__(self, other):
-        return later(lambda: (int(self) - int(other)) % (2**32))
+        return later(lambda: int(self) - other)
     def __radd__(self, other):
-        return later(lambda: (int(other) - int(self)) % (2**32))
+        return later(lambda: other - int(self))
     def __rsub__(self, other):
-        return later(lambda: (int(other) - int(self)) % (2**32))
+        return later(lambda: other - int(self))
     def __mul__(self, other):
-        return later(lambda: (int(self) * int(other)) % (2**32))
+        return later(lambda: int(self) * other)
     def __rmul__(self, other):
-        return later(lambda: (int(other) * int(self)) % (2**32))
+        return later(lambda: other * int(self))
     def __and__(self, other):
-        return later(lambda: (int(self) & int(other)) % (2**32))
+        return later(lambda: int(self) & other)
     def __len__(self):
         return int(self)
 
@@ -133,6 +140,9 @@ class stackunkptr(car):
         if not hasattr(self.unk, 'addr'):
             raise NotYetError(self.name)
         return self.unk.addr
+    def __repr__(self):
+        addr = hex(self.unk.addr) if hasattr(self.unk, 'addr') else '(no address)'
+        return '<stackunkptr "%s": %s>' % (self.name, addr)
 # [0] evaluates to 0 (initially), [1] evaluates to the address of [0]
 def stackunkpair():
     unk = stackunk()
@@ -174,5 +184,37 @@ class marker(car):
         return self
     def val(self):
         raise ValueError("marker didn't mark")
+
+class reloc:
+    def __init__(self, key, value, alignment=1):
+        self.key = key
+        self.value = value
+        self.mask = alignment - 1
+
+    # limited set of operations - for others, the reloc wouldn't make sense
+    def __add__(self, other):
+        return reloc(self.key, self.value + other)
+    def __sub__(self, other):
+        return reloc(self.key, self.value - other)
+    def __radd__(self, other):
+        return reloc(self.key, other + self.value)
+    def __mod__(self, other):
+        return reloc(self.key, self.value % other)
+    def __and__(self, other):
+        if (other & ~self.mask) == 0:
+            return self.value & other
+        elif (other & self.mask) == 0:
+            return reloc(self.key, self.value & other)
+        else:
+            raise Exception('reloc & %r, but not page aligned' % other)
+
+    def __int__(self):
+        if hidx is not None:
+            assert not all_relocs.has_key(hidx*4)
+            all_relocs[hidx*4] = self.key
+        return int(self.value)
+
+    def __repr__(self):
+        return 'reloc(0x%x, 0x%x, 0x%x)' % (self.key, self.value, self.mask + 1)
 
 heapaddr = car() # finalize fills this in

