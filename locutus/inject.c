@@ -28,18 +28,12 @@ static const mach_vm_size_t stack_size = 32*1024;
 #define TRY(x) do { if(kr = x) { FAIL(kr);} } while(0)
 #define address_cast(x) ((mach_vm_address_t) (uintptr_t) (x))
 
-kern_return_t inject(pid_t pid, const char *path, mach_port_t *gssd) {
+kern_return_t inject(pid_t pid, const char *path, mach_vm_address_t *stack_address) {
     kern_return_t kr = 0;
 
     task_t task;
     TRY(task_for_pid(mach_task_self(), (int) pid, &task));
     
-    mach_port_name_t name;
-    mach_msg_type_name_t poly;
-    TRY(mach_port_allocate(task, MACH_PORT_RIGHT_RECEIVE, &name));
-    TRY(mach_port_extract_right(task, name, MACH_MSG_TYPE_MAKE_SEND, gssd, &poly));
-    TRY(task_set_special_port(task, TASK_GSSD_PORT, *gssd));
-
     mach_vm_address_t stack_address = 0;
     TRY(mach_vm_allocate(task, &stack_address, stack_size, VM_FLAGS_ANYWHERE));
 
@@ -74,16 +68,19 @@ kern_return_t inject(pid_t pid, const char *path, mach_port_t *gssd) {
     TRY(thread_set_state(thread, ARM_THREAD_STATE, &state.nat, ARM_THREAD_STATE_COUNT));
     TRY(thread_resume(thread));
 
+    // handle the exception
     char msg[8192];
     TRY(mach_msg_overwrite(NULL, MACH_RCV_MSG, 0, sizeof(msg), exc, MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL, (void *) &msg, sizeof(msg)));
     TRY(thread_terminate(thread));
 
-    // hope dlopen never returns
+    
 
-    // leak it vm_deallocate(task, stack_address, stack_size);
+    mach_vm_deallocate(task, stack_address, stack_size);
     mach_port_deallocate(mach_task_self(), exc);
     mach_port_deallocate(mach_task_self(), thread);
     mach_port_deallocate(mach_task_self(), task);
 
     return 0;    
 }
+
+return inject_deall

@@ -53,11 +53,7 @@ def machdump():
 
 def install():
     goto('install')
-    files = ['install.o', 'copier.o']
-    for o in files:
-        run(GCC_UNIVERSAL, '-I', HEADERS, '-c', '-o', o, chext(o, '.c'))
-    run(GCC_UNIVERSAL, '-dynamiclib', '-o', 'install.dylib', files, F('CoreFoundation', 'GraphicsServices'), '-L.', '-ltar', '-llzma')
-    run('python', 'wad.py', 'install.dylib', 'Cydia-whatever.txz')
+    compile_stuff(['install.m'], 'install.dylib', cflags=['-I../headers', '-fblocks'], ldflags=['-framework', 'Foundation', '-framework', 'GraphicsServices', '-L.', '-ltar', '-llzma', '-dynamiclib'])
 
 def locutus():
     goto('locutus')

@@ -1,6 +1,0 @@
-subsystem Locutus 1000;
-
-#include <mach/std_types.defs>
-
-routine test(port : mach_port_t);
-

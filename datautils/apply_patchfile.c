@@ -34,10 +34,27 @@ int main(int argc, char **argv) {
         void *stuff = malloc(size);
         assert(read(patchfd, stuff, size) == (ssize_t) size);
         
-        if(addr != 0 && name[0] != '+') {
+        if(addr == 0) goto skip;
+        if(name[0] == '+') goto skip;
+
+        if(argv[4] && !strcmp(argv[4], "-i")) {
+            retry:
+            printf("%s [y/n] ", name);
+            fflush(stdout);
+            char buf[3];
+            if(!fgets(buf, sizeof(buf), stdin)) abort();
+            if(!strcmp(buf, "n\n")) {
+                goto skip;
+            } else if(strcmp(buf, "y\n")) {
+                goto retry;
+            }
+        } else {
             printf("%s\n", name);
-            memcpy((char *) kernel.start + range_to_off_range((range_t) {&binary, addr, size}).start, stuff, size);
         }
+
+        memcpy((char *) kernel.start + range_to_off_range((range_t) {&binary, addr, size}).start, stuff, size);
+
+        skip:
 
         free(name);
         free(stuff);
