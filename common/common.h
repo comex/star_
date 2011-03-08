@@ -12,22 +12,25 @@
 #define ctassert(x, y) extern char XX_## y [(x) ? 1 : -1]
 #define _log(args...) syslog(LOG_EMERG, args)
 
-#define _assert(expr, arg...) _assert_helper(#expr, (int) (expr), arg + 0)
-#define _assert_zero(expr, arg...) _assert_zero_helper(#expr, (int) (expr), arg + 0)
-static void _assert_helper(const char name[], int value, const char *arg) {
-    if(!value) {
-        _log("assertion failed: %s%s%s%s (errno=%s)\n", name, arg ? "[" : "", arg ? arg : "", arg ? "]" : "", strerror(errno));
-        exit(1);
-    }
+#ifdef NO_ASSERT_MESSAGES
+#define _assert(expr, arg...) ((expr) ?: (abort(), (typeof(expr)) 0))
+#define _assert_zero(expr, arg...) do { if(expr) abort(); } while(0)
+#else
+
+#define _assert(expr, arg...) ((expr) ?: _assert_helper(#expr, arg + 0)
+#define _assert_zero(expr, arg...) do { if(expr) _assert_zero_helper(#expr, arg + 0); } while(0)
+
+static void _assert_helper(const char name[], const char *arg) {
+    _log("assertion failed: %s%s%s%s (errno=%s)\n", name, arg ? "[" : "", arg ? arg : "", arg ? "]" : "", strerror(errno));
+    exit(1);
 }
 
-static void _assert_zero_helper(const char name[], int value, const char *arg) {
-    if(value) {
-        _log("assertion failed: %s%s%s%s (value=0x%x, errno=%s)\n", name, arg ? "[" : "", arg ? arg : "", arg ? "]" : "", value, strerror(errno));
-        exit(1);
-    }
+static void _assert_zero_helper(const char name[], const char *arg) {
+    _log("assertion failed: %s%s%s%s (value=0x%x, errno=%s)\n", name, arg ? "[" : "", arg ? arg : "", arg ? "]" : "", value, strerror(errno));
+    exit(1);
 }
 
+#endif
 
 #ifdef PROFILING
 #define TIME(thing) do { uint64_t _ta = time_ms(); thing; uint64_t _tb = time_ms(); _logI("[%.4ld ms] %s", (long int) (_tb - _ta), #thing); } while(0)

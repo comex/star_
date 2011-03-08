@@ -57,10 +57,10 @@ def install():
 
 def locutus():
     goto('locutus')
-    run('mig', 'locutus.defs')
-    compile_stuff(['locutus_server.m', 'LocutusServer.c'], 'locutus_server.dylib', cflags=['-fblocks'], ldflags=['-dynamiclib', '-install_name', 'X'*32], ldid=False)
-    run('sh', '-c', 'bzip2 -9 -c locutus_server.dylib > packed_server.bz2; xxd -i packed_server.bz2 > packed_server.c')
-    compile_stuff(['locutus.c', 'inject.c', 'LocutusUser.c', 'packed_server.c'], 'locutus', cflags=['-fblocks', '-Wno-parentheses'], ldflags=['-lbz2'], ldid=True, ent='ent.plist')
+    cflags = ['-DNO_ASSERT_MESSAGES', '-fblocks', '-Oz', '-Wno-parentheses', '-miphoneos-version-min=4.0']
+    compile_stuff(['locutus_server.m'], 'locutus_server.dylib', cflags=cflags, ldflags=['-dynamiclib', '-install_name', 'X'*32]+cflags, ldid=False)
+    run('sh', '-c', 'xxd -i locutus_server.dylib | sed "s/locutus_server_//g" > locutus_server_.c')
+    compile_stuff(['locutus.c', 'inject.c', 'locutus_server_.c'], 'locutus', cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork']+cflags, ldid=True, ent='ent.plist')
 
 def goo():
     config()

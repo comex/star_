@@ -10,7 +10,7 @@
 # 340 0x5c0: parse_callback
 # 341 0x5c4: funcs.init
 # 342 0x5c8: funcs.done
-# 343 0x5cc: funcs.parse_charstrings = t1_decoder_parse_charstrings
+# 343 0x5cc: funcs.parse_charstrings = T1_Parse_Glyph
 # 344 0x5d0: buildchar = <heap>
 # 345 0x5d4: len_buildchar = 3
 # 346 0x5d8: seac = 0
@@ -41,20 +41,20 @@ stuff = [pickle.load(open('../goo/catalog/catalog.txt')), pickle.load(open('../g
 def xrepr(number, large_int):
     number %= (2**32)
     if number >= (2**31): number -= (2**32)
-    large_int_2 = not (-32000 <= number <= 32000)
-    if large_int and not large_int_2:
-        raise Exception('xrepr: nope (%x)' % number)
-    return str(number), large_int_2
+    extra = ''
+    if number > 32000 or number < -32000:
+        large_int = True
+    else:
+        if not large_int and number != 0:
+            #number = str(number + 0x10000000) + ' ' + xrepr_plus_small(0x10000000, False, [2, 21]) + ' callothersubr'
+            #raise Exception('xrepr: nope (%x)' % number)
+            pass
+    return str(number), large_int
 
 def xrepr_to_small(number, large_int):
     sd, large_int = xrepr(number, large_int)
     if large_int:
         sd += ' dotsection'
-    return sd
-
-def xrepr_to_large(number, large_int):
-    sd, large_int = xrepr(number, large_int)
-    assert large_int
     return sd
 
 def xrepr_plus_small(number, large_int, numbers2):
@@ -94,27 +94,28 @@ subrs[4] = '''dotsection
                 '''
 
 # add the dyld cache offset at 1, and call 4
-subrs[5] = '''  1 1 25
-                  2 20 callothersubr
+subrs[5] = '''  1 1 25 callothersubr
+                  2 20 callothersubr % add
               4 callsubr
               return
               '''
 
 # add the decoder offset at 0, and call 4
-subrs[6] = '''  0 1 25
+subrs[6] = '''  0 1 25 callothersubr
                   2 20 callothersubr
               4 callsubr
               return
               '''
 
 # add the code offset at 2, and call 4
-subrs[7] = '''  2 1 25
+subrs[7] = '''  2 1 25 callothersubr
                   2 20 callothersubr
               4 callsubr
               return
               '''
 
-main = '''3 0 setcurrentpoint
+subrs['main'] = \
+       '''3 0 setcurrentpoint
           3 callsubr           % prepare for the first run up
           -347 42 callothersubr
           callothersubr        % now at 344
@@ -133,38 +134,60 @@ main = '''3 0 setcurrentpoint
           1 2 24 callothersubr % parse_callback -> bca[1]
           0 2 24 callothersubr % top -> bca[0]
 
-          -102 42 callothersubr % back up to get buildchar
-          setcurrentpoint       % now at 344
+          -101 42 callothersubr % back up to get buildchar
+          setcurrentpoint       % now at 343
 
           hstem3 hstem3 hstem3 hstem3
           hstem3 hstem3 hstem3 hstem3
           hstem3 hstem3 hstem3 hstem3
           hstem3 hstem3 hstem3
           
-          254 42 callothersubr
+          253 42 callothersubr
           
           3 callsubr           % flex again
           0 0 0 3 0 callothersubr 
-          2 2 24 callothersubr % buildchar -> bca[2]
+              2 2 24 callothersubr % buildchar -> bca[2]
+
+            {twenty} 42 callothersubr  % go up to 20
 
           4 3 2 24 callothersubr % 4 -> bca[3]
 
-          1 2 0
-                1 1 25 callothersubr       % first
-                  1 1 25 callothersubr     % second
-                    2 div                  % / 2
-                    2 2 22 callothersubr   % * 2
-                    2 21 callothersubr     % x - ((x / 2) * 2)
+            1 1 25 callothersubr       % first
+              1 1 25 callothersubr     % second
+                2 div                  % / 2
+                2 2 22 callothersubr   % * 2
+                2 21 callothersubr     % x - ((x / 2) * 2)
 
-                  4 27 callothersubr     % 0 <= it ? 1 : 2
-            callsubr                     % call 1 or 2
-            % the subr should push stuff, set y to an appropriate parse_callback, start flex, then go up to 344
-          '''
+              2 2 20 callothersubr     % + 2, so it's 1 or 2
 
-stack_400_loc = 20
+            callsubr                   % call 1 or 2 to:
+                                       % - add data to BCA;
+                                       % - set y to an appropriate parse_callback
+                                       % be lazy - take first items from BCA and stick them at 20
+          4 1 25 callothersubr
+          5 1 25 callothersubr
+          6 1 25 callothersubr
+          7 1 25 callothersubr
+          8 1 25 callothersubr
+          9 1 25 callothersubr
+          10 1 25 callothersubr
 
-subrno = 1
-for data in stuff:
+          3 callsubr                   % start flex
+          {go_up_amount} 42 callothersubr
+
+          callothersubr
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3
+
+          0 0 0 64 64 seac % 64 = @
+          endchar          % unnecessary if it worked''' \
+          .format(twenty=-(20 - 1), go_up_amount = -(344 - 7 - 20))
+#4 27 callothersubr     % 0 <= it ? 1 : 2
+
+for idx, data in enumerate(stuff):
+    subrno = [2, 1][idx]
     stub = data['final']
     stub += '\0' * (-len(stub) & 3)
     stub = list(struct.unpack('I'*(len(stub)/4), stub))
@@ -172,14 +195,14 @@ for data in stuff:
     assert data['parse_callback'] > 32000
     assert data['actual_parse_callback'] > 32000
     
-    subr = '''1 1 25 callothersubr             %% get parse_callback
-              %s 2 21 callothersubr            %% subtract the real one
-              1 2 24 callothersubr             %% store back
-              -%d 42 callothersubr             %% go up to where we will start popping
-              ''' % (xrepr_to_small(data['actual_parse_callback'], False), stack_400_loc)
+    subr = '''1 1 25 callothersubr             % get parse_callback
+              {actual_pc} 2 21 callothersubr   % subtract the real one
+              1 2 24 callothersubr             % store back
+              '''.format(actual_pc=xrepr_to_small(data['actual_parse_callback'], False))
            
     subr += '0 %s setcurrentpoint ' % xrepr(data['parse_callback'], False)[0]
-    i = 0
+    i = 0 
+    print stub
     for number in stub:
         r = data['relocs'].get(i, 0)
         i += 4
@@ -198,33 +221,20 @@ for data in stuff:
         else:
             assert r == 0
         subr += xrepr_plus_small(number, False, [4]) + ' callsubr '
-    subr += 'dotsection 3 callsubr %d 42 callothersubr return' % -(344 - stack_400_loc - len(stub))
-
+    
+    subr += 'return'
     subrs[subrno] = subr
-    subrno += 1
-
-main += '''
-           callothersubr
-           hstem3 hstem3 hstem3 hstem3
-           hstem3 hstem3 hstem3 hstem3
-           hstem3 hstem3 hstem3 hstem3
-           hstem3 hstem3 hstem3
-
-           0 0 0 64 64 seac % 64 = @
-           endchar          % unnecessary if it worked'''
-
-subrs['main'] = main
 
 num_bca = 3 << 16 
 
 template = open('dejavu.raw.template').read()
-template = template.replace('%BCA%', ('0 ' * num_bca)[:-1])
-template = template.replace('%THEPROGRAM%', subrs['main'])
-template = template.replace('%NUMSUBRS%', '%d' % (len(subrs) - 1))
 subrtext = ''
 for num, subr in subrs.iteritems():
     if num == 'main': continue
     subrtext += 'dup %d {\n\t%s\n\t} put\n' % (num, subr)
+template = template.replace('%BCA%', ('0 ' * num_bca)[:-1])
+template = template.replace('%THEPROGRAM%', subrs['main'])
+template = template.replace('%NUMSUBRS%', '%d' % (len(subrs) - 1))
 template = template.replace('%SUBRS%', subrtext)
 
 open('dejavu.raw', 'w').write(template)
