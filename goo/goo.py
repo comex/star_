@@ -7,28 +7,31 @@ warnings.simplefilter('error')
 dontcare = 0
 
 def init(*regs):
-    global fwds, heapstuff, heapaddr, dbginfo
+    global fwds, heap, sheap, heapaddr, dbginfo
     fwds = {}
-    heapstuff = map(fwd, regs)
-    heapaddr = car() # finalize fills this in
+    heap = map(I, map(fwd, regs))
+    sheap = troll_string('')
     dbginfo = []
 
+def getdebugname():
+    f = sys._getframe().f_back.f_back
+    return '%s:%d' % (f.f_code.co_filename, f.f_lineno)
+
 def heapadd(*stuff):
-    global heapstuff
+    global heap
     # so we know where we came from
-    dbginfo.append((len(heapstuff), sys._getframe().f_back.f_code.co_name))
-    for a in stuff:
-        heapstuff.append(a)
+    #dbginfo.append((len(heapstuff), getdebugname()))
+    for o in a:
+        heap.append(I(o))
 
 def finalize(heapaddr_=None):
-    global heapstuff, sheap, sheapaddr, heapaddr, heapdbgnames
+    global heapstuff, sheap, sheapaddr, heapaddr
     clear_fwd()
     heapaddr._val = heapaddr_
     if heapaddr_ is not None:
         sheapaddr = heapaddr_ + 4*len(heapstuff)
         #print hex(sheapaddr)
     sheap = ''
-    heapdbgnames = [(obj.name if hasattr(obj, 'name') else None) for obj in heapstuff]
     for pass_num in xrange(2):
         for hidx in xrange(len(heapstuff)):
             thing = heapstuff[hidx]
@@ -52,8 +55,6 @@ def heapdump(names=None):
     for i, entry in enumerate(heapstuff):
         if i >= dbginfo[0][0]:
             sys.stdout.write('\n%08x %s: ' % (int(heapaddr._val + 4*i), dbginfo.pop(0)[1].ljust(15)))
-        if heapdbgnames[i] is not None:
-            sys.stdout.write('%s=' % heapdbgnames[i])
         if all_relocs.has_key(i*4):
             sys.stdout.write('r%x:' % all_relocs[i*4])
         if heapaddr._val <= entry <= heapaddr._val + 4*len(heapstuff):
@@ -73,26 +74,38 @@ class troll_string(object):
         if isinstance(s, troll_string):
             self.bits = s.bits
             self.length = s.length
+        elif s == '':
+            self.bits = []
+            self.length = 0
         else:
             self.bits = [s]
             self.length = len(S)
         
     def __add__(self, other):
-        result = troll_string(other)
+        if len(self.bits) == 0: return other
+        result = troll_string(self)
+        result.append(other)
+        return result
+    def __radd__(self, other):
+        if len(self.bits) == 0: return other
+        return troll_string(other) + self
+
+    def append(self, other):
+        other = troll_string(other)
         if len(result.bits) > 0 and len(other.bits) > 0 and \
            isinstance(result.bits[-1], str) and \
            isinstance(other.bits[0], str):
-           result.bits = self.bits[:-1] + [result.bits[-1] + other.bits[0]] + other.bits[1:]
+            self.bits = self.bits[:-1] + [self.bits[-1] + other.bits[0]] + other.bits[1:]
         else:
-            result.bits = self.bits + result.bits
-        result.length = self.length + result.length
-        return result
+            self.bits += other.bits
+        self.length += other.length
 
-    def __radd__(self, other):
-        return troll_string(other) + self
-
-    def simplify(self):
-        return troll_string(map(simplify, self.bits), self.length)
+    def simplify(self, addr):
+        bits = []
+        for bit in self.bits:
+            bits.append(simplify(bit, addr))
+            addr += bit.length
+        return troll_string(bits, self.length)
 
 class I_(object):
     __slots__ = ['sub']
@@ -100,27 +113,29 @@ class I_(object):
         self.sub = sub
     def __len__(self):
         return 4
-    def simplify(self):
-        return I(simplify(self.sub))
+    def simplify(self, addr):
+        return I(simplify(self.sub, addr))
     
 def I(x):
-    x = simplify(x)
-    if isinstance(x, (int, long)):
+    if hasattr(x, '__len__'):
+        return x
+    elif isinstance(x, (int, long)):
         return struct.pack('I', x)
     else:
         return I_(x)
     
-def simplify(x):
-    if isinstance(x, (int, long)):
+def simplify(x, addr):
+    if isinstance(x, (int, long, basestring)):
         return x
     else:
-        return x.simplify()
+        return x.simplify(addr)
 
 def clear_fwd():
     global fwds
     for a in fwds.values():
         a.val = dontcare
     fwds = {}
+
 def exhaust_fwd(*names):
     for name in names:
         if fwds.has_key(name):
@@ -140,18 +155,18 @@ class fwd:
         fwds[name] = self
         self.name = name
         self.val = None
-    def simplify(self):
+    def simplify(self, addr):
         assert self.val is not None
-        return simplify(self.val)
+        return simplify(self.val, addr)
     def __repr__(self):
         return '<fwd: %s>' % self.val
 class NotYetError(Exception): pass
 class car:
     __slots__ = ['_val']
-    def simplify(self):
+    def simplify(self, addr):
         if not hasattr(self, '_val'):
             self._val = self.val()
-        return simplify(self._val)
+        return simplify(self._val, addr)
     def __add__(self, other):
         return later(lambda: simplify(self) + other)
     def __sub__(self, other):
@@ -176,56 +191,43 @@ class later(car):
     def val(self):
         return self.func()
 
-class stackunk(car):
-    __slots__ = ['addr']
-    def val(self):
-        self.addr = heapaddr + 4 * hidx
-        return 0
-class stackunkptr(car):
-    __slots__ = ['unk', 'name']
-    def __init__(self, unk, name=None):
-        self.unk = unk
-        self.name = name
-    def val(self):
-        if not hasattr(self.unk, 'addr'):
-            raise NotYetError(self.name)
-        return self.unk.addr
-    def __repr__(self):
-        addr = hex(self.unk.addr) if hasattr(self.unk, 'addr') else '(no address)'
-        return '<stackunkptr "%s": %s>' % (self.name, addr)
 # [0] evaluates to 0 (initially), [1] evaluates to the address of [0]
 def stackunkpair():
-    unk = stackunk()
-    name = 'line %d' % sys._getframe().f_back.f_lineno
-    unkptr = stackunkptr(unk, name)
+    unk = pointed('\0\0\0\0')
+    unkptr = pointer(unk)
     return unk, unkptr
 
-class ptr(car):
-    def __init__(self, str, null_terminate=False):
-        self.str = str
-        self.null_terminate = null_terminate
-    def __len__(self):
-        return len(self.str)
-    def val(self):
-        global sheapaddr, sheap
-        sheap += '\0' * (-len(sheap) & 3)
-        ret = sheapaddr + len(sheap)
-        sheap += self.str
-        if self.null_terminate: sheap += '\0'
-        return ret
+
+class pointed(object): # string-like
+    __slots__ = ['sub', 'addr']
+    def __init__(self, sub):
+        self.sub = sub
+        self.addr = None
+    def simplify(self, addr):
+        self.addr = addr
+        return simplify(self.sub, addr)
+
+class pointer(object): # string-like
+    __slots__ = ['sub']
+    def __init__(self, sub):
+        self.sub = sub
+    def simplify(self, addr):
+        addr = self.sub.addr
+        if addr is None:
+            raise NotYetError
+        return addr
+
+def ptr(str, null_terminate=False):
+    global sheap
+    sheap.append('\0' * (-len(sheap) & 3))
+    result = pointed(str)
+    sheap.append(result)
+    if null_terminate: sheap.append('\0')
+    return pointer(result)
 
 def ptrI(*xs):
     print map(I, xs)
     return ptr(reduce(operator.add, map(I, xs)))
-
-class marker(car):
-    def __init__(self):
-        assert heapaddr is not None
-    def mark(self):
-        self._val = heapaddr + 4 * len(heapstuff)
-        return self
-    def val(self):
-        raise ValueError("marker didn't mark")
 
 class reloc:
     def __init__(self, key, value, alignment=1):
@@ -251,11 +253,11 @@ class reloc:
         else:
             raise Exception('reloc & %r, but not page aligned' % other)
 
-    def simplify(self):
+    def simplify(self, addr):
         if isinstance(self.value, (int, long)):
             return self
         else:
-            return reloc(self.key, simplify(self.value), self.alignment)
+            return reloc(self.key, simplify(self.value, addr), self.alignment)
 
     def __repr__(self):
         return 'reloc(0x%x, 0x%x, 0x%x)' % (self.key, self.value, self.alignment)
