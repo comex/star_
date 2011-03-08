@@ -12,64 +12,75 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include <errno.h>
 
-void _crypt(uint8_t *ptr, size_t size, bool decrypt) {
-    uint16_t c1 = 52845;
-    uint16_t c2 = 22719;
-    uint16_t r = 55665;
-    while(size--) {
-        uint8_t c = *ptr;
-        uint8_t new_c = c ^ (r >> 8);
-        *ptr = new_c;
-        r = ((decrypt ? c : new_c) + r)*c1 + c2;
-        ptr++;
-    }
+struct cctx {
+    uint16_t c1, c2, r;
+};
+
+static inline void cinit(uint16_t *r) {
+    *r = 55665;
+}
+
+static inline uint8_t ccrypt(uint16_t *r, uint8_t c, bool decrypt) {
+    uint8_t new_c = c ^ (*r >> 8);
+    *r = ((decrypt ? c : new_c) + (*r))*52845 + 22719;
+    return new_c;
 }
 
 int main(int argc, char **argv) {
-    int fd = open(argv[1], O_RDONLY);
-    assert(fd != -1);
-    size_t size = (size_t) lseek(fd, 0, SEEK_END);
-    char *start = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
-    assert(start != MAP_FAILED);
-    char *binary_part = strnstr(start + 6, "currentfile eexec", size - 6);
-    assert(binary_part);
-    binary_part += strlen("currentfile eexec\n") + 6;
-    size_t text_part_size = binary_part - start - 4;
-    size_t binary_part_size = *((uint32_t *) (binary_part - 4));
-    //printf("%zd\n", binary_part_size);
-    char *text_part_2 = binary_part + binary_part_size;
-    size_t text_part_2_size = size - (text_part_2 - start);
-    
-    _crypt((void *) binary_part, binary_part_size, true);
+    int ifd = open(argv[1], O_RDONLY);
+    assert(ifd != -1);
+    int ofd = open(argv[2], O_RDWR | O_CREAT | O_TRUNC, 0644);
+    assert(ofd != -1);
 
-    size_t new_binary_part_size = binary_part_size + 0x1000 - 3;
-    char *new_binary_part = malloc(new_binary_part_size);
-    
-    //write(1, binary_part, binary_part_size);
+    size_t isize = (size_t) lseek(ifd, 0, SEEK_END);
+    uint8_t *iptr = mmap(NULL, isize, PROT_READ | PROT_WRITE, MAP_PRIVATE, ifd, 0);
+    assert(iptr != MAP_FAILED);
 
-    size_t i;
-    for(i = 0; i < binary_part_size; i++) {
-        new_binary_part[i] = binary_part[i];
-        if(!memcmp(binary_part + i, "/xsi", 4)) {
-            //printf("found xsi\n");
-            size_t j;
-            for(j = i + 1; j < i + 4097; j++) new_binary_part[j] = 'a';
-            memcpy(new_binary_part + j, binary_part + i + 4, binary_part_size - i - 4);
-            break;
+    size_t osize = isize + 0x1000;
+    assert(!ftruncate(ofd, osize));
+    uint8_t *optr = mmap(NULL, osize, PROT_READ | PROT_WRITE, MAP_SHARED, ofd, 0);
+    assert(optr != MAP_FAILED);
+
+    uint8_t *base = iptr;
+    iptr = (uint8_t *) strnstr((char *) iptr + 10, "currentfile eexec", isize - 10);
+    assert(iptr);
+    iptr += strlen("currentfile eexec\n") + 2;
+    memcpy(optr, base, iptr - base);
+    optr += (iptr - base);
+
+    size_t bsize = *((uint32_t *) iptr);
+    *((size_t *) optr) = bsize + 0x1000;
+    iptr += 4;
+    optr += 4;
+
+    uint16_t ir, or;
+    cinit(&ir);
+    cinit(&or);
+
+    printf("bsize = %zd\n", bsize);
+    char buf[4]; memset(buf, 0, 4);
+    for(size_t i = 0; i < bsize; i++) {
+        uint8_t c = ccrypt(&ir, *iptr++, true);
+        *optr++ = ccrypt(&or, c, false);
+        if(!memcmp(buf, "/xsi", 4)) {
+            // try to find a repetitive sequence - should be possible
+                        
+
+            // loop: r = 64 = (229*52845 + 22719)
+            //       c = 165
+            uint8_t c_ = (229 - or) ^ (or >> 8);
+            *optr++ = ccrypt(&or, c_, false);
+            for(int j = 0; j < 0xfff; j++) {
+                printf("%hd\n", or);
+                *optr++ = ccrypt(&or, 165, false);
+            }
         }
+        memcpy(buf, buf + 1, 3); buf[3] = (char) c;
     }
+    
+    memcpy(optr, iptr, isize - (iptr - base));
 
-    //write(1, new_binary_part, new_binary_part_size);
-
-    _crypt((void *) new_binary_part, new_binary_part_size, false);
-
-    int fd2 = open(argv[2], O_WRONLY | O_CREAT | O_TRUNC, 0644);
-    assert(fd2 != -1);
-    write(fd2, start, text_part_size);
-    uint32_t nbps = new_binary_part_size;
-    write(fd2, &nbps, sizeof(nbps));
-    write(fd2, new_binary_part, new_binary_part_size);
-    write(fd2, text_part_2, text_part_2_size);
     return 0;
 }
