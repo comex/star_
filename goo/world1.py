@@ -65,7 +65,6 @@ def fancy_set_sp_to(sp):
 
 # Make some registers available but do nothing.
 def make_avail():
-    print 'OMG HEX', dmini.cur.find_basic('+ f0 bd')
     set_fwd('PC', dmini.cur.find_basic('+ f0 bd'))
     heapadd(*(fwd(i, True) for i in ['R4', 'R5', 'R6', 'R7', 'PC']))
 

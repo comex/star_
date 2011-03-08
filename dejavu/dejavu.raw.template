@@ -19,7 +19,7 @@ end readonly def
 /Encoding StandardEncoding def
 currentdict end
 currentfile eexec
-/xsi string currentfile readstring
+/x string currentfile readstring
 /BlendDesignPositions [[0 0]] def
 /BlendDesignMap [[0] [1]] def
 /BlendAxisTypes [ /Foo /Bar ] def

