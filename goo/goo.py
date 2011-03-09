@@ -6,69 +6,75 @@ warnings.simplefilter('error')
 #os.chdir(os.path.dirname(os.path.abspath(sys.argv[0])))
 dontcare = 0
 
-def init(*regs):
-    global fwds, heap, sheap, heapaddr, dbginfo
+def init(*regs, **kwargs):
+    global fwds, heap, sheap, heapaddr, dbginfo, pic
+    pic = False
+    if kwargs.has_key('pic'):
+        pic = True
+        del kwargs['pic']
+    if kwargs: raise ValueError(kwargs)
     fwds = {}
-    heap = map(I, map(fwd, regs))
-    sheap = troll_string('')
     dbginfo = []
+    heap = troll_string('')
+    heapadd(*map(fwd, regs))
+    sheap = troll_string('')
 
 def getdebugname():
-    f = sys._getframe().f_back.f_back
-    return '%s:%d' % (f.f_code.co_filename, f.f_lineno)
+    f = sys._getframe().f_back
+    while True:
+        f = f.f_back
+        fn = os.path.basename(f.f_code.co_filename)
+        if False and ('world' in fn or 'goo' in fn): continue
+        return '%s:%d' % (fn, f.f_lineno)
 
 def heapadd(*stuff):
-    global heap
-    # so we know where we came from
-    #dbginfo.append((len(heapstuff), getdebugname()))
-    for o in a:
-        heap.append(I(o))
+    global heap, dbginfo
+    dbginfo.append((len(heap), getdebugname())) # so we know where we came from
+    for a in stuff:
+        heap.append(I(a))
 
-def finalize(heapaddr_=None):
-    global heapstuff, sheap, sheapaddr, heapaddr
+def finalize(heapaddr=None):
+    global heap, sheap
     clear_fwd()
-    heapaddr._val = heapaddr_
-    if heapaddr_ is not None:
-        sheapaddr = heapaddr_ + 4*len(heapstuff)
-        #print hex(sheapaddr)
-    sheap = ''
-    for pass_num in xrange(2):
-        for hidx in xrange(len(heapstuff)):
-            thing = heapstuff[hidx]
-            try:
-                thing = simplify(thing)
-            except NotYetError:
-                if pass_num == 1:
-                    raise Exception("%r doesn't want to be an int" % thing)
-            else:
-                heapstuff[hidx] = thing
-    hidx = None
+    nheap = heap + sheap
+    for i in xrange(4):
+        try:
+            result = nheap.simplify(heapaddr)
+            break
+        except NotYetError:
+            if i == 3: raise
+    
+    return result
 
-    text = struct.pack('<'+'I'*len(heapstuff), *heapstuff) + sheap
-    return text
-
-def heapdump(names=None):
+def heapdump(heap, names=None):
     if names is None: names = {}
     dbginfo.append((10000, '?'))
     reverse = dict((v, k) for (k, v) in names.iteritems())
     stackunktargets = set()
-    for i, entry in enumerate(heapstuff):
-        if i >= dbginfo[0][0]:
-            sys.stdout.write('\n%08x %s: ' % (int(heapaddr._val + 4*i), dbginfo.pop(0)[1].ljust(15)))
-        if all_relocs.has_key(i*4):
-            sys.stdout.write('r%x:' % all_relocs[i*4])
-        if heapaddr._val <= entry <= heapaddr._val + 4*len(heapstuff):
-            stackunktargets.add((entry - heapaddr._val)/4)
-            sys.stdout.write('0x%x ' % entry)
-        elif i in stackunktargets:
-            sys.stdout.write('\x1b[34m\x1b[1m0x%x\x1b[0m ' % entry)
-        elif reverse.has_key(entry):
+    for i, entry in enumerate(heap.unpack()):
+        if 4*i >= dbginfo[0][0]:
+            sys.stdout.write('\n%08x %s: ' % (4*i, dbginfo.pop(0)[1].ljust(15)))
+        if isinstance(entry, reloc):
+            sys.stdout.write('\'%x:' % entry.key)
+            entry = entry.value
+        if reverse.has_key(entry):
             sys.stdout.write('\x1b[31m%s\x1b[0m ' % reverse[entry])
         else:
             sys.stdout.write('\x1b[34m0x%x\x1b[0m ' % entry)
     sys.stdout.write('\n')
 
-class troll_string(object):
+class statue(object):
+    def __getstate__(self):
+        d = {}
+        for s in self.__slots__:
+            d[s] = getattr(self, s)
+        return d
+    def __setstate__(self, state):
+        for s in self.__slots__:
+            setattr(self, s, state[s])
+        
+
+class troll_string(statue):
     __slots__ = ['bits', 'length']
     def __init__(self, s):
         if isinstance(s, troll_string):
@@ -79,21 +85,25 @@ class troll_string(object):
             self.length = 0
         else:
             self.bits = [s]
-            self.length = len(S)
+            self.length = len(s)
+
+    def __len__(self):
+        return self.length
         
     def __add__(self, other):
         if len(self.bits) == 0: return other
         result = troll_string(self)
         result.append(other)
         return result
+
     def __radd__(self, other):
         if len(self.bits) == 0: return other
         return troll_string(other) + self
 
     def append(self, other):
         other = troll_string(other)
-        if len(result.bits) > 0 and len(other.bits) > 0 and \
-           isinstance(result.bits[-1], str) and \
+        if len(self.bits) > 0 and len(other.bits) > 0 and \
+           isinstance(self.bits[-1], str) and \
            isinstance(other.bits[0], str):
             self.bits = self.bits[:-1] + [self.bits[-1] + other.bits[0]] + other.bits[1:]
         else:
@@ -101,13 +111,32 @@ class troll_string(object):
         self.length += other.length
 
     def simplify(self, addr):
+        r = troll_string('')
+        nye = False
+        for bit in self.bits:
+            try: 
+                bit = simplify(bit, addr)
+            except NotYetError:
+                nye = True
+            else:
+                r.append(bit)
+            addr += len(bit)
+        if nye: raise NotYetError
+        return r
+
+    def unpack(self):
         bits = []
         for bit in self.bits:
-            bits.append(simplify(bit, addr))
-            addr += bit.length
-        return troll_string(bits, self.length)
+            if isinstance(bit, I_):
+                bits.append(bit.sub)
+            elif isinstance(bit, str):
+                assert len(bit) % 4 == 0
+                bits += struct.unpack('I'*(len(bit)/4), bit)
+            else:
+                raise ValueError('unpack: %r' % bit)
+        return bits
 
-class I_(object):
+class I_(statue):
     __slots__ = ['sub']
     def __init__(self, sub):
         self.sub = sub
@@ -122,7 +151,7 @@ def I(x):
     elif isinstance(x, (int, long)):
         return struct.pack('I', x)
     else:
-        return I_(x)
+        return troll_string(I_(x))
     
 def simplify(x, addr):
     if isinstance(x, (int, long, basestring)):
@@ -162,34 +191,35 @@ class fwd:
         return '<fwd: %s>' % self.val
 class NotYetError(Exception): pass
 class car:
-    __slots__ = ['_val']
+    __slots__ = ['_val', 'addr']
     def simplify(self, addr):
         if not hasattr(self, '_val'):
+            self.addr = addr
             self._val = self.val()
         return simplify(self._val, addr)
+    def later(self, func):
+        return later(lambda addr: func(self.simplify(addr)))
     def __add__(self, other):
-        return later(lambda: simplify(self) + other)
+        return self.later(lambda s: s + other)
     def __sub__(self, other):
-        return later(lambda: simplify(self) - other)
+        return self.later(lambda s: s - other)
     def __radd__(self, other):
-        return later(lambda: other - simplify(self))
+        return self.later(lambda s: other + s)
     def __rsub__(self, other):
-        return later(lambda: other - simplify(self))
+        return self.later(lambda s: other - s)
     def __mul__(self, other):
-        return later(lambda: simplify(self) * other)
+        return self.later(lambda s: s * other)
     def __rmul__(self, other):
-        return later(lambda: other * simplify(self))
+        return self.later(lambda s: other * s)
     def __and__(self, other):
-        return later(lambda: simplify(self) & other)
-    def __len__(self):
-        return int(self)
+        return self.later(lambda s: s & other)
 
 class later(car):
     __slots__ = ['func']
     def __init__(self, func):
         self.func = func
     def val(self):
-        return self.func()
+        return self.func(self.addr)
 
 # [0] evaluates to 0 (initially), [1] evaluates to the address of [0]
 def stackunkpair():
@@ -204,17 +234,24 @@ class pointed(object): # string-like
         self.sub = sub
         self.addr = None
     def simplify(self, addr):
+        #print 'pointed.simplify self=%r addr=%r' % (self, addr)
         self.addr = addr
         return simplify(self.sub, addr)
+    def __len__(self):
+        return len(self.sub)
 
-class pointer(object): # string-like
+class pointer(car): # int-like
     __slots__ = ['sub']
     def __init__(self, sub):
         self.sub = sub
     def simplify(self, addr):
+        #print 'pointer.simplify sub=%r addr=%r' % (self.sub, addr)
+        return car.simplify(self, addr)
+    def val(self):
         addr = self.sub.addr
         if addr is None:
             raise NotYetError
+        #print 'pointer.val sub=%r addr=%r' % (self.sub, addr)
         return addr
 
 def ptr(str, null_terminate=False):
@@ -226,7 +263,6 @@ def ptr(str, null_terminate=False):
     return pointer(result)
 
 def ptrI(*xs):
-    print map(I, xs)
     return ptr(reduce(operator.add, map(I, xs)))
 
 class reloc:

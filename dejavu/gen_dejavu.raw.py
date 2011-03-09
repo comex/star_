@@ -192,9 +192,6 @@ subrs['main'] = \
 
 for idx, data in enumerate(stuff):
     subrno = [2, 1][idx]
-    stub = data['final']
-    stub += '\0' * (-len(stub) & 3)
-    stub = list(struct.unpack('I'*(len(stub)/4), stub))
     assert data['parse_callback'] > 32000
     assert data['actual_parse_callback'] > 32000
     
@@ -207,28 +204,29 @@ for idx, data in enumerate(stuff):
                   setcurrentpoint
               '''.format(actual_pc=xrepr_to_small(data['actual_parse_callback'], False), pc=xrepr_to_small(data['parse_callback'], False))
            
-    i = 0 
-    for number in stub:
-        r = data['relocs'].get(i, 0)
-        i += 4
-        #print hex(number)
-        if r == 0xa: # locutus length
+    for number in data['final']:
+        if hasattr(number, 'key'):
+            key = number.key
+            number = number.value
+        else:
+            key = 0
+        if key == 0xa: # locutus length
             number += locutus_len
-        elif r == 0xb: # compressed locutus length
+        elif key == 0xb: # compressed locutus length
             number += zlocutus_len
-        elif r == 0xc: # plist offset in the subr
+        elif key == 0xc: # plist offset in the subr
             number += data['plist_offset']
-        elif r == 0xd: # code offset
+        elif key == 0xd: # code offset
             subr += xrepr_plus_small(number + 31000*4, False, [7]) + ' callsubr '
             continue
-        elif r == 0xe: # decoder offset
+        elif key == 0xe: # decoder offset
             subr += xrepr_plus_small(number - 0x70 - 257*4, False, [6]) + ' callsubr '
             continue
-        elif r == 3: # dyld cache
+        elif key == 3: # dyld cache
             subr += xrepr_plus_small(number, False, [5]) + ' callsubr '
             continue
         else:
-            assert r == 0
+            assert key == 0
         subr += xrepr_plus_small(number, False, [4]) + ' callsubr '
     
     subr += 'return'

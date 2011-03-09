@@ -1,4 +1,5 @@
 from goo import *
+import goo
 import dmini
 
 def load_r0_r0():
@@ -94,9 +95,7 @@ def funcall(funcaddr, *args, **kwargs):
         del kwargs['load_r0']
     assert kwargs == {}
 
-    try:
-        m = marker()
-    except:
+    if goo.pic:
         # lame way
         assert len(args) <= 7
         set_fwd('PC', dmini.cur.find_multiple('+ a0 47 b0 bd', '- 34 ff 2f e1 b0 80 bd e8'))
@@ -110,11 +109,12 @@ def funcall(funcaddr, *args, **kwargs):
         if len(args) > 6:
             set_fwd('R7', args[6])
     else:
+        p = pointed('')
         set_fwd('PC', dmini.cur.find_multiple('+ a0 47 a7 f1 04 0d 90 bd', '??'))
         set_fwd('R4', funcaddr)
-        set_fwd('R7', m + 4)
+        set_fwd('R7', pointer(p) + 4)
         heapadd(*args[4:])
-        m.mark()
+        heapadd(p)
         heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
 
 def store_to_r0(value):

