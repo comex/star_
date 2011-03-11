@@ -37,14 +37,16 @@ def finalize(heapaddr=None):
     global heap, sheap
     clear_fwd()
     nheap = heap + sheap
-    for i in xrange(4):
-        try:
-            result = nheap.simplify(heapaddr)
-            break
-        except NotYetError:
-            if i == 3: raise
+    result = simplify_times(nheap, heapaddr, 4)
     
     return result
+
+def simplify_times(heap, addr, times):
+    for i in xrange(times):
+        try:
+            return simplify(heap, addr)
+        except NotYetError:
+            if i == times - 1: raise
 
 def heapdump(heap, names=None):
     if names is None: names = {}
@@ -63,6 +65,8 @@ def heapdump(heap, names=None):
             sys.stdout.write('\x1b[34m0x%x\x1b[0m ' % entry)
     sys.stdout.write('\n')
 
+# __slots__ objects require __getstate__
+# why does this silly fix work?
 class statue(object):
     def __getstate__(self):
         d = {}
@@ -76,7 +80,7 @@ class statue(object):
 
 class troll_string(statue):
     __slots__ = ['bits', 'length']
-    def __init__(self, s):
+    def __init__(self, s=''):
         if isinstance(s, troll_string):
             self.bits = s.bits
             self.length = s.length
@@ -85,15 +89,21 @@ class troll_string(statue):
             self.length = 0
         else:
             self.bits = [s]
-            self.length = len(s)
+            try:
+                self.length = len(s)
+            except NotYetError:
+                self.length = None
 
     def __len__(self):
+        if self.length is None:
+            raise NotYetError
         return self.length
         
     def __add__(self, other):
         if len(self.bits) == 0: return other
         result = troll_string(self)
         result.append(other)
+        if len(result.bits) == 1: result = result.bits[0]
         return result
 
     def __radd__(self, other):
@@ -108,7 +118,10 @@ class troll_string(statue):
             self.bits = self.bits[:-1] + [self.bits[-1] + other.bits[0]] + other.bits[1:]
         else:
             self.bits += other.bits
-        self.length += other.length
+        if other.length is None:
+            self.length = None
+        elif self.length is not None:
+            self.length += other.length
 
     def simplify(self, addr):
         r = troll_string('')
@@ -122,6 +135,7 @@ class troll_string(statue):
                 r.append(bit)
             addr += len(bit)
         if nye: raise NotYetError
+        if len(r.bits) == 1: r = r.bits[0]
         return r
 
     def unpack(self):
@@ -136,6 +150,36 @@ class troll_string(statue):
                 raise ValueError('unpack: %r' % bit)
         return bits
 
+    def __repr__(self):
+        return '<troll_string (%d): %s>' % (self.length, self.bits)
+
+def tswrapper(cls):
+    return lambda *args, **kwargs: troll_string(cls(*args, **kwargs))
+
+@tswrapper
+class later_s(object):
+    def __init__(self, func, length):
+        self.func = func
+        self.length = length
+        self._val = None
+
+    def __len__(self):
+        if self.length is None:
+            raise NotYetError
+        return self.length
+
+    def simplify(self, addr):
+        if self._val is None:
+            val = self.func()
+            if self.length is not None:
+                l = len(val)
+                assert l <= self.length
+                val += '\0' * (self.length - l)
+            else:
+                self.length = len(val)
+            self._val = simplify(val, addr)
+        return self._val
+
 class I_(statue):
     __slots__ = ['sub']
     def __init__(self, sub):
@@ -144,15 +188,20 @@ class I_(statue):
         return 4
     def simplify(self, addr):
         return I(simplify(self.sub, addr))
+    def __repr__(self):
+        return '<I: %r>' % (self.sub,)
     
-def I(x):
-    if hasattr(x, '__len__'):
-        return x
-    elif isinstance(x, (int, long)):
-        return struct.pack('I', x)
-    else:
-        return troll_string(I_(x))
-    
+def I(*args):
+    result = ''
+    for arg in args:
+        if hasattr(arg, '__len__'):
+            result += arg
+        elif isinstance(arg, (int, long)):
+            result += struct.pack('I', arg)
+        else:
+            result += troll_string(I_(arg))
+    return result
+
 def simplify(x, addr):
     if isinstance(x, (int, long, basestring)):
         return x
@@ -227,7 +276,7 @@ def stackunkpair():
     unkptr = pointer(unk)
     return unk, unkptr
 
-
+@tswrapper
 class pointed(object): # string-like
     __slots__ = ['sub', 'addr']
     def __init__(self, sub):
@@ -244,22 +293,18 @@ class pointer(car): # int-like
     __slots__ = ['sub']
     def __init__(self, sub):
         self.sub = sub
-    def simplify(self, addr):
-        #print 'pointer.simplify sub=%r addr=%r' % (self.sub, addr)
-        return car.simplify(self, addr)
     def val(self):
-        addr = self.sub.addr
+        addr = self.sub.bits[0].addr
         if addr is None:
             raise NotYetError
-        #print 'pointer.val sub=%r addr=%r' % (self.sub, addr)
         return addr
 
 def ptr(str, null_terminate=False):
     global sheap
-    sheap.append('\0' * (-len(sheap) & 3))
     result = pointed(str)
     sheap.append(result)
     if null_terminate: sheap.append('\0')
+    sheap.append('\0' * (-len(sheap) & 3))
     return pointer(result)
 
 def ptrI(*xs):

@@ -67,13 +67,6 @@ def goo():
     goto('goo')
     #run('python', 'setup.py'
 
-def goo_just_sysctl():
-    goo()
-    datautils_native()
-    goto('goo/just_sysctl')
-    run('python', 'just_sysctl.py', '-d', '../../config/cur/dyld')
-    run('../../datautils/dyld_to_pwn', '../../config/cur/dyld', 'just_sysctl_output.txt', 'just_sysctl_launchd')
-
 def goo_catalog():
     locutus()
     goo()
@@ -82,7 +75,19 @@ def goo_catalog():
     goto('goo/catalog')
     run('../../datautils/make_kernel_patchfile', '../../config/cur/kern', '../../sandbox2/sandbox.bin', 'patchfile')
     compile_to_bin('kcode', ['kcode.S'])
-    run('python', 'catalog.py', '-c ../../config/cur/cache', '-k ../../config/cur/kern', 'patchfile')
+
+def goo_catalog_dejavu():
+    goo_catalog()
+    run('python', 'catalog.py', 'two', '../../config/cur/cache', '../../config/cur/kern', 'patchfile')
+
+def goo_catalog_two():
+    goo_catalog()
+    run('python', 'catalog.py', 'two', '../../config/cur/cache', '../../config/cur/kern', 'patchfile')
+
+def launchd():
+    goo_catalog_two()
+    goto('goo')
+    run('python', 'two.py', 'catalog/two.txt', 'launchd')
 
 def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True, combine=False):
     objs = []
@@ -158,7 +163,7 @@ def mroib():
     run(GCC, '-dynamiclib', '-o', 'mroib.dylib', 'power.c', 'timer.c', 'usb.c', 'mroib.c', 'clean.o', '-combine', '-fwhole-program', '-nostdinc', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-I.', '-Iincludes', '-DCONFIG_IPHONE_4G')
 
 def dejavu():
-    goo_catalog()
+    goo_catalog_dejavu()
     goto('dejavu')
     run('python', 'gen_dejavu.raw.py')
     run('t1asm', 'dejavu.raw', 'dejavu.pfb')

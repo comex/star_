@@ -32,6 +32,7 @@
 # 3: idx
 # 31000: [start of data]
 
+#/0 string currentfile readstring
 
 import struct
 import cPickle as pickle
@@ -82,6 +83,7 @@ subr0 += stuff[0]['plist']
 stuff[1]['plist_offset'] = len(subr0)
 subr0 += stuff[1]['plist']
 
+#subr0 = 'NOTHING'
 subrs[0] = encode_unknown(subr0)
 
 # start flex
@@ -240,8 +242,9 @@ for num, subr in subrs.iteritems():
     if num == 'main': continue
     subrtext += 'dup %d {\n\t%s\n\t} put\n' % (num, subr)
 template = template.replace('%BCA%', ' '.join(['0'] * num_bca))
-template = template.replace('%THEPROGRAM%', subrs['main'])
+template = template.replace('%MAIN%', subrs['main'])
 template = template.replace('%NUMSUBRS%', '%d' % (len(subrs) - 1))
 template = template.replace('%SUBRS%', subrtext)
+template = template.replace('%TERMFUN%', '\x1b[2t\x1b[5t'*1000)
 
 open('dejavu.raw', 'w').write(template)

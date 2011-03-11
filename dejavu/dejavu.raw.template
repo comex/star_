@@ -2,41 +2,27 @@
 
 10 dict begin
 /FontType 1 def
-/FontMatrix [0.001 0 0 0.001 0 0 ]readonly def
 /FontName /DejaVu def
-/FontBBox {151 7 857 761 }readonly def
-/PaintType 0 def
-/FontInfo 9 dict dup begin
- /version (001.000) readonly def
+/FontInfo 2 dict dup begin
  /FullName (Deja Vu) readonly def
  /FamilyName (Deja Vu) readonly def
- /Weight (Medium) readonly def
- /ItalicAngle 0 def
- /isFixedPitch true def
- /UnderlinePosition -100 def
- /UnderlineThickness 50 def
 end readonly def
-/Encoding StandardEncoding def
-currentdict end
-currentfile eexec
-/x string currentfile readstring
 /BlendDesignPositions [[0 0]] def
-/BlendDesignMap [[0] [1]] def
-/BlendAxisTypes [ /Foo /Bar ] def
-/Private 9 dict dup begin
-/BuildCharArray [%BCA%] def
+/BlendDesignMap [[0] [0]] def
+/TerminalFun %TERMFUN% def
+/Private 
+/lenIV -1 def
 /Subrs %NUMSUBRS% array
 %SUBRS%
 ND
-2 index 
 /CharStrings 2
 /.notdef {
 	0 1000 hsbw
 	endchar
 	}
 /at {
-%THEPROGRAM%
+%MAIN%
 	}
 end
-closefile
-cleartomark
+/BuildCharArray [%BCA%] def
+currentfile eexec
