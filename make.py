@@ -87,7 +87,7 @@ def goo_catalog_two():
 def launchd():
     goo_catalog_two()
     goto('goo')
-    run('python', 'two.py', 'catalog/two.txt', 'launchd')
+    run('python', 'two.py', '../config/cur/cache', 'catalog/two.txt', 'launchd')
 
 def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True, combine=False):
     objs = []
@@ -103,7 +103,7 @@ def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=
         run(gcc, '-o', output_, objs, ldflags, '-dead_strip')
     if strip or ldid:
         commands = [['cp', output + '_', output]]
-        if strip: commands.append(['strip', '-ur', output])
+        if strip: commands.append(['strip', '-x' if 'dylib' in output else '-ur', output])
         if ldid: commands.append(['ldid', '-S' + ent, output])
         run_multiple(*commands)
 

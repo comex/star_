@@ -10,22 +10,27 @@
 #include <ctype.h>
 #include <syslog.h>
 #define ctassert(x, y) extern char XX_## y [(x) ? 1 : -1]
+#ifndef _log
 #define _log(args...) syslog(LOG_EMERG, args)
+#endif
 
+#define _assert(expr, arg...) ((expr) ?: (_assert_helper(#expr, arg + 0), (typeof(expr)) 0))
+#define _assert_zero(expr, arg...) do { typeof(expr) _value = (expr); \
+                                        if(_value) _assert_zero_helper(#expr, arg + 0, (unsigned int) _value); \
+                                      } while(0)
 #ifdef NO_ASSERT_MESSAGES
-#define _assert(expr, arg...) ((expr) ?: (abort(), (typeof(expr)) 0))
-#define _assert_zero(expr, arg...) do { if(expr) abort(); } while(0)
+#define _assert_helper(...) abort()
+#define _assert_zero_helper(...) abort()
 #else
 
-#define _assert(expr, arg...) ((expr) ?: _assert_helper(#expr, arg + 0)
-#define _assert_zero(expr, arg...) do { if(expr) _assert_zero_helper(#expr, arg + 0); } while(0)
-
+__attribute__((noreturn))
 static void _assert_helper(const char name[], const char *arg) {
     _log("assertion failed: %s%s%s%s (errno=%s)\n", name, arg ? "[" : "", arg ? arg : "", arg ? "]" : "", strerror(errno));
     exit(1);
 }
 
-static void _assert_zero_helper(const char name[], const char *arg) {
+__attribute__((noreturn))
+static void _assert_zero_helper(const char name[], const char *arg, unsigned int value) {
     _log("assertion failed: %s%s%s%s (value=0x%x, errno=%s)\n", name, arg ? "[" : "", arg ? arg : "", arg ? "]" : "", value, strerror(errno));
     exit(1);
 }

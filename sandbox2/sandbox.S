@@ -54,7 +54,7 @@ allow:
     pop {r0}
     movs r1, #0
     str r1, [r0]
-    movs r1, #8
+    movs r1, #0x18
     strb r1, [r0, #4]
     pop {r1-r4, pc}
 

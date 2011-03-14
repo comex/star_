@@ -1,15 +1,32 @@
-from goo import *
 import operator, sys
+import cPickle as pickle
+from goo import *
+import dmini
 
-baseaddr = 0x33000000
+baseaddr = 0x13000000
 stacksize = 1048576
 
-rop = open(sys.argv[1], 'rb').read()
-r7, pc = struct.unpack('II', rop[:8])
-rop = rop[8:]
+dmini.init(['-c', sys.argv[1]])
 
-r7 = 0x10101010
-pc = 0x33000000
+data = pickle.load(open(sys.argv[2], 'rb'))
+rop = data['segment']
+
+# ROP variables and stuff
+
+relocs = []
+ropmarker = pointed('')
+ropbase = pointer(ropmarker)
+
+def func(value, addr):
+    relocs.append(addr)
+    return value
+reloc_handlers[3] = func
+
+def func(value, addr):
+    return ropbase + value
+reloc_handlers[0] = func
+
+rop = rop.simplify(ropbase)
 
 PROT_READ, PROT_WRITE, PROT_EXECUTE = 1, 2, 4
 
@@ -22,7 +39,7 @@ ncmds = 0
 segments = troll_string()
 dylib_ordinal = -1
 
-linkedit = later_s(lambda: I(
+linkedit = later_s(lambda addr: I(
     0xfeedface,
     12, # CPU_TYPE_ARM
     6, # CPU_SUBTYPE_ARM_V6,
@@ -33,7 +50,7 @@ linkedit = later_s(lambda: I(
         4 # MH_DYLD_LINK
         | 0x80 # MH_TWOLEVEL
     )
-) + commands + linkedit_rest, 0x1000)
+) + commands + linkedit_rest)
 
 def pad(x, p):
     l = len(x)
@@ -46,21 +63,34 @@ def command(cmd, stuff):
     commands.append(I(cmd, len(stuff) + 8))
     commands.append(stuff)
 
-def segment(segname, vmaddr, vmsize, data, maxprot, initprot):
+def segment(segname, vmaddr, vmsize, data, maxprot, initprot, sects=[]):
     data = pad(data, 0x1000)
-    if vmsize is None: vmsize = len(data)
-    command(1, # LC_SEGMENT 
-        segname.ljust(16, '\0') + I(
-            vmaddr,
-            vmsize,
-            len(segments),
-            len(data),
-            maxprot,
-            initprot,
-            0, # nsects
-            0 # flags
-        )
+    l = len(data)
+    if vmsize is None: vmsize = l
+    offset = len(segments)
+    stuff = segname.ljust(16, '\0') + I(
+        vmaddr,
+        vmsize,
+        offset,
+        l,
+        maxprot,
+        initprot,
+        len(sects), # nsects
+        0 # flags
     )
+    for sect in sects:
+        stuff += sect['sectname'].ljust(16, '\0') + segname.ljust(16, '\0') + I(
+            vmaddr + sect['offset'], # addr
+            sect['size'], # size
+            offset + sect['offset'], # offset
+            0, # align
+            0, # reloff
+            0, # nreloc
+            sect['flags'], # flags
+            0, # reserved1
+            0) # reserved2
+
+    command(1, stuff) # LC_SEGMENT 
     segments.append(data)
 
 command(0xe, # LC_LOAD_DYLINKER
@@ -79,7 +109,7 @@ def load_dylib(name, timestamp, current_version, compatibility_version):
     dylib_ordinal += 1
     return dylib_ordinal
 
-def import_sym(ordinal, name):
+def import_sym(ordinal, name, addend=0):
     global strtab, symtab
     strx = len(strtab)
     strtab += name + '\0'
@@ -88,7 +118,7 @@ def import_sym(ordinal, name):
         0, # n_type = N_UNDF
         0, # n_sect is ignored?
         ordinal << 8, # n_desc
-        0, # n_value (we could set prebound to make this an addend)
+        addend, # n_value (with prebound set, this is an addend)
     )
     return len(symtab) / 12 - 1
 
@@ -105,8 +135,8 @@ def reloc(sym, address):
         (r_pcrel << 24) |
         sym)
 
-foo = load_dylib('foo.dylib', 0, 0, 0)
-s = import_sym(foo, '_hax')
+foo = load_dylib('/usr/lib/libSystem.B.dylib', 0, 0, 0x010000)
+s = import_sym(foo, '_getpid', dmini.cur.sym('_getpid'))
 
 symtab = pointed(symtab)
 relocs = pointed(relocs)
@@ -134,13 +164,20 @@ command(2, I( # LC_SYMTAB
 linkedit_rest.append(symtab)
 linkedit_rest.append(relocs)
 linkedit_rest.append(strtab)
+linkedit_rest.append(ropmarker)
+linkedit_rest.append(rop)
 
 segment('__LINKEDIT', 
-    (baseaddr - stacksize - 0x1000),
+    baseaddr,
     None,
     linkedit,
-    PROT_READ,
-    PROT_READ
+    PROT_READ | PROT_WRITE,
+    PROT_READ | PROT_WRITE,
+    [{'sectname': '__init',
+      'offset': 0,
+      'size': 4,
+      'flags': 0x9, # S_MOD_INIT_FUNC_POINTERS
+      }]
 )
 
 segment('__STACK',
@@ -151,23 +188,21 @@ segment('__STACK',
     PROT_READ | PROT_WRITE
 )
 
-segment('__ROP',
-    baseaddr,
-    None,
-    rop,
-    PROT_READ | PROT_WRITE,
-    PROT_READ | PROT_WRITE
-)
-
 command(5, I( # LC_UNIXTHREAD
     1, # ARM_THREAD_STATE
     17, # ARM_THREAD_STATE_COUNT,
-    0, 0, 0, 0, 0, 0, 0, r7, # R0-R7
-    0, 0, 0, 0, 0, 0, 0, pc & ~1, # R8-R15
-    0x20 * (pc & 1), # CPSR
+    0, 0, 0, 0, 0, 0, 0, 0, # R0-R7
+    0, 0, 0, 0, 0, baseaddr, 0, baseaddr, # R8-R15
+    0, # CPSR
 ))
 
-macho = simplify_times(segments, 0, 4)
-
-open(sys.argv[2], 'wb', 0755).write(macho)
+try:
+    macho = simplify_times(segments, 0, 4)
+except:
+    import traceback
+    traceback.print_exc()
+    import code
+    code.interact(local=globals())
+    
+open(sys.argv[3], 'wb', 0755).write(macho)
 

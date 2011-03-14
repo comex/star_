@@ -85,7 +85,7 @@ def funcall(funcaddr, *args, **kwargs):
     if isinstance(funcaddr, basestring): # actually a symbol
         funcaddr = dmini.cur.sym(funcaddr)
         
-    while len(args) < 4: args += (dontcare,)
+    while len(args) < 4: args += (0,)
     if args[0] is None:
         set_r1to3(args[1], args[2], args[3])
     else:
@@ -130,3 +130,16 @@ def store_deref_plus_offset(deref, offset, value):
     store_to_r0(value)
 
 
+def init_with_initializer_stub():
+    m = pointed('')
+    init()
+    heapadd(m)
+    # 7 - cmd
+    # 8 - cmdsize
+    # 9 - ...
+    
+    # ldmib r0!, {r0, r1, r2, r3,
+    #             r4, r5, r6, ip,
+    #             sp, lr, pc}
+    # 
+    return dmini.cur.find_basic('- 7f f0 f0 e9'), I(m, fwd('LR'), fwd('PC'))

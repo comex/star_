@@ -1,5 +1,5 @@
-#define CFCOMMON
-//#define LOG_FP
+#define _log(fmt, args...) logger(fmt "\n", ##args)
+static int (*logger)(const char *, ...);
 #include <common/common.h>
 #include <libtar.h>
 #include <lzma.h>
@@ -149,7 +149,7 @@ struct lzmactx {
     int read_len;
 };
 
-int lzmaopen(const char *path, int oflag, int foo) {
+static int lzmaopen(const char *path, int oflag, int foo) {
     struct lzmactx *ctx = malloc(sizeof(struct lzmactx));
     ctx->strm = (lzma_stream) LZMA_STREAM_INIT;
     lzma_ret ret;
@@ -165,11 +165,11 @@ int lzmaopen(const char *path, int oflag, int foo) {
     return (int) ctx;
 }
 
-int lzmaclose(int fd) {
+static int lzmaclose(int fd) {
     return 0;
 }
 
-ssize_t lzmaread(int fd, void *buf_, size_t len) {
+static ssize_t lzmaread(int fd, void *buf_, size_t len) {
     struct lzmactx *ctx = (void *) fd;
     char *buf = buf_;
     while(len > 0) {
@@ -227,11 +227,10 @@ static void extract() {
 }
 
 static void mount_rw(const char *path) {
-    char x[16];
     char *args[] = {
         "/sbin/mount",
-        "-u", // ?? this doesn't seem to be necessary with blackra1n 
-        "-o", "rw,suid,dev", path,
+        "-u",
+        "-o", "rw,suid,dev", (char *) path,
         NULL};
     pid_t pid, pid2;
 
@@ -245,11 +244,10 @@ static void remount() {
     _log("remount...");
     mount_rw("/");
 
-    NSString *string = [NSString stringWithContentsOfFile:@"/etc/fstab"]
-    _assert(string);
+    NSString *string = _assert([NSString stringWithContentsOfFile:@"/etc/fstab" encoding:NSUTF8StringEncoding error:NULL]);
     string = [string stringByReplacingOccurrencesOfString:@",nosuid,nodev" withString:@""];
     string = [string stringByReplacingOccurrencesOfString:@" ro " withString:@" rw "];
-    _assert([string writeToFile:@"/etc/fstab" atomically:YES]);
+    _assert([string writeToFile:@"/etc/fstab" atomically:YES encoding:NSUTF8StringEncoding error:NULL]);
 }
 
 static bool modify_plist(NSString *filename, void (^func)(id)) {
@@ -271,14 +269,19 @@ static bool modify_plist(NSString *filename, void (^func)(id)) {
 }
 
 static void dok48() {
-    if(modify_plist(@"/System/Library/CoreServices/SpringBoard.app/K48AP.plist", ^(id plist) {
+    char model[32];
+    size_t model_size = sizeof(model);
+    _assert_zero(sysctlbyname("hw.model", model, &model_size, NULL, 0));
+
+    NSString *filename = [NSString stringWithFormat:@"/System/Library/CoreServices/SpringBoard.app/%s.plist", model];
+    if(modify_plist(filename, ^(id plist) {
         [[plist objectForKey:@"capabilities"] setObject:[NSNumber numberWithBool:false] forKey:@"hide-non-default-apps"];
     })) {
-        _log("K48AP.plist modified");
+        _log("%s.plist modified", model);
     }
 }
 
-void add_afc2() {
+static void add_afc2() {
     _assert(modify_plist(@"/System/Library/Lockdown/Services.plist", ^(id services) {
         NSDictionary *args = [NSDictionary dictionaryWithObjectsAndKeys:
                                 [NSArray arrayWithObjects:@"/usr/lib/afcd",
@@ -294,9 +297,10 @@ void add_afc2() {
 }
 
 
-void do_install(const char *freeze_, int freeze_len_, void (*set_progress_)(float)) {
+void do_install(const char *freeze_, int freeze_len_, int (*logger_)(const char *, ...), void (*set_progress_)(float)) {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     set_progress = set_progress_;
+    logger = logger_;
     freeze = freeze_;
     freeze_len = freeze_len_;
     

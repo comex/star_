@@ -55,15 +55,38 @@ addr_t find_sysctl(struct binary *binary, const char *name) {
 void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     bool is_armv7 = binary->actual_cpusubtype == 9;
 
+    bool four_dot_three = true;
+    addr_t _kernel_pmap, _PE_i_can_has_debugger, _vn_getpath, _memcmp;
+    if(0) {
+        _kernel_pmap = 0x8027e2dc;
+        _PE_i_can_has_debugger = 0x80203f74;
+        _vn_getpath = 0x8008d7bd;
+        _memcmp = 0x8006558d;
+    } else {
+        _kernel_pmap = b_sym(binary, "_kernel_pmap", false);
+        _PE_i_can_has_debugger = b_sym(binary, "_PE_i_can_has_debugger", false);
+        _vn_getpath = b_sym(binary, "_vn_getpath", true);
+        _memcmp = b_sym(binary, "_memcmp", true);
+    }
+
+
     // '+' = in place only, '-' = in advance only
     // patches
     patch("+kernel_pmap.nx_enabled",
-          b_read32(binary, b_sym(binary, "_kernel_pmap", false)) + 0x420,
+          b_read32(binary, _kernel_pmap) + 0x420,
           uint32_t, {0});
     // the second ref to mem_size
-    patch("-kernel_pmap.nx_enabled initializer",
-          find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "03 68 - c3 f8 20 24" : "84 23 db 00 - d5 50 22 68", 0, true),
-          uint32_t, {is_armv7 ? 0xc420f8c3 : 0x682250d0});
+    // 4.3: 23 68 - c3 f8 20 84
+    // 4.2: 03 68 - c3 f8 20 24
+    if(four_dot_three) {
+        patch("-kernel_pmap.nx_enabled initializer",
+              find_data(b_macho_segrange(binary, "__TEXT"), "23 68 - c3 f8 24 84", 0, true),
+              uint32_t, {0x6424f8c3});
+    } else {
+        patch("-kernel_pmap.nx_enabled initializer",
+              find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "03 68 - c3 f8 20 24" : "84 23 db 00 - d5 50 22 68", 0, true),
+              uint32_t, {is_armv7 ? 0xc420f8c3 : 0x682250d0});
+    }
 
     patch("-lunchd",
           find_string(b_macho_segrange(binary, "__DATA"), "/sbin/launchd", 0, true),
@@ -75,12 +98,17 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
           uint32_t, {is_armv7 ? 0x46c00f02 : 0x46c046c0});
 
     // AMFI (patch3) - disable the predefined list of executable stuff
-    patch("AMFI",
-          find_data(b_macho_segrange(binary, "__PRELINK_TEXT"), is_armv7 ? "23 78 9c 45 05 d1 .. .. .. .. .. .. .. 4b 98 47 00 .. -" : "13 20 a0 e3 .. .. .. .. 33 ff 2f e1 00 00 50 e3 00 00 00 0a .. 40 a0 e3 - 04 00 a0 e1 90 80 bd e8", 0, true),
-          uint32_t, {is_armv7 ? 0x1c201c20 : 0xe3a00001});
+    addr_t mystery = find_data(b_macho_segrange(binary, "__PRELINK_TEXT"), four_dot_three ? "- f0 b5 03 af 4d f8 04 8d .. .. 03 78 80 46" : is_armv7 ? "- 90 b5 01 af 14 29 .. .. .. .. 90 f8 00 c0" : "???", 0, true);
+    addr_t scratch = resolve_ldr(binary, is_armv7 ? (mystery + 9) : 42);
+    if(is_armv7) {
+        patch("AMFI", mystery, uint16_t, {0x2001, 0x4770});
+    } else {
+        patch("AMFI", mystery, uint32_t, {0xe3a00001, 0xe12fff1e});
+    }
+
     // PE_i_can_has_debugger (patch4) - so AMFI allows non-ldid'd binaries (and some other stuff is allowed)
     patch("PE_i_can_has_debugger",
-          b_sym(binary, "_PE_i_can_has_debugger", false),
+          _PE_i_can_has_debugger,
           uint32_t, {0x47702001});
 
 
@@ -92,7 +120,7 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
         
     // cs_enforcement_disable
     patch("cs_enforcement_disable",
-          resolve_ldr(binary, find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "1d ee 90 3f d3 f8 4c 33 d3 f8 9c 20 + .. .. .. .. 19 68 00 29" : "9c 22 03 59 99 58 + .. .. 1a 68 00 2a", 0, true)),
+          resolve_ldr(binary, find_data(b_macho_segrange(binary, "__TEXT"), four_dot_three ? "1d ee 90 3f d3 f8 80 33 93 f8 94 30 1b 09 03 f0 01 02 + .. .. .. .." : is_armv7 ? "1d ee 90 3f d3 f8 4c 33 d3 f8 9c 20 + .. .. .. .. 19 68 00 29" : "9c 22 03 59 99 58 + .. .. 1a 68 00 2a", 0, true)),
           uint32_t, {1});
 
     // sandbox
@@ -100,15 +128,13 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     addr_t sb_evaluate = find_bof(range, find_int32(range, find_string(range, "bad opcode", false, true), true), is_armv7);
     
     preplace32(sandbox, CONFIG_IS_ARMV7, (uint32_t) is_armv7);
-    preplace32(sandbox, CONFIG_VN_GETPATH, b_sym(binary, "_vn_getpath", true));
-    preplace32(sandbox, CONFIG_MEMCMP, b_sym(binary, "_memcmp", true));
+    preplace32(sandbox, CONFIG_VN_GETPATH, _vn_getpath);
+    preplace32(sandbox, CONFIG_MEMCMP, _memcmp);
     preplace32(sandbox, CONFIG_SB_EVALUATE_ORIG1, b_read32(binary, sb_evaluate));
     preplace32(sandbox, CONFIG_SB_EVALUATE_ORIG2, b_read32(binary, sb_evaluate + 4));
     preplace32(sandbox, CONFIG_SB_EVALUATE_JUMPTO, sb_evaluate + (is_armv7 ? 9 : 8));
     preplace32(sandbox, CONFIG_DVP_STRUCT_OFFSET, find_dvp_struct_offset(binary));
     
-    addr_t scratch = find_scratch(binary);
-
     patch("sb_evaluate",
           sb_evaluate,
           uint32_t, {(is_armv7 ? 0xf000f8df : 0xe51ff004), scratch | 1});
@@ -117,6 +143,10 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     patch_with_range("sb_evaluate hook",
                      scratch,
                      sandbox);
+
+    patch("proc_enforce",
+          find_sysctl(binary, "proc_enforce"),
+          uint32_t, {0});
 
     // some "notes"
 
