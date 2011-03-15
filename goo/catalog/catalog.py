@@ -28,6 +28,9 @@ def dbg_result():
 
 dmini.init(['-k', kernfile])
 
+# R4 R7 PC
+
+
 # mcr p15, 0, r0, c3, c0, 0; bx lr
 mcrdude = dmini.cur.find_basic('- 10 0f 03 ee 1e ff 2f e1') + 0
 # sub sp, r7, #20; pop {r8, r10}; pop {r4-r7, pc}

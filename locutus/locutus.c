@@ -14,6 +14,8 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <CFNetwork/CFNetwork.h>
 
+//#define TINY
+
 #ifdef TINY
 static void do_nothing_with(CFTypeRef r) {}
 #define CFRelease do_nothing_with
@@ -22,15 +24,17 @@ static void do_nothing_with(CFTypeRef r) {}
 extern char dylib[];
 extern unsigned int dylib_len;
 
-static void update_state();
-static const char *state;
-static CFStringRef error_string;
+static void update_state(const char *state, CFStringRef err);
+static void run_install();
 
-static double get_progress() { return 0; }
+static double progress = 0.0;
+static bool paused;
+static size_t downloaded_bytes;
 
 static struct request {
     CFStringRef url;
     const char *output;
+    bool is_bz2;
     union {
         struct {};
         struct {
@@ -42,108 +46,149 @@ static struct request {
         };
     };
 } requests[] = {
-    { CFSTR("http://google.com/install"), "/tmp/install", {}},
-    { CFSTR("http://google.com/foo"), "/tmp/foo", {}}
+    { CFSTR("http://a.qoid.us/test.bz2"), "/tmp/install", true, {}},
+    { CFSTR("http://a.qoid.us/test"), "/tmp/foo", false, {}}
 }, *const requests_end = requests + sizeof(requests)/sizeof(*requests);
 
-static void pause_it() {
+static void did_download(size_t bytes) {
+    fprintf(stderr, "did_download %zd\n", bytes);
+    downloaded_bytes += bytes;
+
+    size_t total = 0;
+    for(struct request *r = requests; r < requests_end; r++) {
+        if(!r->content_length) {
+            goto nevermind; // stay at 0
+        }
+        total += r->content_length;
+    }
+    progress = (double) downloaded_bytes / total;
+
+    nevermind:
+
+    update_state("downloading", NULL);
+}
+
+static void pause_it(CFStringRef err) {
+    paused = true;
     for(struct request *r = requests; r < requests_end; r++) {
         if(r->read_stream) {
+            CFReadStreamClose(r->read_stream);
             CFRelease(r->read_stream);
             r->read_stream = NULL;
         }
     }
-    state = "paused";
-    update_state();
+    update_state("paused", err);
 }
 
-static void handle_error(struct request *r, CFStringRef s) {
-    if(s) {
-        if(error_string) CFRelease(error_string);
-        error_string = s;
-    } else {
-        r->finished = true;
+// handle an error or completion
+static void handle_error(struct request *r, CFStringRef err) {
+    if(r->is_bz2) {
+        BZ2_bzDecompressEnd(&r->bz);
     }
-    BZ2_bzDecompressEnd(&r->bz);
-    CFRelease(r->read_stream);
-    r->read_stream = NULL;
     close(r->out_fd);
     r->out_fd = 0;
-    if(s) {
-        state = NULL;
-        pause_it();
+    if(err) {
+        pause_it(err);
+    } else {
+        r->finished = true;
+        CFReadStreamClose(r->read_stream);
+        CFRelease(r->read_stream);
+        r->read_stream = NULL;
+        for(struct request *r = requests; r < requests_end; r++) {
+            if(!r->finished) return;
+        }
+        // We are all finished.
+        run_install();
     }
 }
 
 static void request_callback(CFReadStreamRef stream, CFStreamEventType event_type, void *info) {
     struct request *r = info;
     switch(event_type) {
-    case kCFStreamEventOpenCompleted:
-        {
-        // we need to record the content-length
-        // also, if the server ignored a range request, we might be at the wrong file position, so we have to check
-        CFHTTPMessageRef response = (void *) CFReadStreamCopyProperty(stream, kCFStreamPropertyHTTPResponseHeader);
-        CFIndex code = CFHTTPMessageGetResponseStatusCode(response);
-        if(code == 200) {
-            CFStringRef cl = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Length"));
-            if(!cl) {
-                handle_error(r, CFSTR("server fails"));
-            } else {
-                r->content_length = CFStringGetIntValue(cl);
-                CFRelease(cl);
-            }
-        } else if(code == 206) {
-#ifndef TINY
-            // partial content
-            off_t off = 0;
-            CFStringRef range = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Range"));
-            if(range) {
-                if(kCFCompareEqualTo == CFStringCompareWithOptions(range, CFSTR("bytes "), CFRangeMake(0, 6), kCFCompareCaseInsensitive)) {
-                    CFRange r = CFStringFind(range, CFSTR("-"), 0);
-                    if(r.length != 0 && r.location > 6) {
-                        CFStringRef sub = CFStringCreateWithSubstring(NULL, range, CFRangeMake(6, r.location - 6));
-                        off = (off_t) CFStringGetIntValue(sub);
-                        CFRelease(sub);
-                    }
-                }
-                CFRelease(range);
-            }
-            if(off != lseek(r->out_fd, 0, SEEK_SET)) {
-                handle_error(r, CFSTR("server fails")); 
-            }
-#endif
-        } // error responses are not reported as "completed"
-        break;
     case kCFStreamEventErrorOccurred:
         {
         CFErrorRef error = _assert(CFReadStreamCopyError(stream));
-        handle_error(r, CFErrorCopyDescription(error));
+        CFStringRef description = CFErrorCopyDescription(error);
+        /*if(CFErrorGetDomain(error) == kCFErrorDomainCFNetwork) {
+
+        }*/
+        handle_error(r, description);
         CFRelease(error);
         }
         break;
     case kCFStreamEventEndEncountered:
-        if(r->read_stream) { // end of the bz2 file but no BZ_STREAM_END
-            handle_error(r, CFSTR("compressed data was truncated"));
+        if(r->is_bz2) {
+            if(r->read_stream) { // end of the bz2 file but no BZ_STREAM_END
+                handle_error(r, CFSTR("compressed data was truncated"));
+            }
+        } else {
+            handle_error(r, NULL);
         }
         break;
     case kCFStreamEventHasBytesAvailable:
+        if(!r->content_length) {
+            // we need to record the content-length
+            // also, if the server ignored a range request, we might be at the wrong file position, so we have to check
+            CFHTTPMessageRef response = (void *) CFReadStreamCopyProperty(stream, kCFStreamPropertyHTTPResponseHeader);
+            if(!response) break;
+            CFIndex code = CFHTTPMessageGetResponseStatusCode(response);
+            if(code == 200) {
+                CFStringRef cl = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Length"));
+                if(!cl) {
+                    handle_error(r, CFSTR("server fails"));
+                    break;
+                } else {
+                    r->content_length = CFStringGetIntValue(cl);
+                    CFRelease(cl);
+                }
+            } else if(code == 206) {
+                #ifndef TINY
+                // partial content
+                off_t off = 0;
+                CFStringRef range = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Range"));
+                if(range) {
+                    if(kCFCompareEqualTo == CFStringCompareWithOptions(range, CFSTR("bytes "), CFRangeMake(0, 6), kCFCompareCaseInsensitive)) {
+                        CFRange r = CFStringFind(range, CFSTR("-"), 0);
+                        if(r.length != 0 && r.location > 6) {
+                            CFStringRef sub = CFStringCreateWithSubstring(NULL, range, CFRangeMake(6, r.location - 6));
+                            off = (off_t) CFStringGetIntValue(sub);
+                            CFRelease(sub);
+                        }
+                    }
+                    CFRelease(range);
+                }
+                if(off != lseek(r->out_fd, 0, SEEK_SET)) {
+                    handle_error(r, CFSTR("server fails")); 
+                    break;
+                }
+                #endif
+            } else {
+                handle_error(r, CFStringCreateWithFormat(NULL, NULL, CFSTR("HTTP response code %d"), (int) code));
+            }
+        }
+
+        // actually read
+        size_t written = 0;
         while(CFReadStreamHasBytesAvailable(r->read_stream)) {
             static char compressed[8192], uncompressed[16384];
             CFIndex idx = CFReadStreamRead(r->read_stream, (void *) compressed, sizeof(compressed));
             if(idx == -1) {
                 handle_error(r, CFSTR("Huh?"));
-            } else {
+                goto end;
+            }
 
+            written += (size_t) idx;
+
+            if(!r->is_bz2) {
+                _assert((CFIndex) write(r->out_fd, compressed, idx) == idx);
+            } else {
                 r->bz.avail_in = (unsigned int) idx;
                 r->bz.next_in = compressed;
                 r->bz.avail_out = sizeof(uncompressed);
                 r->bz.next_out = uncompressed;
                 while(r->bz.avail_in > 0) {
                     int result = BZ2_bzDecompress(&r->bz);
-                    if(result == BZ_STREAM_END) {
-                        // we're done
-                        handle_error(r, NULL);
-                    } else if(result != BZ_OK) {
+                    if(result != BZ_STREAM_END && result != BZ_OK) {
                         CFStringRef error;
                         switch(result) {
                         case BZ_CONFIG_ERROR:
@@ -164,53 +209,73 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
                             break;
                         }
                         handle_error(r, error);
-                        break;
+                        goto end;
                     }
 
                     size_t towrite = sizeof(uncompressed) - r->bz.avail_out;
                     _assert((size_t) write(r->out_fd, uncompressed, towrite) == towrite);
-                    update_state();
+                    if(result == BZ_STREAM_END) {
+                        // we're done
+                        handle_error(r, NULL);
+                        goto end;
+                    }
                 }
             }
         }
+        end:
+        did_download(written);
         break;
-        }
     }
 }
 
 
 static void init_requests() {
+    paused = false;
     for(struct request *r = requests; r < requests_end; r++) {
         if(r->read_stream) continue;
 
-        _assert_zero(BZ2_bzDecompressInit(&r->bz, 0, 0));
+        if(r->is_bz2) { 
+            _assert_zero(BZ2_bzDecompressInit(&r->bz, 0, 0));
+        }
 
         CFURLRef url = _assert(CFURLCreateWithString(NULL, r->url, NULL));
         CFHTTPMessageRef message = _assert(CFHTTPMessageCreateRequest(NULL, CFSTR("GET"), url, kCFHTTPVersion1_1));
+        CFRelease(url);
 
         if(r->out_fd) {
+            #ifdef TINY
+            lseek(r->out_fd, 0, SEEK_SET);
+            #else
             CFStringRef range = CFStringCreateWithFormat(NULL, NULL, CFSTR("bytes %d-%d"), (int) lseek(r->out_fd, 0, SEEK_CUR), (int) r->content_length - 1);
             CFHTTPMessageSetHeaderFieldValue(message, CFSTR("Range"), range);
             CFRelease(range);
-            /*XXX*/
+            #endif
         } else {
             r->out_fd = _assert(open(r->output, O_WRONLY | O_CREAT | O_TRUNC, 0644));
         }
 
         r->read_stream = _assert(CFReadStreamCreateForHTTPRequest(NULL, message));
+        CFRelease(message);
         // creating the read stream should succeed, but there might be an error later
         r->finished = false;
 
-        CFStreamClientContext context;
-        memset(&context, 0, sizeof(context));
+        static CFStreamClientContext context;
         context.info = r;
-        CFReadStreamSetClient(r->read_stream, kCFStreamEventHasBytesAvailable | kCFStreamEventOpenCompleted | kCFStreamEventErrorOccurred | kCFStreamEventEndEncountered, request_callback, &context);
+        CFReadStreamSetClient(r->read_stream, kCFStreamEventHasBytesAvailable | kCFStreamEventErrorOccurred | kCFStreamEventEndEncountered, request_callback, &context);
+
+        CFReadStreamScheduleWithRunLoop(r->read_stream, CFRunLoopGetMain(), kCFRunLoopCommonModes);
+        CFReadStreamOpen(r->read_stream);
         
-        CFRelease(url);
-        CFRelease(message);
     }
-    state = "downloading";
-    update_state();
+    update_state("downloading", NULL);
+}
+
+static void run_install() {
+    signal(SIGUSR1, SIG_IGN);
+    progress = 0.0;
+    update_state("installing", NULL);
+    fprintf(stderr, "installing or something\n");
+    exit(0);
 }
 
 static pid_t find_springboard() {
@@ -237,24 +302,22 @@ static void init_state() {
     if(0 == lseek(fd, 0, SEEK_END)) {
         // we created it
     } else {
-        lseek(fd, 0, SEEK_SET);
-        FILE *fp = _assert(fdopen(fd, "r"));
-        char mode[16]; int pid; double progress;
-        if(2 != fscanf(fp, "%16s %d", &mode[0], &pid)) {
-            // corrupt; do nothing and assume it's dead
-        } else if(!strcmp(mode, "installing")) {
-            // we don't want to stop it during installation
-            exit(0);
-        } else {
-            // we can kill it
-            kill((pid_t) pid, SIGTERM);
+        char buf[10];
+        int pid;
+        if(pread(fd, buf, sizeof(buf), 0) != -1 && (pid = atoi(buf))) {
+            kill((pid_t) pid, SIGUSR1);
+            if(kill((pid_t) pid, SIGUSR1) == 0) {
+                // it stayed alive - so it's installing and we should give up
+                exit(0);
+            }
         }
     }
     flock(fd, LOCK_UN);
     close(fd);
 }
 
-static void update_state() {
+static void update_state(const char *state, CFStringRef err) {
+
     int fd = open("/tmp/locutus.state", O_RDWR | O_CREAT, 0666);
     _assert(fd >= 0);
     _assert_zero(flock(fd, LOCK_EX));
@@ -262,37 +325,23 @@ static void update_state() {
     FILE *fp = fdopen(fd, "w");
     _assert(fp);
 
-    char error[128];
-    if(error_string) {
-        CFStringGetCString(error_string, error, sizeof(error), kCFStringEncodingUTF8);
+    char errs[128];
+    if(err) {
+        CFStringGetCString(err, errs, sizeof(errs), kCFStringEncodingUTF8);
+        CFRelease(err);
     } else {
-        strcpy(error, "ok");
+        strcpy(errs, "ok");
     }
 
-    fprintf(fp, "%s %d %f %s\n", state, (int) getpid(), get_progress(), error);
-    error_string = NULL;
+    fprintf(stderr, "%d %s %f %s\n", (int) getpid(), state, progress, errs);
 
     flock(fd, LOCK_UN);
     close(fd);
 }
 
-static void pause_callback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef user_info) {
-    if(state && !strcmp(state, "paused")) {
-        init_requests();
-    } else {
-        pause_it();
-    }
-}
-
-static void cancel_callback(CFNotificationCenterRef center, void *observer, CFStringRef name, const void *object, CFDictionaryRef user_info) {
-    state = "bye";
-    update_state();
-    exit(0);
-}
-
 int main() {
-    syslog(LOG_EMERG, "omg hax\n");
-    printf("omg hax\n");
+    //syslog(LOG_EMERG, "omg hax\n");
+    //printf("omg hax\n");
     //return 0;
 
     uint32_t one = 1;
@@ -300,10 +349,20 @@ int main() {
 
     init_state();
 
-    CFNotificationCenterRef center = CFNotificationCenterGetDarwinNotifyCenter();
-    CFNotificationCenterAddObserver(center, NULL, pause_callback, CFSTR("locutus.pause"), NULL, 0);
-    CFNotificationCenterAddObserver(center, NULL, cancel_callback, CFSTR("locutus.cancel"), NULL, 0);
-
+    int ignored;
+    notify_register_dispatch("locutus.pause", &ignored, dispatch_get_main_queue(), ^(int token) {
+        if(paused) {
+            init_requests();
+        } else {
+            pause_it(NULL);
+        }
+    });
+    notify_register_dispatch("locutus.cancel", &ignored, dispatch_get_main_queue(), ^(int token) {
+        update_state("bye", NULL);
+        // maybe delete the temporary files?
+        exit(0);
+    });
+        
     // dump our load
     const char *name = tempnam("/tmp/", "locutus.dylib-");
     int dylib_fd = open(name, O_WRONLY | O_CREAT, 0644);
