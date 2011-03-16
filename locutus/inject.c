@@ -19,11 +19,14 @@ struct arm_thread_state {
     uint32_t cpsr;
 };
 
-static const mach_vm_size_t stack_size = 32*1024;
 
 #define address_cast(x) ((mach_vm_address_t) (uintptr_t) (x))
 
+extern char baton[], baton_end[], baton_path[64];
+static /*const*/ mach_vm_size_t stack_size = 32*1024;
+
 kern_return_t inject(pid_t pid, const char *path) {
+    mach_vm_size_t baton_size = baton_end - baton;
     kern_return_t kr = 0;
 
     task_t task;
@@ -31,48 +34,40 @@ kern_return_t inject(pid_t pid, const char *path) {
     
     mach_vm_address_t stack_address = 0;
     _assert_zero(mach_vm_allocate(task, &stack_address, stack_size, VM_FLAGS_ANYWHERE));
+    mach_vm_address_t baton_address = stack_address + stack_size - baton_size;
 
-    mach_vm_address_t stack_end = stack_address + stack_size - 0x100;
+    printf("baton_address = %x\n", (int) baton_address);
 
-    _assert_zero(mach_vm_write(task, stack_address, address_cast(path), strlen(path) + 1));
+    strlcpy(baton_path, path, 64);
 
-    thread_act_t thread;
-    _assert_zero(thread_create(task, &thread));
+    _assert_zero(mach_vm_protect(task, stack_address, stack_size, false, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE));
 
-    mach_port_t exc;
-    mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &exc);
-    _assert_zero(mach_port_insert_right(mach_task_self(), exc, exc, MACH_MSG_TYPE_MAKE_SEND));
-    _assert_zero(thread_set_exception_ports(thread, EXC_MASK_BAD_ACCESS, exc, EXCEPTION_DEFAULT, ARM_THREAD_STATE));
-
-    union {
+#if 0
+    struct vm_region_basic_info_64 info;
+    mach_msg_type_number_t cnt = VM_REGION_BASIC_INFO_COUNT_64;
+    mach_vm_address_t addr = stack_address;
+    mach_vm_size_t size;
+    mach_port_t o;
+    _assert_zero(mach_vm_region(task, &addr, &size, VM_REGION_BASIC_INFO_64, (vm_region_info_t) &info, &cnt, &o));
+    printf("%x+%x %d,%d\n", (int) addr, (int) size, info.protection, info.max_protection);
+    abort();
+#endif
+    
+    _assert_zero(mach_vm_write(task, baton_address, (vm_offset_t) baton, baton_size));
+    
+    static union {
         struct arm_thread_state arm;
         natural_t nat;
-    } state;
+    } state = { { .cpsr = 0x20 } };
+    state.arm.pc = baton_address;
 
-    memset(&state, 0, sizeof(state));
+    thread_act_t thread;
+    _assert_zero(thread_create_running(task, ARM_THREAD_STATE, &state.nat, ARM_THREAD_STATE_COUNT, &thread));
 
-    state.arm.r[0] = 360;
-    state.arm.r[1] = (uint32_t) dlopen;
-    state.arm.r[2] = (uint32_t) stack_address;
-    state.arm.r[3] = 128*1024;
-    // the other args are 0 anyway
-    state.arm.sp = (uint32_t) stack_end;
-    state.arm.pc = (uint32_t) syscall;
-    state.arm.lr = (uint32_t) 0xdeadbeef;
-
-    _assert_zero(thread_set_state(thread, ARM_THREAD_STATE, &state.nat, ARM_THREAD_STATE_COUNT));
-    _assert_zero(thread_resume(thread));
-
-    // handle the exception
-    char msg[8192];
-    _assert_zero(mach_msg_overwrite(NULL, MACH_RCV_MSG, 0, sizeof(msg), exc, MACH_MSG_TIMEOUT_NONE, MACH_PORT_NULL, (void *) &msg, sizeof(msg)));
-    _assert_zero(thread_terminate(thread));
-
-    
     //mach_vm_deallocate(task, stack_address, stack_size);
-    mach_port_deallocate(mach_task_self(), exc);
-    mach_port_deallocate(mach_task_self(), thread);
-    mach_port_deallocate(mach_task_self(), task);
+    //mach_port_deallocate(mach_task_self(), exc);
+    //mach_port_deallocate(mach_task_self(), thread);
+    //mach_port_deallocate(mach_task_self(), task);
 
     return 0;    
 }

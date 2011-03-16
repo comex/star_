@@ -11,7 +11,7 @@
 #include <syslog.h>
 #define ctassert(x, y) extern char XX_## y [(x) ? 1 : -1]
 #ifndef _log
-#define _log(args...) syslog(LOG_EMERG, args)
+#define _log(args...) fprintf(stderr, args)
 #endif
 
 #define _assert(expr, arg...) ((expr) ?: (_assert_helper(#expr, arg + 0), (typeof(expr)) 0))

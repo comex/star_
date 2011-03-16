@@ -81,7 +81,7 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     if(four_dot_three) {
         patch("-kernel_pmap.nx_enabled initializer",
               find_data(b_macho_segrange(binary, "__TEXT"), "23 68 - c3 f8 24 84", 0, true),
-              uint32_t, {0x6424f8c3});
+              uint16_t, {0x6424});
     } else {
         patch("-kernel_pmap.nx_enabled initializer",
               find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "03 68 - c3 f8 20 24" : "84 23 db 00 - d5 50 22 68", 0, true),
@@ -97,14 +97,16 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
           find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "- 02 0f .. .. 63 08 03 f0 01 05 e3 0a 13 f0 01 03" : "- .. .. .. .. .. 08 1e 1c .. 0a 01 22 .. 1c 16 40 .. 40", 0, true),
           uint32_t, {is_armv7 ? 0x46c00f02 : 0x46c046c0});
 
+    // vm_map_protect - allow vm_protect etc. to create RWX pages
+    patch("vm_map_protect",
+          find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "- 25 f0 04 05 .. e7 92 45 98 bf 02 99 .. d8" : "?", 0, true),
+          uint32_t, {0x0500f025});
+
     // AMFI (patch3) - disable the predefined list of executable stuff
+    // safe because it follows longs
     addr_t mystery = find_data(b_macho_segrange(binary, "__PRELINK_TEXT"), four_dot_three ? "- f0 b5 03 af 4d f8 04 8d .. .. 03 78 80 46" : is_armv7 ? "- 90 b5 01 af 14 29 .. .. .. .. 90 f8 00 c0" : "???", 0, true);
     addr_t scratch = resolve_ldr(binary, is_armv7 ? (mystery + 9) : 42);
-    if(is_armv7) {
-        patch("AMFI", mystery, uint16_t, {0x2001, 0x4770});
-    } else {
-        patch("AMFI", mystery, uint32_t, {0xe3a00001, 0xe12fff1e});
-    }
+    patch("AMFI", mystery, uint32_t, {is_armv7 ? 0x47702001 : 0xe3a00001});
 
     // PE_i_can_has_debugger (patch4) - so AMFI allows non-ldid'd binaries (and some other stuff is allowed)
     patch("PE_i_can_has_debugger",
@@ -115,8 +117,8 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     // task_for_pid 0
     // this is necessary so a reboot isn't required after using the screwed up version
     patch("task_for_pid 0",
-          find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "85 68 00 23 .. 93 .. 93 - 5c b9 .. .. 29 46 04 22" : "85 68 .. 93 .. 93 - 00 2c 0b d1", 0, true),
-          uint32_t, {is_armv7 ? 0x46c0e00b : 0xe00b2c00});
+          find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "85 68 00 23 .. 93 .. 93 - 5c b9 02 a8 29 46 04 22" : "85 68 .. 93 .. 93 - 00 2c 0b d1", 0, true),
+          uint32_t, {is_armv7 ? 0xa802e00b : 0xe00b2c00});
         
     // cs_enforcement_disable
     patch("cs_enforcement_disable",
@@ -135,14 +137,15 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     preplace32(sandbox, CONFIG_SB_EVALUATE_JUMPTO, sb_evaluate + (is_armv7 ? 9 : 8));
     preplace32(sandbox, CONFIG_DVP_STRUCT_OFFSET, find_dvp_struct_offset(binary));
     
-    patch("sb_evaluate",
-          sb_evaluate,
-          uint32_t, {(is_armv7 ? 0xf000f8df : 0xe51ff004), scratch | 1});
-
     check_no_placeholders(sandbox);
     patch_with_range("sb_evaluate hook",
                      scratch,
                      sandbox);
+    
+    patch("sb_evaluate",
+          sb_evaluate,
+          uint32_t, {(is_armv7 ? 0xf000f8df : 0xe51ff004), scratch | 1});
+
 
     patch("proc_enforce",
           find_sysctl(binary, "proc_enforce"),

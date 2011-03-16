@@ -57,10 +57,10 @@ def install():
 
 def locutus():
     goto('locutus')
-    cflags = ['-DNO_ASSERT_MESSAGES', '-fblocks', '-Oz', '-Wno-parentheses', '-miphoneos-version-min=4.0']
-    compile_stuff(['locutus_server.m'], 'locutus_server.dylib', cflags=cflags, ldflags=['-dynamiclib', '-install_name', 'X'*32]+cflags, ldid=False)
+    cflags = ['-DFNO_ASSERT_MESSAGES', '-fblocks', '-Oz', '-Wno-parentheses', '-miphoneos-version-min=4.0']
+    compile_stuff(['locutus_server.m'], 'locutus_server.dylib', cflags=cflags+['-Wno-deprecated-declarations'], ldflags=['-dynamiclib', '-framework', 'Foundation', '-framework', 'UIKit', '-install_name', 'X'*32]+cflags, ldid=False)
     run('sh', '-c', 'xxd -i locutus_server.dylib | sed "s/locutus_server_//g" > locutus_server_.c')
-    compile_stuff(['locutus.c', 'inject.c', 'locutus_server_.c'], 'locutus', cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork']+cflags, ldid=True, ent='ent.plist')
+    compile_stuff(['locutus.c', 'inject.c', 'baton.S',  'locutus_server_.c'], 'locutus', cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork']+cflags, ldid=True, ent='ent.plist')
 
 def goo():
     config()

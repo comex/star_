@@ -18,9 +18,16 @@ pf_loop:
     cmp r3, #0
     beq pf_done
 
-    ldr r1, [r0], #4 ;# datalen
-
     add r2, r3, r1
+
+    ldr r1, [r0], #4 ;# datalen
+    cmp r1, #4
+    bne copy_loop
+    # if it's 4, it must be done atomically
+    ldr lr, [r0]
+    str lr, [r3]
+    b inval_loop
+
 copy_loop:
     ldrb lr, [r0], #1
     strb lr, [r3], #1
