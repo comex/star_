@@ -10,13 +10,10 @@
 #import <UIKit/UIKit.h>
 #include <objc/runtime.h>
 
-@interface MyIcon : UIView {
-}
-@end
-
 static id icon;
 static notify_handler_t sk_handler;
 static id icon_controller;
+static id icon_model;
 
 @interface SBIconLabel {
 }
@@ -27,16 +24,29 @@ static id icon_controller;
 }
 -(id)initWithLeafIdentifier:(id)leafIdentifier;
 -(void)setDisplayedIconImage:(id)image;
+-(void)remove;
+-(void)setDelegate:(id)delegate;
 @end
 
 @interface SBIconController {
 }
 +(id)sharedInstance;
 -(void)addNewIconToDesignatedLocation:(id)icon animate:(BOOL)animate scrollToList:(BOOL)list saveIconState:(BOOL)save;
--(void)removeIcon:(id)icon animate:(BOOL)animate;
+-(void)setIconToReveal:(id)icon;
+//-(void)iconUninstall:(id)icon; // also uninstallIcon:, uninstallIcon:animated:; lots of choice!  this works but we want remove above instead
 @end
 
-@implementation MyIcon
+@interface SBIconModel {
+}
++(id)sharedInstance;
+-(void)addIcon:(id)icon;
+//-(void)removeIcon:(id)icon;
+@end
+
+@interface MyDelegate : NSObject {
+}
+@end
+@implementation MyDelegate
 - (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
     if(buttonIndex == 0) {
         sk_handler(0);
@@ -52,39 +62,50 @@ static inline NSString *_(NSString *key) {
 }
 
 static notify_handler_t sk_handler = ^(int token_) {
-    fprintf(stderr, "s/k\n");
+    NSLog(@"s/k");
     // do something ...
     if(icon) {
-        [icon_controller removeIcon:icon animate:YES];
+        NSLog(@"removing the icon");
+        [icon remove];
+        icon = nil;
     }
-    notify_cancel(token_);
 };
 
 __attribute__((constructor))
 static void init() {
     int token;
-    fprintf(stderr, "I'm alive\n");
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSLog(@"i'm alive");
 
-    class_setSuperclass([MyIcon class], objc_getClass("SBDownloadingIcon"));
+    char name[32];
+    sprintf(name, "MyIcon_%p", &init);
+    Class MyIcon = objc_allocateClassPair(objc_getClass("SBDownloadingIcon"), name, 0);
+    objc_registerClassPair(MyIcon);
 
     icon_controller = [objc_getClass("SBIconController") sharedInstance];
+    icon_model = [objc_getClass("SBIconModel") sharedInstance];
+    NSLog(@"%@", icon_controller);
+
+    NSLog(@"starting notify...");
 
     notify_register_dispatch("locutus.go-away", &token, dispatch_get_main_queue(), sk_handler);
 
     notify_register_dispatch("locutus.updated-state", &token, dispatch_get_main_queue(), ^(int token_) {
-        NSCharacterSet *whitespace = [NSCharacterSet whitespaceCharacterSet];
-        NSScanner *scanner = [NSScanner scannerWithString:[NSString stringWithContentsOfFile:@"/tmp/locutus.state" encoding:NSUTF8StringEncoding error:nil]];
+        NSArray *bits = [[NSString stringWithContentsOfFile:@"/tmp/locutus.state" encoding:NSUTF8StringEncoding error:nil] componentsSeparatedByString:@" "];
+        if([bits count] != 4) {
+            NSLog(@"fail state");
+            return;
+        }
 
-        int pid; [scanner scanInt:&pid];
-        NSString *state; [scanner scanUpToCharactersFromSet:whitespace intoString:&state];
-        float progress; [scanner scanFloat:&progress];
-        NSString *err; [scanner scanUpToCharactersFromSet:whitespace intoString:&err];
-
-        id label;
+        id label = nil;
         object_getInstanceVariable(icon, "_label", (void **) &label);
-        [label setText:_(state)];
-        if(err) {
-            UIAlertView *av = [[UIAlertView alloc] initWithTitle:@"" message:err delegate:icon cancelButtonTitle:_(@"DATA_PLAN_FAILED_TRY_LATER") otherButtonTitles:_(@"DATA_PLAN_FAILED_TRY_AGAIN"), nil];
+        [label setText:_([bits objectAtIndex:1])];
+
+        NSString *err = [bits objectAtIndex:3];
+        if(![err isEqualToString:@"ok"]) {
+            UIAlertView *av = [[UIAlertView alloc] initWithTitle:@"" message:err delegate:[[MyDelegate alloc] init] cancelButtonTitle:_(@"DATA_PLAN_FAILED_TRY_LATER") otherButtonTitles:_(@"DATA_PLAN_FAILED_TRY_AGAIN"), nil];
+            [av show];
+            [av release];
         }
     });
     
@@ -93,7 +114,14 @@ static void init() {
         [icon setDisplayedIconImage:image];
     });
 
-    icon = [[MyIcon alloc] initWithLeafIdentifier:@"com.saurik.Cydia"];
+    NSLog(@"done");
+
+    icon = [[MyIcon alloc] initWithLeafIdentifier:@"fcom.saurik.Cydia"];
+    [icon setDelegate:icon_controller];
     NSLog(@"%@", icon);
-    [icon_controller addNewIconToDesignatedLocation:icon animate:YES scrollToList:YES saveIconState:NO];
+    [icon_model addIcon:icon];
+    [icon_controller addNewIconToDesignatedLocation:icon animate:NO scrollToList:NO saveIconState:YES];
+    [icon_controller setIconToReveal:icon];
+    [icon release];
+    [pool release];
 }

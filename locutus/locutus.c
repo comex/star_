@@ -298,7 +298,7 @@ static pid_t find_springboard() {
     _assert(!sysctl(&name[0], sizeof(name) / sizeof(*name), NULL, &length, NULL, 0));
     struct kinfo_proc *proc = malloc(length);
     _assert(!sysctl(&name[0], sizeof(name) / sizeof(*name), proc, &length, NULL, 0));
-    for(size_t i = 0; i < length; i++) {
+    for(size_t i = 0; i < length/sizeof(*proc); i++) {
         if(!strncmp(proc[i].kp_proc.p_comm, "SpringBoard", sizeof(proc[i].kp_proc.p_comm))) {
             pid_t result = proc[i].kp_proc.p_pid;
             free(proc);
@@ -346,7 +346,7 @@ static void update_state(const char *state, CFStringRef err) {
         strcpy(errs, "ok");
     }
 
-    fprintf(stderr, "%d %s %f %s\n", (int) getpid(), state, progress, errs);
+    fprintf(fp, "%d %s %f %s\n", (int) getpid(), state, progress, errs);
 
     flock(fd, LOCK_UN);
     close(fd);
