@@ -81,7 +81,7 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     if(four_dot_three) {
         patch("-kernel_pmap.nx_enabled initializer",
               find_data(b_macho_segrange(binary, "__TEXT"), "23 68 - c3 f8 24 84", 0, true),
-              uint16_t, {0x6424});
+              uint32_t, {0x6424f8c3});
     } else {
         patch("-kernel_pmap.nx_enabled initializer",
               find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "03 68 - c3 f8 20 24" : "84 23 db 00 - d5 50 22 68", 0, true),
