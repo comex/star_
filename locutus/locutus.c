@@ -54,7 +54,6 @@ static struct request {
 
 __attribute__((noreturn))
 static void leave() {
-    unlink("/tmp/locutus.state");
     exit(0);
 }
 

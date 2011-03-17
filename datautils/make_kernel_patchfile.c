@@ -1,8 +1,8 @@
 #include <data/common.h>
 #include <data/find.h>
 #include <data/binary.h>
-#include <data/cc.h>
-#include <config/placeholder.h>
+#include <data/link.h>
+#include "lambda.h"
 
 int patchfd;
 
@@ -52,10 +52,10 @@ addr_t find_sysctl(struct binary *binary, const char *name) {
     return b_read32(binary, csref - 8);
 }
 
-void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
+void do_kernel(struct binary *binary, struct binary *sandbox) {
     bool is_armv7 = binary->actual_cpusubtype == 9;
 
-    bool four_dot_three = true;
+    bool four_dot_three = false;
     addr_t _kernel_pmap, _PE_i_can_has_debugger, _vn_getpath, _memcmp;
     if(0) {
         _kernel_pmap = 0x8027e2dc;
@@ -63,10 +63,10 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
         _vn_getpath = 0x8008d7bd;
         _memcmp = 0x8006558d;
     } else {
-        _kernel_pmap = b_sym(binary, "_kernel_pmap", false);
-        _PE_i_can_has_debugger = b_sym(binary, "_PE_i_can_has_debugger", false);
-        _vn_getpath = b_sym(binary, "_vn_getpath", true);
-        _memcmp = b_sym(binary, "_memcmp", true);
+        _kernel_pmap = b_sym(binary, "_kernel_pmap", false, true);
+        _PE_i_can_has_debugger = b_sym(binary, "_PE_i_can_has_debugger", false, true);
+        _vn_getpath = b_sym(binary, "_vn_getpath", true, true);
+        _memcmp = b_sym(binary, "_memcmp", true, true);
     }
 
 
@@ -129,23 +129,26 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     range_t range = b_macho_segrange(binary, "__PRELINK_TEXT");
     addr_t sb_evaluate = find_bof(range, find_int32(range, find_string(range, "bad opcode", false, true), true), is_armv7);
     
-    preplace32(sandbox, CONFIG_IS_ARMV7, (uint32_t) is_armv7);
-    preplace32(sandbox, CONFIG_VN_GETPATH, _vn_getpath);
-    preplace32(sandbox, CONFIG_MEMCMP, _memcmp);
-    preplace32(sandbox, CONFIG_SB_EVALUATE_ORIG1, b_read32(binary, sb_evaluate));
-    preplace32(sandbox, CONFIG_SB_EVALUATE_ORIG2, b_read32(binary, sb_evaluate + 4));
-    preplace32(sandbox, CONFIG_SB_EVALUATE_JUMPTO, sb_evaluate + (is_armv7 ? 9 : 8));
-    preplace32(sandbox, CONFIG_DVP_STRUCT_OFFSET, find_dvp_struct_offset(binary));
-    
-    check_no_placeholders(sandbox);
+   
+    DECL_LAMBDA(l, uint32_t, (const char *name), {
+        if(!strcmp(name, "c_sb_evaluate_orig1")) return b_read32(binary, sb_evaluate);
+        if(!strcmp(name, "c_sb_evaluate_orig2")) return b_read32(binary, sb_evaluate + 4);
+        if(!strcmp(name, "c_sb_evaluate_jumpto")) return sb_evaluate + (is_armv7 ? 9 : 8);
+        if(!strcmp(name, "c_memcmp")) return _memcmp;
+        if(!strcmp(name, "c_vn_getpath")) return _vn_getpath;
+        if(!strcmp(name, "c_dvp_struct_offset")) return find_dvp_struct_offset(binary);
+        if(!strcmp(name, "c_is_armv7")) return is_armv7;
+        die("? %s", name);
+    })
+    b_relocate(sandbox, (void *) l.arg, (void *) l.func, 0);
+    prange_t sandbox_pr = rangeconv(b_nth_segment(sandbox, 0));
     patch_with_range("sb_evaluate hook",
                      scratch,
-                     sandbox);
+                     sandbox_pr);
     
     patch("sb_evaluate",
           sb_evaluate,
           uint32_t, {(is_armv7 ? 0xf000f8df : 0xe51ff004), scratch | 1});
-
 
     patch("proc_enforce",
           find_sysctl(binary, "proc_enforce"),
@@ -157,24 +160,24 @@ void do_kernel(prange_t output, prange_t sandbox, struct binary *binary) {
     addr_t sysent_patch_orig = b_read32(binary, sysent + 4);
     patch("sysent patch", 0, uint32_t, {sysent + 4});
     patch("sysent patch orig", 0, uint32_t, {sysent_patch_orig});
-    patch("scratch", 0, uint32_t, {(scratch + sandbox.size + 0xfff) & ~0xfff});
-    //patch("IOLog", 0, uint32_t, {b_sym(binary, "_IOLog", true)});
+    patch("scratch", 0, uint32_t, {(scratch + sandbox_pr.size + 0xfff) & ~0xfff});
+    //patch("IOLog", 0, uint32_t, {b_sym(binary, "_IOLog", true, true)});*/
 }
 
 
 int main(int argc, char **argv) {
-    struct binary binary;
-    b_init(&binary);
-    prange_t kernel = load_file(argv[1], false, NULL);
-    b_prange_load_macho(&binary, kernel, argv[1]);
-    prange_t sandbox = load_file(argv[2], true, NULL);
+    struct binary kernel, sandbox;
+    b_init(&kernel);
+    b_init(&sandbox);
+    b_load_macho(&kernel, argv[1], false);
+    b_load_macho(&sandbox, argv[2], true);
 
     patchfd = open(argv[3], O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if(patchfd == -1) {
         edie("could not open patchfd");
     }
 
-    do_kernel(kernel, sandbox, &binary);
+    do_kernel(&kernel, &sandbox);
 
     close(patchfd);
     return 0;

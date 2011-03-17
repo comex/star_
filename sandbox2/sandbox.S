@@ -1,8 +1,7 @@
 #include <config/config_asm.h>
 .thumb
 .syntax unified
-.globl _patch_start, _patch_end
-_patch_start:
+start:
 // <- 
     push {r0-r4, lr}
     sub sp, #0x44
@@ -69,15 +68,15 @@ actually_eval:
     pop {r0-r4}
     add sp, #4
     beq armlol
-    .long CONFIG_SB_EVALUATE_ORIG1
-    .long CONFIG_SB_EVALUATE_ORIG2
+    .long c_sb_evaluate_orig1
+    .long c_sb_evaluate_orig2
     bx r9
 armlol:
     bx pc
 .arm
     .align 2
-    .long CONFIG_SB_EVALUATE_ORIG1
-    .long CONFIG_SB_EVALUATE_ORIG2
+    .long c_sb_evaluate_orig1
+    .long c_sb_evaluate_orig2
     bx r9
     
 
@@ -88,9 +87,8 @@ preferences_com_apple: .ascii "/private/var/mobile/Library/Preferences/com.apple
 .align 2
 preferences: .ascii "/private/var/mobile/Library/Preferences"
 .align 2
-orig_addr: .long CONFIG_SB_EVALUATE_JUMPTO
-memcmp: .long CONFIG_MEMCMP
-vn_getpath: .long CONFIG_VN_GETPATH
-dvp_struct_offset: .long CONFIG_DVP_STRUCT_OFFSET
-is_armv7: .long CONFIG_IS_ARMV7
-_patch_end:
+orig_addr: .long c_sb_evaluate_jumpto
+memcmp: .long c_memcmp
+vn_getpath: .long c_vn_getpath
+dvp_struct_offset: .long c_dvp_struct_offset
+is_armv7: .long c_is_armv7

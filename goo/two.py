@@ -6,7 +6,7 @@ import dmini
 baseaddr = 0x13000000
 stacksize = 1048576
 
-dmini.init(['-c', sys.argv[1]])
+dmini.init(sys.argv[1], True)
 
 data = pickle.load(open(sys.argv[2], 'rb'))
 rop = data['segment']

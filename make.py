@@ -14,8 +14,8 @@ GCC_BIN = BIN + '/gcc-4.2'
 GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fno-blocks', '-mapcs-frame', '-fomit-frame-pointer']
 GCC = [GCC_BASE, '-arch', 'armv7', '-mthumb']
 GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7', '-mthumb']
-GCC_ARMV7 = [GCC_BASE, '-arch', 'armv7', '-mthumb']
-GCC_NATIVE = ['gcc', GCC_FLAGS]
+GCC_ARMV6 = [GCC_BASE, '-arch', 'armv6', '-mthumb']
+GCC_NATIVE = ['gcc', '-arch', 'i386', '-arch', 'x86_64', GCC_FLAGS]
 HEADERS = ROOT + '/headers'
 
 def goto(dir):
@@ -38,10 +38,6 @@ def compile_to_bin(output, input=None, flags=[]):
     run(GCC, '-o', ofile, input, flags, '-nostdlib', '-nodefaultlibs', '-nostartfiles')
     run(ROOT + '/machdump/machdump', ofile, binfile)
 
-def config():
-    goto('.')
-    run('python', 'config/generate_config.py')
-
 def shelltester():
     goto('shelltester')
     compile_stuff(['shelltester.c'], 'shelltester', strip=False)
@@ -53,7 +49,7 @@ def machdump():
 
 def install():
     goto('install')
-    compile_stuff(['install.m'], 'install.dylib', cflags=['-I../headers', '-fblocks'], ldflags=['-framework', 'Foundation', '-framework', 'GraphicsServices', '-L.', '-ltar', '-llzma', '-dynamiclib'])
+    compile_stuff(['install.m'], 'install.dylib', gcc=GCC_ARMV6, cflags=['-I../headers', '-fblocks'], ldflags=['-framework', 'Foundation', '-framework', 'GraphicsServices', '-L.', '-ltar', '-llzma', '-dynamiclib'])
 
 def locutus():
     goto('locutus')
@@ -63,7 +59,6 @@ def locutus():
     compile_stuff(['locutus.c', 'inject.c', 'baton.S',  'locutus_server_.c'], 'locutus', cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork']+cflags, ldid=True, ent='ent.plist')
 
 def goo():
-    config()
     goto('goo')
     #run('python', 'setup.py'
 
@@ -73,7 +68,7 @@ def goo_catalog():
     datautils_native()
     sandbox2()
     goto('goo/catalog')
-    run('../../datautils/make_kernel_patchfile', '../../config/cur/kern', '../../sandbox2/sandbox.bin', 'patchfile')
+    run('../../datautils/make_kernel_patchfile', '../../config/cur/kern', '../../sandbox2/sandbox.o', 'patchfile')
     compile_to_bin('kcode', ['kcode.S'])
 
 def goo_catalog_dejavu():
@@ -108,7 +103,6 @@ def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=
         run_multiple(*commands)
 
 def catalog2():
-    config()
     goto('catalog2')
     
     run('python', 'gen_syscalls.c.py')
@@ -124,24 +118,22 @@ def chain():
     goto('chain')
     cf = ['-marm', '-DUSE_ASM_FUNCS=0', '-fblocks']
     ldf=['-dynamiclib', '-nostdlib', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-read_only_relocs', 'suppress']
-    compile_stuff(['chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'annoyance.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', gcc=GCC_ARMV7, cflags=cf, ldflags=ldf, strip=False)
+    compile_stuff(['chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'annoyance.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', cflags=cf, ldflags=ldf, strip=False)
     compile_stuff(['chain-user.c'], 'chain-user', ldflags=['-framework', 'IOKit', '-framework', 'CoreFoundation'])
 
 def data(native=True):
     goto('data')
-    run_multiple(['make', 'clean'], ['make', 'GCC=gcc' if native else 'all'])
+    run_multiple(['make', 'clean'], ['make', 'NATIVE=%d' % native])
 
 def datautils(native=False):
-    config()
     data(native)
     goto('datautils')
 
     gcc = GCC_NATIVE if native else GCC
     ldid = strip = not native
     def cds(files, output):
-        return compile_stuff(files, output, cflags=['-DIMG3_SUPPORT', '-I..', '-O3'], ldflags=['-L../data', '-ldata'], gcc=gcc, ldid=ldid, strip=strip)
+        return compile_stuff(files, output, cflags=['-DIMG3_SUPPORT', '-I..', '-O3'], ldflags=['../data/libdata.a'], gcc=gcc, ldid=ldid, strip=strip)
 
-    cds(['dmini.c'], 'dmini')
     cds(['make_kernel_patchfile.c'], 'make_kernel_patchfile')
     cds(['apply_patchfile.c'], 'apply_patchfile')
     cds(['dyld_to_pwn.c'], 'dyld_to_pwn')
@@ -151,7 +143,7 @@ def datautils_native():
 
 def sandbox2():
     goto('sandbox2')
-    compile_to_bin('sandbox', ['sandbox.S'], ['-D_patch_start=start'])
+    run(GCC_ARMV6, '-c', '-o', 'sandbox.o', 'sandbox.S')
 
 def nullfs():
     goto('nullfs')

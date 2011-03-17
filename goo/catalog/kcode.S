@@ -23,7 +23,7 @@ pf_loop:
     ldr r1, [r0], #4 ;# datalen
     cmp r1, #4
     bne copy_loop
-    # if it's 4, it must be done atomically
+    ;# if it's 4, it must be done atomically
     ldr lr, [r0]
     str lr, [r3]
     b inval_loop
