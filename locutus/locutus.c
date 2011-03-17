@@ -77,6 +77,7 @@ static void did_download(size_t bytes) {
 }
 
 static void pause_it(CFStringRef err) {
+    if(err) CFShow(err);/* XXX */
     paused = true;
     for(struct request *r = requests; r < requests_end; r++) {
         if(r->read_stream) {
@@ -346,10 +347,8 @@ static void update_state(const char *state, CFStringRef err) {
         strcpy(errs, "ok");
     }
 
-    fprintf(fp, "%d %s %f %s\n", (int) getpid(), state, progress, errs);
-
-    flock(fd, LOCK_UN);
-    close(fd);
+    fprintf(fp, "%d\t%s\t%f\t%s\t\n", (int) getpid(), state, progress, errs);
+    fclose(fp);
     notify_post("locutus.updated-state");
 }
 
