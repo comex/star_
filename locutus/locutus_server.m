@@ -1,7 +1,6 @@
 #include <mach/mach.h>
 #include <mach-o/dyld.h>
 #include <stdio.h>
-//#include <servers/bootstrap.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <syslog.h>
@@ -9,7 +8,6 @@
 #include <notify.h>
 #import <UIKit/UIKit.h>
 #include <objc/runtime.h>
-
 
 static NSString *const bundle_identifier = @"com.saurik.Cydia.notreally";
 
@@ -21,10 +19,9 @@ static Class MyIcon;
 static id icon;
 static id icon_controller;
 static id icon_model;
-
-static NSString *display_name;
-
+static UIImage *icon_image;
 static UIAlertView *alert_view;
+static NSString *display_name;
 
 static inline NSString *_(NSString *key) {
     NSString *r = [[NSBundle mainBundle] localizedStringForKey:key value:nil table:@"SpringBoard"];
@@ -49,6 +46,8 @@ static inline NSString *_(NSString *key) {
 -(void)setDelegate:(id)delegate;
 -(void)setDownload:(id)download;
 -(void)updateDisplayName;
+-(id)darkenedIconImage:(id)image alpha:(float)alpha;
+-(id)darkenedIcon:(id)image alpha:(float)alpha;
 @end
 
 @interface SBIconController {
@@ -64,21 +63,6 @@ static inline NSString *_(NSString *key) {
 +(id)sharedInstance;
 -(void)addIcon:(id)icon;
 //-(void)removeIcon:(id)icon;
-@end
-
-@interface MyDelegate : NSObject {
-}
-@end
-@implementation MyDelegate
-- (void)alertView:(UIAlertView *)alertView clickedButtonAtIndex:(NSInteger)buttonIndex {
-    if(buttonIndex == 0) {
-        sk_handler(0);
-        [alert_view release];
-        alert_view = nil;
-    } else {
-        notify_post("locutus.pause"); 
-    }
-}
 @end
 
 static notify_handler_t sk_handler = ^(int token) {
@@ -112,16 +96,22 @@ static void MyIcon_completeUninstall(id self, SEL sel) {
     sk_handler(0); 
 }
 
+
+static void MyIcon_alertView_clickedButtonAtIndex(id self, SEL sel, UIAlertView *alertView, NSInteger buttonIndex) {
+    if(buttonIndex == 0) {
+        sk_handler(0);
+        [alert_view release];
+        alert_view = nil;
+    } else {
+        notify_post("locutus.pause"); 
+    }
+}
+
 static void set_progress(float progress) {
     id _progress = nil;
     object_getInstanceVariable(icon, "_progress", (void **) &_progress);
     [_progress setProgress:progress];
 }
-
-static void override(SEL sel, IMP imp) {
-    method_setImplementation(class_getInstanceMethod(MyIcon, sel), imp);
-}
-#define OVERRIDE(x) override(@selector(x), (IMP) MyIcon_##x)
 
 __attribute__((constructor))
 static void init() {
@@ -131,11 +121,13 @@ static void init() {
     char name[32];
     sprintf(name, "MyIcon_%p", &init);
     MyIcon = objc_allocateClassPair(objc_getClass("SBDownloadingIcon"), name, 0);
+#define OVERRIDE(x) class_replaceMethod(MyIcon, @selector(x), (IMP) MyIcon_##x, "")
     OVERRIDE(displayName);
     OVERRIDE(applicationBundleID);
     OVERRIDE(launch);
     OVERRIDE(allowsUninstall);
     OVERRIDE(completeUninstall);
+    class_addMethod(MyIcon, @selector(alertView:clickedButtonAtIndex:), (IMP) MyIcon_alertView_clickedButtonAtIndex, "@:@l");
     objc_registerClassPair(MyIcon);
 
     icon_controller = [objc_getClass("SBIconController") sharedInstance];
@@ -165,36 +157,37 @@ static void init() {
         NSLog(@"err = <%@>", err);
         if(![err isEqualToString:@"ok"]) {
             [alert_view dismissWithClickedButtonIndex:0 animated:YES]; // shouldn't happen!
-            alert_view = [[UIAlertView alloc] initWithTitle:@"JailbreakMe" message:err delegate:[[MyDelegate alloc] init] cancelButtonTitle:_(@"DATA_PLAN_FAILED_TRY_LATER") otherButtonTitles:_(@"DATA_PLAN_FAILED_TRY_AGAIN"), nil];
+            alert_view = [[UIAlertView alloc] initWithTitle:@"There was a problem downloading the jailbreak files." message:err delegate:icon cancelButtonTitle:@"Cancel" otherButtonTitles:@"Retry", nil];
             [alert_view show];
         }
-    });
-    
-    notify_register_dispatch("locutus.got-file", &tokens[2], dispatch_get_main_queue(), ^(int token) {
-        UIImage *image = [UIImage imageWithContentsOfFile:@"/tmp/Cydia.png"];
-        if(image) {
-            if([icon respondsToSelector:@selector(setDisplayedIconImage:)]) {
-                [icon setDisplayedIconImage:image];
-            } else {
-                [icon setDisplayedIcon:image];
+
+        if(!icon_image) {
+            icon_image = [UIImage imageWithContentsOfFile:@"/tmp/Cydia.png"];
+            if(icon_image) {
+                if([icon respondsToSelector:@selector(setDisplayedIconImage:)]) {
+                    [icon setDisplayedIconImage:[icon darkenedIconImage:icon_image alpha:0.5]];
+                } else {
+                    [icon setDisplayedIcon:[icon darkenedIcon:icon_image alpha:0.5]];
+                }
             }
-            notify_cancel(token);
         }
     });
 
-    NSLog(@"done, MyIcon is now %p", MyIcon);
+    notify_register_dispatch("locutus.installed", &tokens[2], dispatch_get_main_queue(), ^(int token) {
+          
+    });
 
-    icon = [MyIcon alloc];
-    NSLog(@"omg");
-    icon = [icon initWithLeafIdentifier:bundle_identifier];
-    [icon setDelegate:icon_controller];
-    display_name = _(@"WAITING_ICON_LABEL");
-    NSLog(@"%@", icon);
-    [icon_model addIcon:icon];
-    //[icon setDownload:[[NSObject alloc] init]];
-    //[icon setDelegate:[[NSObject alloc] init]];
-    [icon_controller addNewIconToDesignatedLocation:icon animate:NO scrollToList:NO saveIconState:YES];
-    [icon_controller setIconToReveal:icon];
-    [icon release];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"done, MyIcon is now %p", MyIcon);
+
+        icon = [[MyIcon alloc] initWithLeafIdentifier:bundle_identifier];
+        [icon setDelegate:icon_controller];
+        display_name = _(@"WAITING_ICON_LABEL");
+        NSLog(@"%@", icon);
+        [icon_model addIcon:icon];
+        [icon_controller addNewIconToDesignatedLocation:icon animate:NO scrollToList:NO saveIconState:YES];
+        [icon_controller setIconToReveal:icon];
+        [icon release];
+    });
     [pool release];
 }
