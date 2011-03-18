@@ -41,13 +41,11 @@ static inline NSString *_(NSString *key) {
 }
 -(id)initWithLeafIdentifier:(id)leafIdentifier;
 -(void)setDisplayedIconImage:(id)image; // new
--(void)setDisplayedIcon:(id)image; // old
 -(void)remove;
 -(void)setDelegate:(id)delegate;
 -(void)setDownload:(id)download;
 -(void)updateDisplayName;
 -(id)darkenedIconImage:(id)image alpha:(float)alpha;
--(id)darkenedIcon:(id)image alpha:(float)alpha;
 @end
 
 @interface SBIconController {
@@ -164,11 +162,7 @@ static void init() {
         if(!icon_image) {
             icon_image = [UIImage imageWithContentsOfFile:@"/tmp/Cydia.png"];
             if(icon_image) {
-                if([icon respondsToSelector:@selector(setDisplayedIconImage:)]) {
-                    [icon setDisplayedIconImage:[icon darkenedIconImage:icon_image alpha:0.5]];
-                } else {
-                    [icon setDisplayedIcon:[icon darkenedIcon:icon_image alpha:0.5]];
-                }
+                [icon setDisplayedIconImage:[icon darkenedIconImage:icon_image alpha:0.5]];
             }
         }
     });
