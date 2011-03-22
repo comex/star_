@@ -1,4 +1,3 @@
-#include <config/config_asm.h>
 .thumb
 .syntax unified
 start:

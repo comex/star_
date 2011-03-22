@@ -44,21 +44,10 @@ def F(*frameworks):
         ret.append(framework)
     return ret
 
-def compile_to_bin(output, input=None, flags=[]):
-    # requires machdump
-    ofile = output + '.o'
-    binfile = output + '.bin'
-    run(GCC, '-o', ofile, input, flags, '-nostdlib', '-nodefaultlibs', '-nostartfiles')
-    run(ROOT + '/machdump/machdump', ofile, binfile)
-
 def shelltester():
     goto('shelltester')
     compile_stuff(['shelltester.c'], 'shelltester', strip=False)
     compile_stuff(['ghost.c'], 'ghost', strip=False, ldflags=['-framework', 'CoreFoundation', '-framework', 'CoreGraphics', '-framework', 'ImageIO'])
-
-def machdump():
-    goto('machdump')
-    run(GCC_NATIVE, '-o', 'machdump', 'machdump.c')
 
 def install():
     goto('install')
@@ -76,22 +65,22 @@ def goo():
     goto('goo')
     #run('python', 'setup.py'
 
-def goo_catalog():
+def catalog():
     locutus()
     goo()
     datautils_native()
     sandbox2()
-    goto('goo/catalog')
-    run('../../datautils/make_kernel_patchfile', '../../config/cur/kern', '../../sandbox2/sandbox.o', 'patchfile')
-    compile_to_bin('kcode', ['kcode.S'])
+    goto('catalog')
+    run('../datautils/make_kernel_patchfile', '../config/cur/kern', '../sandbox2/sandbox.o', 'patchfile')
+    run(GCC, '-c', '-o', 'kcode.o', 'kcode.S')
 
-def goo_catalog_dejavu():
-    goo_catalog()
-    run('python', 'catalog.py', 'two', '../../config/cur/cache', '../../config/cur/kern', 'patchfile')
+def catalog_dejavu():
+    catalog()
+    run('python', 'catalog.py', 'two', '../config/cur/cache', '../config/cur/kern', 'patchfile')
 
-def goo_catalog_two():
-    goo_catalog()
-    run('python', 'catalog.py', 'two', '../../config/cur/cache', '../../config/cur/kern', 'patchfile')
+def catalog_two():
+    catalog()
+    run('python', 'catalog.py', 'two', '../config/cur/cache', '../config/cur/kern', 'patchfile')
 
 def launchd():
     goo_catalog_two()

