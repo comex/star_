@@ -11,10 +11,10 @@ os.environ['PYTHONPATH'] = ROOT+'/datautils:'+ROOT+'/goo'
 # configgy
 
 m = re.search('bs/(i[A-Z][a-z]+[0-9],[0-9])_([0-9A-Z\._]+)', os.readlink(ROOT + '/config/cur'))
-device = m.group(1)
-version = m.group(2)
-platform, version = m.groups()
+os.environ['DEVICE'] = device = m.group(1)
+os.environ['VERSION'] = version = m.group(2)
 is_armv7 = device not in ['iPhone1,1', 'iPhone1,2', 'iPod1,1', 'iPod2,1']
+os.environ['ARMV7'] = str(int(is_armv7))
 
 def cify(x):
     return re.sub('[^A-Z0-9]', '_', x.upper())
@@ -24,7 +24,7 @@ GCC_FLAGS = ['-std=gnu99', '-gstabs', '-Werror', '-Wimplicit', '-Wuninitialized'
 SDK = '/var/sdk'
 BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
 GCC_BIN = BIN + '/gcc-4.2'
-GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fno-blocks', '-mapcs-frame', '-fomit-frame-pointer']
+GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fblocks', '-mapcs-frame', '-fomit-frame-pointer']
 GCC = [GCC_BASE, '-arch', ('armv7' if is_armv7 else 'armv6'), '-mthumb', '-DDEVICE_%s' % cify(device), '-DVERSION_%s' % cify(version)]
 GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7', '-mthumb']
 GCC_ARMV6 = [GCC_BASE, '-arch', 'armv6', '-mthumb']

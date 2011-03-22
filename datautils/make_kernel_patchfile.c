@@ -55,16 +55,15 @@ addr_t find_sysctl(struct binary *binary, const char *name) {
 void do_kernel(struct binary *binary, struct binary *sandbox) {
     bool is_armv7 = binary->actual_cpusubtype == 9;
 
-    bool four_dot_three = false;
     addr_t _kernel_pmap, _PE_i_can_has_debugger, _vn_getpath, _memcmp;
     if(0) {
         _kernel_pmap = 0x8027e2dc;
-        _PE_i_can_has_debugger = 0x80203f74;
+        _PE_i_can_has_debugger = 0x80203f75;
         _vn_getpath = 0x8008d7bd;
         _memcmp = 0x8006558d;
     } else {
         _kernel_pmap = b_sym(binary, "_kernel_pmap", false, true);
-        _PE_i_can_has_debugger = b_sym(binary, "_PE_i_can_has_debugger", false, true);
+        _PE_i_can_has_debugger = b_sym(binary, "_PE_i_can_has_debugger", true, true);
         _vn_getpath = b_sym(binary, "_vn_getpath", true, true);
         _memcmp = b_sym(binary, "_memcmp", true, true);
     }
@@ -76,16 +75,19 @@ void do_kernel(struct binary *binary, struct binary *sandbox) {
           b_read32(binary, _kernel_pmap) + 0x420,
           uint32_t, {0});
     // the second ref to mem_size
-    // 4.3: 23 68 - c3 f8 20 84
-    // 4.2: 03 68 - c3 f8 20 24
-    if(four_dot_three) {
-        patch("-kernel_pmap.nx_enabled initializer",
-              find_data(b_macho_segrange(binary, "__TEXT"), "23 68 - c3 f8 24 84", 0, true),
-              uint32_t, {0x6424f8c3});
-    } else {
-        patch("-kernel_pmap.nx_enabled initializer",
-              find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "03 68 - c3 f8 20 24" : "84 23 db 00 - d5 50 22 68", 0, true),
-              uint32_t, {is_armv7 ? 0xc420f8c3 : 0x682250d0});
+    bool four_dot_three;
+    {
+        addr_t nxe = find_data(b_macho_segrange(binary, "__TEXT"), "23 68 - c3 f8 24 84", 0, false);
+        four_dot_three = nxe;
+        if(nxe) {
+            patch("-kernel_pmap.nx_enabled initializer",
+                  nxe,
+                  uint32_t, {0x6424f8c3});
+        } else {
+            patch("-kernel_pmap.nx_enabled initializer",
+                  find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "03 68 - c3 f8 20 24" : "84 23 db 00 - d5 50 22 68", 0, true),
+                  uint32_t, {is_armv7 ? 0xc420f8c3 : 0x682250d0});
+        }
     }
 
     patch("-lunchd",
@@ -109,9 +111,17 @@ void do_kernel(struct binary *binary, struct binary *sandbox) {
     patch("AMFI", mystery, uint32_t, {is_armv7 ? 0x47702001 : 0xe3a00001});
 
     // PE_i_can_has_debugger (patch4) - so AMFI allows non-ldid'd binaries (and some other stuff is allowed)
-    patch("PE_i_can_has_debugger",
-          _PE_i_can_has_debugger,
-          uint32_t, {0x47702001});
+    // switching to patching the actual thing, and the startup code
+    // why? debug_enabled is used directly in kdp, and I was not emulating PE_i_can_has's behavior correctly anyway
+    patch("debug_enabled",
+          resolve_ldr(binary, _PE_i_can_has_debugger + 2),
+          uint32_t, {1});
+
+    patch("debug-enabled",
+          // it does occur in multiple places, although only once in __TEXT I think
+          find_string(b_macho_segrange(binary, "__TEXT"), "debug-enabled", 1, true),
+          uint8_t, {'^'});
+
 
 
     // task_for_pid 0
