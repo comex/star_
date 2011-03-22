@@ -113,15 +113,14 @@ void do_kernel(struct binary *binary, struct binary *sandbox) {
     // PE_i_can_has_debugger (patch4) - so AMFI allows non-ldid'd binaries (and some other stuff is allowed)
     // switching to patching the actual thing, and the startup code
     // why? debug_enabled is used directly in kdp, and I was not emulating PE_i_can_has's behavior correctly anyway
-    patch("debug_enabled",
+    printf("%x\n", find_string(b_macho_segrange(binary, "__TEXT"), "debug-enabled", 1, true));
+    patch("+debug_enabled",
           resolve_ldr(binary, _PE_i_can_has_debugger + 2),
           uint32_t, {1});
 
-    patch("debug-enabled",
-          // it does occur in multiple places, although only once in __TEXT I think
-          find_string(b_macho_segrange(binary, "__TEXT"), "debug-enabled", 1, true),
-          uint8_t, {'^'});
-
+    patch("debug_enabled initializer",
+          find_data(b_macho_segrange(binary, "__TEXT"), is_armv7 ? "04 22 01 92 00 98 .. 49 -" : "?", 0, true),
+          uint32_t, {0x60082001}); // mov r0, #1; str r0, [r1]
 
 
     // task_for_pid 0
