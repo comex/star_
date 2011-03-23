@@ -10,6 +10,7 @@ def heapadd(*stuff):
     global heap, dbginfo
     dbginfo.append((len(heap), getdebugname())) # so we know where we came from
     for a in stuff:
+        assert not isinstance(a, (troll_string, str)) or len(a) % 4 == 0
         heap.append(I(a))
 
 def heapdump(heap, names=None):
@@ -97,7 +98,7 @@ def init(*regs, **kwargs):
 def finalize(heapaddr=None):
     global heap, sheap
     clear_fwd()
-    nheap = heap + sheap
+    nheap = heap + sheap 
     result = simplify_times(nheap, heapaddr, 4)
     
     return result

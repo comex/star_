@@ -188,7 +188,6 @@ class NotYetError(Exception): pass
 class car(statue):
     __slots__ = ['_val', 'addr']
     def simplify(self, addr):
-        print 'self=%r' % self
         if addr is not None and not hasattr(self, '_val'):
             self.addr = addr
             self._val = self.val()
@@ -234,6 +233,8 @@ class pointed_(statue): # string-like
         return simplify(self.sub, addr)
     def __len__(self):
         return len(self.sub)
+    def __repr__(self):
+        return '<pointed: %r>' % self.sub
 
 def pointed(*args, **kwargs):
     return troll_string(pointed_(*args, **kwargs))
@@ -247,6 +248,8 @@ class pointer(car): # int-like
         if addr is None:
             raise NotYetError
         return addr
+    def __repr__(self):
+        return '<pointer: %r>' % self.sub
 
 reloc_handlers = {}
 
@@ -290,38 +293,39 @@ class reloc:
 
 
 # for debugging!
-
-failures = set()
-def simplify(x, addr):
-    if isinstance(x, (int, long, basestring)):
-        return x
-    else:
-        try:
-            result = x.simplify(addr)
-        except NotYetError:
-            if not isinstance(x, troll_string): failures.add(x)
-            raise
+if False:
+    failures = set()
+    def simplify(x, addr):
+        if isinstance(x, (int, long, basestring)):
+            return x
         else:
-            if x in failures: failures.remove(x)
-            return result
+            try:
+                result = x.simplify(addr)
+            except NotYetError:
+                if not isinstance(x, troll_string): failures.add(x)
+                raise
+            else:
+                if x in failures: failures.remove(x)
+                return result
 
-def excepthook(typ, value, traceback):
-    sys.__excepthook__(typ, value, traceback)
-    print 'The failures were:'
-    fail = list(failures)
-    for f in fail:
-        print f
-        print '--'
-sys.excepthook = excepthook
+    def excepthook(typ, value, traceback):
+        sys.__excepthook__(typ, value, traceback)
+        print 'The failures were:'
+        fail = list(failures)
+        for f in fail:
+            print f
+            print '--'
+    sys.excepthook = excepthook
 
-def hook_init(cls):
-    class newclass(cls):
-        def __init__(self, *args, **kwargs):
-            self.debugname = getdebugname()
-            cls.__init__(self, *args, **kwargs)
-        def __repr__(self):
-            return '"%s"%s' % (self.debugname, cls.__repr__(self))
-    newclass.__name__ = cls.__name__
-    return newclass
-later_s_ = hook_init(later_s_)
-later = hook_init(later)
+    def hook_init(cls):
+        class newclass(cls):
+            def __init__(self, *args, **kwargs):
+                self.debugname = getdebugname()
+                cls.__init__(self, *args, **kwargs)
+            def __repr__(self):
+                return '"%s"%s' % (self.debugname, cls.__repr__(self))
+        newclass.__name__ = cls.__name__
+        return newclass
+    later_s_ = hook_init(later_s_)
+    later = hook_init(later)
+    pointed_ = hook_init(pointed_)

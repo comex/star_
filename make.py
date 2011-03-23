@@ -72,7 +72,7 @@ def catalog():
     sandbox2()
     goto('catalog')
     run('../datautils/make_kernel_patchfile', '../config/cur/kern', '../sandbox2/sandbox.o', 'patchfile')
-    run(GCC, '-c', '-o', 'kcode.o', 'kcode.S')
+    run(GCC, '-c', '-o', 'kcode.o', 'kcode.S', '-Oz')
 
 def catalog_dejavu():
     catalog()
