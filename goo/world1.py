@@ -58,6 +58,11 @@ def set_sp_to(sp):
     set_fwd('R7', sp)
     clear_fwd() # pop {r7, pc} but that's not in this stack
 
+def set_sp_to_sp():
+    m = pointed('')
+    set_sp_to(pointer(m))
+    heapadd(m, fwd('R7'), fwd('PC'))
+
 def fancy_set_sp_to(sp):
     # ditto for r8, r10, r11, r4-r7, pc
     set_fwd('PC', dmini.cur.find_multiple('+ a7 f1 18 0d bd e8 00 0d f0 bd', '- 18 d0 47 e2 00 0d bd e8 f0 80 bd e8'))
@@ -128,18 +133,3 @@ def store_deref_plus_offset(deref, offset, value):
     load_r0_from(deref)
     add_r0_const(offset)
     store_to_r0(value)
-
-
-def init_with_initializer_stub():
-    m = pointed('')
-    init()
-    heapadd(m)
-    # 7 - cmd
-    # 8 - cmdsize
-    # 9 - ...
-    
-    # ldmib r0!, {r0, r1, r2, r3,
-    #             r4, r5, r6, ip,
-    #             sp, lr, pc}
-    # 
-    return dmini.cur.find_basic('- 7f f0 f0 e9'), I(m, fwd('LR'), fwd('PC'))

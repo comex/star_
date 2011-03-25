@@ -3,30 +3,29 @@ import cPickle as pickle
 from goo import *
 import dmini
 
-baseaddr = 0x13000000
-stacksize = 1048576
-
 dmini.init(sys.argv[1], True)
 
 data = pickle.load(open(sys.argv[2], 'rb'))
 rop = data['segment']
+rop_address = data['rop_address']
+stack_size = rop_address - 0x1000
+linkedit_size = 0x10000
+linkedit_address = data['init_sp'] - linkedit_size
 
-# ROP variables and stuff
+rop_relocs = []
+if isinstance(data['initializer'], reloc):
+    initializer = pointed(I(data['initializer'].value))
+    rop_relocs.append(linkedit_address + pointer(initializer))
+else:
+    initializer = pointed(I(data['initializer']))
 
-relocs = []
-ropmarker = pointed('')
-ropbase = pointer(ropmarker)
 
 def func(value, addr):
-    relocs.append(addr)
+    rop_relocs.append(addr)
     return value
 reloc_handlers[3] = func
 
-def func(value, addr):
-    return ropbase + value
-reloc_handlers[0] = func
-
-rop = rop.simplify(ropbase)
+rop = simplify(rop, rop_address)
 
 PROT_READ, PROT_WRITE, PROT_EXECUTE = 1, 2, 4
 
@@ -48,13 +47,10 @@ linkedit = later_s(lambda addr: I(
     len(commands), # sizeofcmds
     ( # flags
         4 # MH_DYLD_LINK
+        | 0x10 # MH_PREBOUND
         | 0x80 # MH_TWOLEVEL
     )
 ) + commands + linkedit_rest)
-
-def pad(x, p):
-    l = len(x)
-    return x + '\0' * (-l & (p - 1))
 
 def command(cmd, stuff):
     global ncmds
@@ -64,15 +60,14 @@ def command(cmd, stuff):
     commands.append(stuff)
 
 def segment(segname, vmaddr, vmsize, data, maxprot, initprot, sects=[]):
-    data = pad(data, 0x1000)
-    l = len(data)
-    if vmsize is None: vmsize = l
+    length = len(data)
+    if vmsize is None: vmsize = (length + 0xfff) & ~0xfff
     offset = len(segments)
     stuff = segname.ljust(16, '\0') + I(
         vmaddr,
         vmsize,
         offset,
-        l,
+        length,
         maxprot,
         initprot,
         len(sects), # nsects
@@ -91,7 +86,7 @@ def segment(segname, vmaddr, vmsize, data, maxprot, initprot, sects=[]):
             0) # reserved2
 
     command(1, stuff) # LC_SEGMENT 
-    segments.append(data)
+    segments.append(pad(data, 0x1000))
 
 command(0xe, # LC_LOAD_DYLINKER
         I(12) +
@@ -109,7 +104,7 @@ def load_dylib(name, timestamp, current_version, compatibility_version):
     dylib_ordinal += 1
     return dylib_ordinal
 
-def import_sym(ordinal, name, addend=0):
+def import_sym(ordinal, name, subtract=0):
     global strtab, symtab
     strx = len(strtab)
     strtab += name + '\0'
@@ -118,16 +113,18 @@ def import_sym(ordinal, name, addend=0):
         0, # n_type = N_UNDF
         0, # n_sect is ignored?
         ordinal << 8, # n_desc
-        addend, # n_value (with prebound set, this is an addend)
+        subtract, # n_value (with prebound set, this is subtracted)
     )
     return len(symtab) / 12 - 1
 
 def reloc(sym, address):
+    global relocs
     r_pcrel = 0
     r_length = 2
     r_extern = 1
     r_type = 0
-    relocs += struct.pack('II',
+
+    relocs += I(
         address,
         (r_type << 28) |
         (r_extern << 27) |
@@ -135,8 +132,12 @@ def reloc(sym, address):
         (r_pcrel << 24) |
         sym)
 
-foo = load_dylib('/usr/lib/libSystem.B.dylib', 0, 0, 0x010000)
-s = import_sym(foo, '_getpid', dmini.cur.sym('_getpid'))
+libs = {}
+for path in data['libs']:
+    libs[path] = load_dylib(path, 0, 0, 0x010000)
+sym = import_sym(libs['/usr/lib/libSystem.B.dylib'], '_getpid', subtract=dmini.cur.sym('_getpid'))
+for addr in rop_relocs:
+    reloc(sym, addr)
 
 symtab = pointed(symtab)
 relocs = pointed(relocs)
@@ -145,7 +146,7 @@ strtab = pointed(strtab)
 command(0xb, I( # LC_DYSYMTAB
     0, 0, # localsym
     0, 0, # extdefsym
-    pointer(symtab), len(symtab) / 12, # undefsym
+    0, len(symtab) / 12, # undefsym
     0, 0, # toc
     0, 0, # modtab
     0, 0, # extrefsym
@@ -161,28 +162,35 @@ command(2, I( # LC_SYMTAB
     len(strtab), # strsize
 ))
 
+linkedit_rest.append(initializer)
 linkedit_rest.append(symtab)
 linkedit_rest.append(relocs)
 linkedit_rest.append(strtab)
-linkedit_rest.append(ropmarker)
-linkedit_rest.append(rop)
 
 segment('__LINKEDIT', 
-    baseaddr,
-    None,
+    linkedit_address,
+    linkedit_size,
     linkedit,
     PROT_READ | PROT_WRITE,
     PROT_READ | PROT_WRITE,
     [{'sectname': '__init',
-      'offset': 0,
+      'offset': pointer(initializer),
       'size': 4,
       'flags': 0x9, # S_MOD_INIT_FUNC_POINTERS
       }]
 )
 
+segment('__ROP',
+    rop_address,
+    None,
+    rop,
+    PROT_READ | PROT_WRITE,
+    PROT_READ | PROT_WRITE
+)
+
 segment('__STACK',
-    baseaddr - stacksize,
-    stacksize,
+    rop_address - stack_size,
+    stack_size,
     '',
     PROT_READ | PROT_WRITE,
     PROT_READ | PROT_WRITE
@@ -192,17 +200,11 @@ command(5, I( # LC_UNIXTHREAD
     1, # ARM_THREAD_STATE
     17, # ARM_THREAD_STATE_COUNT,
     0, 0, 0, 0, 0, 0, 0, 0, # R0-R7
-    0, 0, 0, 0, 0, baseaddr, 0, baseaddr, # R8-R15
+    0, 0, 0, 0, 0, data['init_sp'], 0, linkedit_address, # R8-R15
     0, # CPSR
 ))
 
-try:
-    macho = simplify_times(segments, 0, 4)
-except:
-    import traceback
-    traceback.print_exc()
-    import code
-    code.interact(local=globals())
+macho = simplify_times(segments, 0, 4)
     
 open(sys.argv[3], 'wb', 0755).write(macho)
 

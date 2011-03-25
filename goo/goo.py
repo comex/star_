@@ -18,7 +18,7 @@ def heapdump(heap, names=None):
     dbginfo.append((10000, '?'))
     reverse = dict((v, k) for (k, v) in names.iteritems())
     stackunktargets = set()
-    for i, entry in enumerate(heap.unpack()):
+    for i, entry in enumerate(troll_string(heap).unpack()):
         if 4*i >= dbginfo[0][0]:
             sys.stdout.write('\n%08x %s: ' % (4*i, dbginfo.pop(0)[1].ljust(15)))
         if isinstance(entry, reloc):
@@ -29,14 +29,18 @@ def heapdump(heap, names=None):
         else:
             sys.stdout.write('\x1b[34m0x%x\x1b[0m ' % entry)
     sys.stdout.write('\n')
+    sys.stdout.write('%08x end\n' % (4*i))
 
+def pad(x, p):
+    l = len(x)
+    return x + '\0' * (-l & (p - 1))
 
 def ptr(str, null_terminate=False):
     global sheap
+    if null_terminate: str += '\0'
+    str = pad(str, 4)
     result = pointed(str)
     sheap.append(result)
-    if null_terminate: sheap.append('\0')
-    sheap.append('\0' * (-len(sheap) & 3))
     return pointer(result)
 
 def ptrI(*xs):
@@ -65,6 +69,7 @@ def set_fwd(name, val):
     assert fwds.has_key(name) and val is not None
     fwds[name].val = val
     del fwds[name]
+
 class fwd(statue):
     __slots__ = ['name', 'val']
     def __init__(self, name, force=False):
@@ -95,11 +100,11 @@ def init(*regs, **kwargs):
     heapadd(*map(fwd, regs))
 
 
-def finalize(heapaddr=None):
+def finalize(heapaddr=None, must_be_simple=True):
     global heap, sheap
     clear_fwd()
     nheap = heap + sheap 
-    result = simplify_times(nheap, heapaddr, 4)
+    result = simplify_times(nheap, heapaddr, 4, must_be_simple)
     
     return result
 

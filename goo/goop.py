@@ -9,12 +9,23 @@ def getdebugname():
         return '%s:%d' % (fn, f.f_lineno)
 
 
-def simplify_times(heap, addr, times):
+def simplify_times(heap, addr, times, must_be_simple=True):
     for i in xrange(times):
-        try:
-            return simplify(heap, addr)
-        except NotYetError:
-            if i == times - 1: raise
+        heap = simplify(heap, addr)
+    if must_be_simple and not is_simple(heap):
+        print heap
+        raise Exception('simplify_times: not simple')
+    return heap
+
+def is_simple(heap):
+    if isinstance(heap, (basestring, long, int, reloc)):
+        return True
+    elif isinstance(heap, I_):
+        return is_simple(heap.sub)
+    elif isinstance(heap, troll_string):
+        return all(map(is_simple, heap.bits))
+    else:
+        return False
 
 # __slots__ objects require __getstate__
 # why does this silly fix work?
@@ -41,31 +52,28 @@ class troll_string(statue):
             self.length = 0
         else:
             self.bits = [s]
-            try:
-                self.length = len(s)
-            except NotYetError:
-                self.length = None
+            self.length = len(s)
 
     def len(self):
         if self.length is None:
             total = 0
             for bit in self.bits:
-                try:
-                    l = len(bit)
-                except NotYetError:
+                l = len(bit)
+                if l is None:
                     total = None
-                else:
-                    if total is not None: total += l
-            if total is None: raise NotYetError
+                elif total is not None:
+                    total += l
             self.length = total
             return total
         return self.length
 
     def __len__(self):
-        try:
-            return self.len()
-        except NotYetError:
-            return later(lambda addr: self.len())
+        result = self.len()
+        if result is not None:
+            return result
+        else:
+            surrogate = troll_string(self)
+            return later(lambda addr: surrogate.len())
         
     def __add__(self, other):
         if len(self.bits) == 0: return other
@@ -93,28 +101,18 @@ class troll_string(statue):
 
     def simplify(self, addr):
         r = troll_string('')
-        nye = False
-        addr1 = addr
         for bit in self.bits:
-            try: 
-                bit = simplify(bit, addr1)
-            except NotYetError:
-                nye = True
+            if addr is not None:
+                addr1 = addr + r.len()
             else:
-                r.append(bit)
-                addr += len(bit)
-            if addr1 is not None:
-                try:
-                    addr1 += len(bit)
-                except NotYetError:
-                    nye = True
-                    addr1 = None
-        if addr1 is not None: self.length = addr1 - addr
-        if nye: raise NotYetError
-        if len(r.bits) == 1:
-            return r.bits[0]
+                addr1 = None
+            r.append(simplify(bit, addr1))
+        self.length = r.length
+        self.bits = r.bits
+        if len(self.bits) == 1:
+            return self.bits[0]
         else:
-            return r
+            return self
 
     def unpack(self):
         bits = []
@@ -148,8 +146,6 @@ class later_s_(statue):
         self._val = None
 
     def __len__(self):
-        if self.length is None:
-            raise NotYetError
         return self.length
 
     def simplify(self, addr):
@@ -176,6 +172,7 @@ class I_(statue):
 def I(*args):
     result = ''
     for arg in args:
+        assert arg is not None
         if hasattr(arg, '__len__'):
             result += arg
         elif isinstance(arg, (int, long)):
@@ -184,17 +181,24 @@ def I(*args):
             result += troll_string(I_(arg))
     return result
 
-class NotYetError(Exception): pass
 class car(statue):
     __slots__ = ['_val', 'addr']
     def simplify(self, addr):
-        if addr is not None and not hasattr(self, '_val'):
+        if not hasattr(self, '_val'):
             self.addr = addr
-            self._val = self.val()
-            assert self._val is not None
+            v = self.val()
+            if v is None: return self
+            self._val = v
         return simplify(self._val, addr)
     def later(self, other, func):
-        return later(lambda addr: func(self.simplify(addr), simplify(other, addr)))
+        def f(addr):
+            s = self.simplify(addr)
+            o = simplify(other, addr)
+            if s is not self or o is not other:
+                return func(s, o)
+            else:
+                return None
+        return later(f)
     def __add__(self, other):
         return self.later(other, lambda s, o: s + o)
     def __sub__(self, other):
@@ -242,11 +246,11 @@ def pointed(*args, **kwargs):
 class pointer(car): # int-like
     __slots__ = ['sub']
     def __init__(self, sub):
+        assert isinstance(sub.bits[0], pointed_)
         self.sub = sub
     def val(self):
         addr = self.sub.bits[0].addr
-        if addr is None:
-            raise NotYetError
+        if addr is None: return None
         return addr
     def __repr__(self):
         return '<pointer: %r>' % self.sub
@@ -299,22 +303,22 @@ if False:
         if isinstance(x, (int, long, basestring)):
             return x
         else:
-            try:
-                result = x.simplify(addr)
-            except NotYetError:
-                if not isinstance(x, troll_string): failures.add(x)
-                raise
-            else:
-                if x in failures: failures.remove(x)
-                return result
+            result = x.simplify(addr)
+            if result is x and not isinstance(x, troll_string):
+                failures.add(x)
+            elif x in failures:
+                failures.remove(x)
+            return result
 
     def excepthook(typ, value, traceback):
         sys.__excepthook__(typ, value, traceback)
         print 'The failures were:'
-        fail = list(failures)
-        for f in fail:
+        for f in list(failures):
             print f
             print '--'
+        import code
+        code.interact(local=globals())
+        
     sys.excepthook = excepthook
 
     def hook_init(cls):

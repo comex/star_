@@ -19,7 +19,6 @@ static Class MyIcon;
 static id icon;
 static id icon_controller;
 static id icon_model;
-static UIImage *icon_image;
 // Remove Cancel
 // Cancel Retry
 // quit   pause
@@ -173,12 +172,6 @@ static void init() {
             [alert_view show];
         }
 
-        if(!icon_image) {
-            icon_image = [UIImage imageWithContentsOfFile:@"/tmp/Cydia.png"];
-            if(icon_image) {
-                [icon setDisplayedIconImage:[icon darkenedIconImage:icon_image alpha:0.5]];
-            }
-        }
     });
 
     notify_register_dispatch("locutus.installed", &tokens[2], dispatch_get_main_queue(), ^(int token) {
@@ -196,6 +189,12 @@ static void init() {
         [icon_controller addNewIconToDesignatedLocation:icon animate:NO scrollToList:NO saveIconState:YES];
         [icon_controller setIconToReveal:icon];
         [icon release];
+        
+        NSString *icon_url = [[UIScreen mainScreen] scale] > 1.5 ? @"http://a.qoid.us/Cydia@2x.png" : @"http://a.qoid.us/Cydia.png";
+        UIImage *icon_image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:icon_url]]];
+        if(icon_image) {
+            [icon setDisplayedIconImage:[icon darkenedIconImage:icon_image alpha:0.5]];
+        }
     });
     
     [pool release];

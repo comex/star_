@@ -16,7 +16,6 @@
 #include <sys/stat.h>
 
 // todo: test interrupted downloads
-// darken
 
 //#define TINY
 
@@ -50,11 +49,6 @@ static struct request {
     };
 } requests[] = {
     { CFSTR("http://a.qoid.us/test"), "/tmp/foo", CFSTR("application/x-bzip2"), {}},
-#if defined(DEVICE_IPHONE3_1) || defined(DEVICE_IPOD4_1)
-    { CFSTR("http://a.qoid.us/Cydia@2x.png"), "/tmp/Cydia@2x.png", CFSTR("image/png"), {}}
-#else
-    { CFSTR("http://a.qoid.us/Cydia.png"), "/tmp/Cydia.png", CFSTR("image/png"), {}}
-#endif
 }, *const requests_end = requests + sizeof(requests)/sizeof(*requests);
 
 __attribute__((noreturn))

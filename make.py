@@ -56,7 +56,7 @@ def install():
 def locutus():
     goto('locutus')
     cflags = ['-DFNO_ASSERT_MESSAGES', '-fblocks', '-Oz', '-Wno-parentheses', '-miphoneos-version-min=4.0']
-    compile_stuff(['locutus_server.m'], 'locutus_server.dylib', cflags=cflags+['-Wno-deprecated-declarations'], ldflags=['-dynamiclib', '-framework', 'Foundation', '-framework', 'UIKit', '-install_name', 'X'*32]+cflags, ldid=False)
+    compile_stuff(['locutus_server.m'], 'locutus_server.dylib', gcc=GCC_ARMV6, cflags=cflags+['-Wno-deprecated-declarations'], ldflags=['-dynamiclib', '-framework', 'Foundation', '-framework', 'UIKit', '-install_name', 'X'*32]+cflags, ldid=False)
     run('sh', '-c', 'xxd -i locutus_server.dylib | sed "s/locutus_server_//g" > locutus_server_.c')
     compile_stuff(['locutus.c', 'inject.c', 'baton.S',  'locutus_server_.c'], 'locutus', cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork']+cflags, ldid=True, ent='ent.plist')
 build = locutus
@@ -82,10 +82,10 @@ def catalog_two():
     catalog()
     run('python', 'catalog.py', 'two', '../config/cur/cache', '../config/cur/kern', 'patchfile')
 
-def launchd():
-    goo_catalog_two()
-    goto('goo')
-    run('python', 'two.py', '../config/cur/cache', 'catalog/two.txt', 'launchd')
+def two():
+    catalog_two()
+    goto('catalog')
+    run('python', '../goo/two.py', '../config/cur/cache', 'two.txt', 'launchd')
 
 def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True, combine=False):
     objs = []
