@@ -632,11 +632,13 @@ class InterposingRunner(Runner):
 #include <sys/stat.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
 #include <limits.h>
 #include <mach-o/dyld.h>
+#include <unistd.h>
 // from dyld-interposing.h
 #define DYLD_INTERPOSE(_replacement,_replacee)    __attribute__((used)) static struct{ const void* replacement; const void* replacee; } _interpose_##_replacee             __attribute__ ((section ("__DATA,__interpose"))) = { (const void*)(unsigned long)&_replacement, (const void*)(unsigned long)&_replacee };
 
@@ -674,19 +676,26 @@ static void init() {
     }
 }
 
-#define do_open(name) \\
-int name(const char *path, int oflag, ...);\\
-int my_##name(const char *path, int oflag, int x) { \\
-	int ret = name(path, oflag, x); \\
-    /* malloc sometimes calls open for arc4_stir; this breaks malloc in careful_realpath and fprintf... no good.  but /dev/urandom isn't part of the project, so we can just ignore it */ \\
-    if(!strncmp(path, "/dev/urandom", PATH_MAX)) return ret; \\
-    if(outf == -1) pthread_once(&once, init); \\
-    char buf[PATH_MAX+1]; \\
-	char *path_ = careful_realpath(path, buf); \\
-	if(path_) output("!%s.open %s\\n", oflag & (O_WRONLY | O_RDWR) ? "write" : "read", path_); \\
+static void record(const char *func, const char *path, bool is_write) {
+    // malloc sometimes calls open for arc4_stir; this breaks malloc in careful_realpath and fprintf... no good.  but /dev/urandom isn't part of the project, so we can just ignore it
+    if(!path || !strncmp(path, "/dev/urandom", PATH_MAX)) return;
+    if(outf == -1) pthread_once(&once, init);
+    char buf[PATH_MAX+1];
+	char *path_ = careful_realpath(path, buf);
+	if(path_) output("!%s.%s %s\\n", is_write ? "write" : "read", func, path_);
+
+}
+
+#define do_generic(rettype, name, args1, args2, write) \\
+rettype orig_##name args1 __asm__("_" #name); \\
+rettype my_##name args1 { \\
+    rettype ret = orig_##name args2; \\
+    record(#name, path, write); \\
     return ret; \\
 } \\
-DYLD_INTERPOSE(my_##name, name)
+DYLD_INTERPOSE(my_##name, orig_##name)
+
+#define do_open(name) do_generic(int, name, (const char *path, int oflag, int mode), (path, oflag, mode), oflag & (O_WRONLY | O_RDWR))
 
 #ifdef __LP64__
 do_open(open)
@@ -697,42 +706,35 @@ do_open(open$UNIX2003)
 do_open(open$NOCANCEL$UNIX2003)
 #endif
 
-#define do_stat(name) \\
-int name(const char *path, struct stat *st); \\
-int my_##name(const char *path, struct stat *st) { \\
-    if(outf == -1) pthread_once(&once, init); \\
-    char buf[PATH_MAX+1]; \\
-	char *path_ = careful_realpath(path, buf); \\
-	if(path_) output("!read.stat %s\\n", path_); \\
-	return name(path, st); \\
-} \\
-DYLD_INTERPOSE(my_##name, name)
+// dyld uses its own version of open() et al; this isn't perfect but suffices
+do_generic(void *, dlopen, (const char *path, int mode), (path, mode), false)
+do_generic(const struct mach_header *, NSAddImage, (const char *path, uint32_t options), (path, options), false)
+do_generic(bool, NSAddLibraryWithSearching, (const char *path), (path), false)
+do_generic(bool, NSAddLibrary, (const char *path), (path), false)
+do_generic(NSObjectFileImageReturnCode, NSCreateObjectFileImageFromFile, (const char *path, NSObjectFileImage *objectFileImage), (path, objectFileImage), false)
+do_generic(NSModule, NSLinkModule, (NSObjectFileImage objectFileImage, const char *path, uint32_t options), (objectFileImage, path, options), false)
 
+#define do_stat(name) do_generic(int, name, (const char *path, struct stat *st), (path, st), false)
 do_stat(stat)
 do_stat(stat$INODE64)
 do_stat(lstat)
 do_stat(lstat$INODE64)
 
-int my_mkdir(const char * path, mode_t mode) {
-    if(outf == -1) pthread_once(&once, init);
-    char buf[PATH_MAX+1];
-	char *path_ = careful_realpath(path, buf);
-	if(path_) output("!write.mkdir %s\\n", path_);
-	return mkdir(path, mode);
-}
-DYLD_INTERPOSE(my_mkdir, mkdir)
+do_generic(int, mkdir, (const char *path, mode_t mode), (path, mode), true)
 
 int my_rename(const char *old, const char *new) {
-    if(outf == -1) pthread_once(&once, init);
-    char buf[PATH_MAX+1];
-    char *path_ = careful_realpath(old, buf);
-    if(path_) output("!read.rename %s\\n", path_);
+    record("rename", old, true); 
     int ret = rename(old, new);
-    path_ = careful_realpath(new, buf);
-    if(path_) output("!write.rename %s\\n", path_);
+    record("rename", new, true);
     return ret;
 }
 DYLD_INTERPOSE(my_rename, rename)
+
+int my_unlink(const char *path) {
+    record("unlink", path, true);
+    return unlink(path);
+}
+DYLD_INTERPOSE(my_unlink, unlink)
 '''
     def __init__(self, builder):
         self._builder = builder
@@ -744,7 +746,7 @@ DYLD_INTERPOSE(my_rename, rename)
         if not (os.path.exists(dylib_path) and os.path.exists(c_path) and open(c_path).read() == self.train):
             open(c_path, 'w').write(self.train)
             try:
-                shell('gcc', '-arch', 'i386', '-arch', 'x86_64', '-dynamiclib', '-o', dylib_path, c_path, silent=False)
+                shell('gcc', '-arch', 'i386', '-arch', 'x86_64', '-dynamiclib', '-Wall', '-Werror', '-Wno-deprecated-declarations', '-o', dylib_path, c_path, silent=False)
             except ExecutionError:
                 raise
         
