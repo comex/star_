@@ -68,10 +68,9 @@ def goo():
 def catalog():
     locutus()
     goo()
-    datautils_native()
-    sandbox2()
+    data(True)
     goto('catalog')
-    run('../datautils/make_kernel_patchfile', '../config/cur/kern', '../sandbox2/sandbox.o', 'patchfile')
+    run('../datautils/make_kernel_patchfile', '../config/cur/kern', 'patchfile')
     run(GCC, '-c', '-o', 'kcode.o', 'kcode.S', '-Oz')
 
 def catalog_dejavu():
@@ -126,23 +125,9 @@ def chain():
 
 def data(native=True):
     goto('data')
-    run_multiple(['make', 'clean'], ['make', 'NATIVE=%d' % native])
-
-def datautils(native=False):
-    data(native)
-    goto('datautils')
-
-    gcc = GCC_NATIVE if native else GCC
-    ldid = strip = not native
-    def cds(files, output):
-        return compile_stuff(files, output, cflags=['-DIMG3_SUPPORT', '-I..', '-O3'], ldflags=['../data/libdata.a'], gcc=gcc, ldid=ldid, strip=strip)
-
-    cds(['make_kernel_patchfile.c'], 'make_kernel_patchfile')
-    cds(['apply_patchfile.c'], 'apply_patchfile')
-    cds(['dyld_to_pwn.c'], 'dyld_to_pwn')
-
-def datautils_native():
-    datautils(True)
+    run_multiple(['make', 'NATIVE=%d' % native])
+    goto('datautils0')
+    run_multiple(['make', 'NATIVE=%d' % native])
 
 def sandbox2():
     goto('sandbox2')
