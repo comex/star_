@@ -1,7 +1,41 @@
-diff -ru cctools-758/otool/arm_disasm.c /usr/src/cctools-758/otool/arm_disasm.c
---- cctools-758/otool/arm_disasm.c	2009-03-13 16:44:33.000000000 -0400
-+++ /usr/src/cctools-758/otool/arm_disasm.c	2010-07-21 22:39:28.000000000 -0400
-@@ -4100,13 +4100,12 @@
+diff -ru cctools-795.orig/Makefile cctools-795/Makefile
+--- cctools-795.orig/Makefile	2010-09-15 19:21:10.000000000 -0400
++++ cctools-795/Makefile	2011-04-06 21:24:19.000000000 -0400
+@@ -91,7 +91,7 @@
+ 		    [ "$(RC_MAJOR_RELEASE_TRAIN)" = "Leopard" ]; then \
+ 			    echo "" ; \
+ 			else \
+-			    echo "-DLTO_SUPPORT" ; fi; )
++			    echo "-DNOPE" ; fi; )
+ else
+   LTO =
+ endif
+diff -ru cctools-795.orig/libstuff/Makefile cctools-795/libstuff/Makefile
+--- cctools-795.orig/libstuff/Makefile	2009-12-16 14:36:55.000000000 -0500
++++ cctools-795/libstuff/Makefile	2011-04-06 21:25:41.000000000 -0400
+@@ -1,6 +1,6 @@
+ RC_OS = macos
+ OFLAG = -Os
+-LTO = -DLTO_SUPPORT
++LTO = -DNOPE
+ LEGACY = -D_MACH_I386_THREAD_STATUS_FPSTATE_LEGACY_FIELD_NAMES_ \
+ 	 -D_ARCHITECTURE_I386_FPU_FPSTATE_LEGACY_FIELD_NAMES_
+ 
+diff -ru cctools-795.orig/misc/Makefile cctools-795/misc/Makefile
+--- cctools-795.orig/misc/Makefile	1969-12-31 19:00:00.000000000 -0500
++++ cctools-795/misc/Makefile	2011-04-06 21:25:47.000000000 -0400
+@@ -1,6 +1,6 @@
+ export USE_APPLE_PB_SUPPORT = all
+ OFLAG = -Os
+-LTO = -DLTO_SUPPORT
++LTO = -DNOPE
+ TRIE = -DTRIE_SUPPORT
+ RC_OS = macos
+ X_CFLAGS =
+diff -ru cctools-795.orig/otool/arm_disasm.c cctools-795/otool/arm_disasm.c
+--- cctools-795.orig/otool/arm_disasm.c	1969-12-31 19:00:00.000000000 -0500
++++ cctools-795/otool/arm_disasm.c	2011-04-06 21:29:52.000000000 -0400
+@@ -4126,13 +4126,12 @@
  
    /* These are the ways otool(1) determines if we are in thumb mode */
    if (Bflag)
@@ -18,22 +52,19 @@ diff -ru cctools-758/otool/arm_disasm.c /usr/src/cctools-758/otool/arm_disasm.c
    info->display_endian = little ? BFD_ENDIAN_LITTLE : BFD_ENDIAN_BIG;
    info->bytes_per_line = 4;
  
-diff -ru cctools-758/otool/arm_disasm.h /usr/src/cctools-758/otool/arm_disasm.h
---- cctools-758/otool/arm_disasm.h	2009-03-13 16:44:35.000000000 -0400
-+++ /usr/src/cctools-758/otool/arm_disasm.h	2010-07-21 22:41:13.000000000 -0400
-@@ -24,6 +24,8 @@
- #import <mach-o/reloc.h>
- #import <mach-o/nlist.h>
- #import <stuff/bool.h>
-+#define CPU_SUBTYPE_ARM_V7 ((cpu_subtype_t) 9)
-+
- #include "stuff/symbol.h"
- 
- /* Used by otool(1) to stay or switch out of thumb mode */
-diff -ru cctools-758/otool/main.c /usr/src/cctools-758/otool/main.c
---- cctools-758/otool/main.c	2009-04-14 20:04:02.000000000 -0400
-+++ /usr/src/cctools-758/otool/main.c	2010-07-21 22:43:37.000000000 -0400
-@@ -75,6 +75,7 @@
+@@ -4153,7 +4152,7 @@
+ 	for (i = 0; i < (int) size; i++)
+ 	  given = b[i] | (given << 8);
+     }
+-  else if (!is_thumb)
++  else if (!in_thumb)
+     {
+       /* In ARM mode endianness is a straightforward issue: the instruction
+ 	 is four bytes long and is either ordered 0123 or 3210.  */
+diff -ru cctools-795.orig/otool/main.c cctools-795/otool/main.c
+--- cctools-795.orig/otool/main.c	1969-12-31 19:00:00.000000000 -0500
++++ cctools-795/otool/main.c	2011-04-06 21:20:47.000000000 -0400
+@@ -83,6 +83,7 @@
  enum bool Xflag = FALSE; /* don't print leading address in disassembly */
  enum bool Zflag = FALSE; /* don't use simplified ppc mnemonics in disassembly */
  enum bool Bflag = FALSE; /* force Thumb disassembly (ARM objects only) */
@@ -41,7 +72,7 @@ diff -ru cctools-758/otool/main.c /usr/src/cctools-758/otool/main.c
  char *pflag = NULL; 	 /* procedure name to start disassembling from */
  char *segname = NULL;	 /* name of the section to print the contents of */
  char *sectname = NULL;
-@@ -407,6 +408,9 @@
+@@ -421,6 +422,9 @@
  		case 'B':
  		    Bflag = TRUE;
  		    break;
@@ -51,7 +82,7 @@ diff -ru cctools-758/otool/main.c /usr/src/cctools-758/otool/main.c
  		default:
  		    error("unknown char `%c' in flag %s\n", argv[i][j],argv[i]);
  		    usage();
-@@ -496,6 +500,7 @@
+@@ -510,6 +514,7 @@
  	fprintf(stderr, "\t-X print no leading addresses or headers\n");
  	fprintf(stderr, "\t-m don't use archive(member) syntax\n");
  	fprintf(stderr, "\t-B force Thumb disassembly (ARM objects only)\n");
@@ -59,21 +90,10 @@ diff -ru cctools-758/otool/main.c /usr/src/cctools-758/otool/main.c
  	exit(EXIT_FAILURE);
  }
  
-diff -ru cctools-758/otool/ofile_print.c /usr/src/cctools-758/otool/ofile_print.c
---- cctools-758/otool/ofile_print.c	2009-04-20 13:00:42.000000000 -0400
-+++ /usr/src/cctools-758/otool/ofile_print.c	2010-07-21 22:41:25.000000000 -0400
-@@ -29,6 +29,7 @@
-  * on values of fields for correctness should be done (such as proper alignment)
-  * and notations on errors should be printed.
-  */
-+#define CPU_SUBTYPE_ARM_V7 ((cpu_subtype_t) 9)
- 
- #define __cr cr
- #define __ctr ctr
-diff -ru cctools-758/otool/otool.h /usr/src/cctools-758/otool/otool.h
---- cctools-758/otool/otool.h	2008-06-20 18:47:19.000000000 -0400
-+++ /usr/src/cctools-758/otool/otool.h	2010-07-21 22:38:13.000000000 -0400
-@@ -48,6 +48,7 @@
+diff -ru cctools-795.orig/otool/otool.h cctools-795/otool/otool.h
+--- cctools-795.orig/otool/otool.h	2009-07-30 20:21:34.000000000 -0400
++++ cctools-795/otool/otool.h	2011-04-06 21:20:47.000000000 -0400
+@@ -56,6 +56,7 @@
  extern enum bool Xflag; /* don't print leading address in disassembly */
  extern enum bool Zflag; /* don't use simplified ppc mnemonics in disassembly */
  extern enum bool Bflag; /* force Thumb disassembly (ARM objects only) */
