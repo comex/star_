@@ -148,7 +148,7 @@ segment('__LINKEDIT',
       'offset': pointer(initializer),
       'size': 4,
       'flags': 0x9, # S_MOD_INIT_FUNC_POINTERS
-      }]
+     }]
 )
 
 libs = {}

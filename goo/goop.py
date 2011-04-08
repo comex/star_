@@ -122,6 +122,8 @@ class troll_string(statue):
             elif isinstance(bit, str):
                 assert len(bit) % 4 == 0
                 bits += struct.unpack('I'*(len(bit)/4), bit)
+            elif len(bit) == 0:
+                pass
             else:
                 raise ValueError('unpack: %r' % bit)
         return bits
@@ -234,7 +236,9 @@ class pointed_(statue): # string-like
         #print 'pointed.simplify self=%r addr=%r' % (self, addr)
         if addr is not None:
             self.addr = addr
-        return simplify(self.sub, addr)
+            return simplify(self.sub, addr)
+        else:
+            return self
     def __len__(self):
         return len(self.sub)
     def __repr__(self):
@@ -304,16 +308,18 @@ if False:
             return x
         else:
             result = x.simplify(addr)
-            if result is x and not isinstance(x, troll_string):
+            if result is x and not isinstance(x, (troll_string, reloc)):
                 failures.add(x)
             elif x in failures:
                 failures.remove(x)
             return result
 
     def excepthook(typ, value, traceback):
+        global failures
         sys.__excepthook__(typ, value, traceback)
         print 'The failures were:'
-        for f in list(failures):
+        failures = list(failures)
+        for f in failures:
             print f
             print '--'
         import code

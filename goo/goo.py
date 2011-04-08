@@ -13,6 +13,12 @@ def heapadd(*stuff):
         assert not isinstance(a, (troll_string, str)) or len(a) % 4 == 0
         heap.append(I(a))
 
+def xrepr(a):
+    if isinstance(a, (int, long)):
+        return hex(a)
+    else:
+        return repr(a)
+
 def heapdump(heap, names=None):
     if names is None: names = {}
     dbginfo.append((10000, '?'))
@@ -27,7 +33,7 @@ def heapdump(heap, names=None):
         if reverse.has_key(entry):
             sys.stdout.write('\x1b[31m%s\x1b[0m ' % reverse[entry])
         else:
-            sys.stdout.write('\x1b[34m0x%x\x1b[0m ' % entry)
+            sys.stdout.write('\x1b[34m%s\x1b[0m ' % xrepr(entry))
     sys.stdout.write('\n')
     sys.stdout.write('%08x end\n' % (4*i))
 

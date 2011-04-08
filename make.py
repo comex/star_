@@ -70,7 +70,7 @@ def catalog():
     goo()
     data(True)
     goto('catalog')
-    run('../datautils/make_kernel_patchfile', '../config/cur/kern', 'patchfile')
+    run('../datautils0/make_kernel_patchfile', '../config/cur/kern', 'patchfile')
     run(GCC, '-c', '-o', 'kcode.o', 'kcode.S', '-Oz')
 
 def catalog_dejavu():
@@ -81,7 +81,7 @@ def catalog_two():
     catalog()
     run('python', 'catalog.py', 'two', '../config/cur/cache', '../config/cur/kern', 'patchfile')
 
-def two():
+def launchd():
     catalog_two()
     goto('catalog')
     run('python', '../goo/two.py', '../config/cur/cache', 'two.txt', 'launchd')
