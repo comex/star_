@@ -185,7 +185,7 @@ subrs['main'] = \
 
           0 0 0 64 64 seac % 64 = @
           endchar          % unnecessary if it worked''' \
-          .format(twenty=-(20 - 1), go_up_amount = -(344 - 7 - 20))
+          .format(twenty=-(0 - 1), go_up_amount = -(344 - 7 - 0))
 #4 27 callothersubr     % 0 <= it ? 1 : 2
 
 for idx, data in enumerate(stuff):

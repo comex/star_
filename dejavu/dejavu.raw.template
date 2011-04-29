@@ -9,6 +9,7 @@
 end readonly def
 /BlendDesignPositions [[0 0]] def
 /BlendDesignMap [[0] [0]] def
+/BlendAxisTypes [/A /B] def
 /TerminalFun %TERMFUN% def
 /Private 
 /lenIV -1 def

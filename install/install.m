@@ -144,7 +144,6 @@ static void qstat(const char *path) {
 struct lzmactx {
     lzma_stream strm;
     uint8_t buf[BUFSIZ];
-    uint8_t in_buf[BUFSIZ];
     char *read_buf;
     int read_len;
 };
@@ -176,6 +175,9 @@ static int lzmaclose(int fd) {
 }
 
 static ssize_t lzmaread(int fd, void *buf_, size_t len) {
+    /* what is this crap *doing*?
+       why can't I just make buf_ the avail_out?
+       */
     struct lzmactx *ctx = (void *) fd;
     char *buf = buf_;
     while(len > 0) {

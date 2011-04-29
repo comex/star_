@@ -193,8 +193,13 @@ goo.sheap.append(weirdfile)
 if mode == 'dejavu':
     final = pad(finalize(reloc(0xd, 0)), 4)
 
-    # add sp, #400; pop {r4, r5, pc}
-    parse_callback = 0xdeadbeef #dmini.cur.find_basic('+ 64 b0 30 bd').value
+    #.long 0xbd64b062
+    #.long 0xbd60b060
+    #.long 0xbd30b050
+    #.long 0xbd49b060
+    
+    # add sp, #392; pop {r2, r5, r6, pc}
+    parse_callback = dmini.cur.find_basic('+ 50 b0 30 bd').value
     actual_parse_callback = dmini.cur.private_sym('ft._T1_Parse_Glyph').value
 
     final = final.unpack()
