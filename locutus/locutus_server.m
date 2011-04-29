@@ -9,13 +9,15 @@
 #import <UIKit/UIKit.h>
 #include <objc/runtime.h>
 
-static NSString *const bundle_identifier = @"com.saurik.Cydia.notreally";
+static NSString *bundle_identifier;
+static id existing_icon;
 
 static notify_handler_t sk_handler;
 static int tokens[3];
 
 static Class MyIcon;
 
+static id application_controller;
 static id icon;
 static id icon_controller;
 static id icon_model;
@@ -55,6 +57,13 @@ static inline NSString *_(NSString *key) {
 -(void)addNewIconToDesignatedLocation:(id)icon animate:(BOOL)animate scrollToList:(BOOL)list saveIconState:(BOOL)save;
 -(void)setIconToReveal:(id)icon;
 //-(void)iconUninstall:(id)icon; // also uninstallIcon:, uninstallIcon:animated:; lots of choice!  this works but we want remove above instead
+-(void)scrollToIconListContainingIcon:(id)icon animate:(BOOL)animate;
+@end
+
+@interface SBApplicationController {
+}
++(id)sharedInstance;
+-(void)loadApplicationsAndIcons:(id)identifier reveal:(BOOL)reveal popIn:(BOOL)popIn;
 @end
 
 @interface SBIconModel {
@@ -62,6 +71,7 @@ static inline NSString *_(NSString *key) {
 +(id)sharedInstance;
 -(void)addIcon:(id)icon;
 //-(void)removeIcon:(id)icon;
+-(id)applicationIconForDisplayIdentifier:(id)displayIdentifier;
 @end
 
 static notify_handler_t sk_handler = ^(int token) {
@@ -121,6 +131,10 @@ __attribute__((constructor))
 static void init() {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     NSLog(@"i'm alive");
+    
+    application_controller = [objc_getClass("SBApplicationController") sharedInstance];
+
+    bundle_identifier = (existing_icon = [icon_model applicationIconForDisplayIdentifier:@"com.saurik.Cydia"]) ? @"com.saurik.Cydia.notreally" : @"com.saurik.Cydia";
 
     char name[32];
     sprintf(name, "MyIcon_%p", &init);
@@ -175,7 +189,16 @@ static void init() {
     });
 
     notify_register_dispatch("locutus.installed", &tokens[2], dispatch_get_main_queue(), ^(int token) {
-          
+        for(int i = 0; i < 3; i++) {
+            notify_cancel(tokens[i]);
+        }
+        if(existing_icon) {
+            [icon remove];
+            [icon_controller scrollToIconListContainingIcon:existing_icon animate:YES];
+        } else {
+            [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO];
+        }
+        icon = nil;
     });
 
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -199,3 +222,4 @@ static void init() {
     
     [pool release];
 }
+

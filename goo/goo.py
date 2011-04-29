@@ -35,7 +35,7 @@ def heapdump(heap, names=None):
         else:
             sys.stdout.write('\x1b[34m%s\x1b[0m ' % xrepr(entry))
     sys.stdout.write('\n')
-    sys.stdout.write('%08x end\n' % (4*i))
+    sys.stdout.write('%08x end\n' % (4*i + 4))
 
 def pad(x, p):
     l = len(x)

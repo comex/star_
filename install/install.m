@@ -150,13 +150,19 @@ struct lzmactx {
 };
 
 static int lzmaopen(const char *path, int oflag, int foo) {
+    int realfd = open(path, O_RDONLY);
+    _assert(realfd != -1);
+    off_t size = lseek(realfd, 0, SEEK_SET);
+    void *ptr = mmap(NULL, (size_t) size, PROT_READ, MAP_SHARED, fd, 0);
+    _assert(ptr != MAP_FAILED);
+
     struct lzmactx *ctx = malloc(sizeof(struct lzmactx));
     ctx->strm = (lzma_stream) LZMA_STREAM_INIT;
     lzma_ret ret;
     _assert(!lzma_stream_decoder(&ctx->strm, 64*1024*1024, 0));
 
-    ctx->strm.avail_in = freeze_len;
-    ctx->strm.next_in = (void *) freeze; 
+    ctx->strm.avail_in = size;
+    ctx->strm.next_in = ptr;
     ctx->strm.next_out = (void *) ctx->buf;
     ctx->strm.avail_out = BUFSIZ;
     ctx->read_buf = (void *) ctx->buf;

@@ -38,7 +38,7 @@ import struct
 import cPickle as pickle
 import zlib
 
-stuff = [pickle.load(open('../goo/catalog/catalog.txt')), pickle.load(open('../goo/catalog/catalog.txt'))]
+stuff = [pickle.load(open('../catalog/dejavu.txt')), pickle.load(open('../catalog/dejavu.txt'))]
 
 def xrepr(number, large_int):
     number %= (2**32)
@@ -78,10 +78,6 @@ locutus = open('../locutus/locutus').read()
 locutus_len = len(locutus)
 subr0 = zlib.compress(locutus, 9)
 zlocutus_len = len(subr0)
-stuff[0]['plist_offset'] = len(subr0)
-subr0 += stuff[0]['plist']
-stuff[1]['plist_offset'] = len(subr0)
-subr0 += stuff[1]['plist']
 
 #subr0 = 'NOTHING'
 subrs[0] = encode_unknown(subr0)
@@ -216,8 +212,6 @@ for idx, data in enumerate(stuff):
             number += locutus_len
         elif key == 0xb: # compressed locutus length
             number += zlocutus_len
-        elif key == 0xc: # plist offset in the subr
-            number += data['plist_offset']
         elif key == 0xd: # code offset
             subr += xrepr_plus_small(number + 31000*4, False, [7]) + ' callsubr '
             continue

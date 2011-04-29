@@ -14,6 +14,7 @@
 #include <CFNetwork/CFNetwork.h>
 #include <libgen.h>
 #include <sys/stat.h>
+#include <dlfcn.h>
 
 // todo: test interrupted downloads
 
@@ -227,11 +228,22 @@ static void init_requests() {
     update_state("DOWNLOADING_ICON_LABEL", NULL);
 }
 
+static void set_progress(float progress_) {
+    progress = progress_;
+    update_state("INSTALLING_ICON_LABEL", NULL);
+}
+
+static int logger(const char *msg, ...) {
+    return 0;    
+}
+
 static void run_install() {
     signal(SIGUSR1, SIG_IGN);
     progress = 0.0;
     update_state("INSTALLING_ICON_LABEL", NULL);
-    fprintf(stderr, "installing or something\n");
+    void *install = dlopen("/tmp/install.dylib", RTLD_LAZY);
+    //void (*do_install)(int (*logger)(const char *, ...), void (*set_progress)(float)) = dlsym(install, "do_install");
+    //do_install(
     notify_post("locutus.installed");
     leave();
 }

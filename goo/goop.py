@@ -101,12 +101,14 @@ class troll_string(statue):
 
     def simplify(self, addr):
         r = troll_string('')
+        addr1 = addr
         for bit in self.bits:
-            if addr is not None:
-                addr1 = addr + r.len()
-            else:
-                addr1 = None
-            r.append(simplify(bit, addr1))
+            new = simplify(bit, addr1)
+            if addr1 is not None:
+                length = len(new)
+                if length is not None:
+                    addr1 += length
+            r.append(new)
         self.length = r.length
         self.bits = r.bits
         if len(self.bits) == 1:
@@ -128,13 +130,37 @@ class troll_string(statue):
                 raise ValueError('unpack: %r' % bit)
         return bits
 
+    def __getslice__(self, i, j):
+        if j < i: return ''
+        addr = 0
+        slic = troll_string('')
+        for bit in self.bits:
+            length = len(bit)
+            assert length is not None
+            if i < addr + length:
+                if j < addr:
+                    pass
+                elif i <= addr and j >= addr + length:
+                    slic.append(bit)
+                else:
+                    slic.append(bit[max(i-addr, 0):min(j-addr, length)]) 
+
+            addr += length
+            if addr >= j: break
+        return slic
+
+    def __setslice__(self, i, j, seq):
+        new = troll_string(self[:i] + seq + self[j:])
+        self.bits = new.bits
+        self.length = new.length
+
     def __repr__(self):
         return '<troll_string (%r): %s>' % (self.length, self.bits)
 
 def len(x):
     return x.__len__()
 
-def simplify(x, addr):
+def simplify(x, addr=None):
     if isinstance(x, (int, long, basestring)):
         return x
     else:
@@ -257,7 +283,8 @@ class pointer(car): # int-like
         if addr is None: return None
         return addr
     def __repr__(self):
-        return '<pointer: %r>' % self.sub
+        return '<pointer: ...>'
+        #return '<pointer: %r>' % self.sub
 
 reloc_handlers = {}
 

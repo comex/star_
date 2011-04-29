@@ -55,10 +55,10 @@ def install():
 
 def locutus():
     goto('locutus')
-    cflags = ['-DFNO_ASSERT_MESSAGES', '-fblocks', '-Oz', '-Wno-parentheses', '-miphoneos-version-min=4.0']
-    compile_stuff(['locutus_server.m'], 'locutus_server.dylib', gcc=GCC_ARMV6, cflags=cflags+['-Wno-deprecated-declarations'], ldflags=['-dynamiclib', '-framework', 'Foundation', '-framework', 'UIKit', '-install_name', 'X'*32]+cflags, ldid=False)
+    cflags = ['-DFNO_ASSERT_MESSAGES', '-fblocks', '-Oz', '-Wno-parentheses', '-miphoneos-version-min=4.0', '-Wno-deprecated-declarations']
+    compile_stuff(['locutus_server.m'], 'locutus_server.dylib', gcc=GCC_ARMV6, cflags=cflags, ldflags=['-dynamiclib', '-framework', 'Foundation', '-framework', 'UIKit', '-install_name', 'X'*32]+cflags, ldid=False)
     run('sh', '-c', 'xxd -i locutus_server.dylib | sed "s/locutus_server_//g" > locutus_server_.c')
-    compile_stuff(['locutus.c', 'inject.c', 'baton.S',  'locutus_server_.c'], 'locutus', cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork']+cflags, ldid=True, ent='ent.plist')
+    compile_stuff(['locutus.c', 'inject.c', 'baton.S',  'locutus_server_.c'], 'locutus', gcc=GCC_ARMV6, cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork']+cflags, ldid=True, ent='ent.plist')
 build = locutus
 
 def goo():
@@ -75,7 +75,7 @@ def catalog():
 
 def catalog_dejavu():
     catalog()
-    run('python', 'catalog.py', 'two', '../config/cur/cache', '../config/cur/kern', 'patchfile')
+    run('python', 'catalog.py', 'dejavu', '../config/cur/cache', '../config/cur/kern', 'patchfile')
 
 def catalog_two():
     catalog()
@@ -85,6 +85,11 @@ def launchd():
     catalog_two()
     goto('catalog')
     run('python', '../goo/two.py', '../config/cur/cache', 'two.txt', 'launchd')
+
+def pdf():
+    dejavu()
+    goto('pdf')
+    run('python', 'mkpdf.py', '../dejavu/dejavu.pfb', 'out.pdf')
 
 def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True, combine=False):
     objs = []
@@ -103,18 +108,6 @@ def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=
         if strip: commands.append(['strip', '-x' if 'dylib' in output else '-ur', output])
         if ldid: commands.append(['ldid', '-S' + ent, output])
         run_multiple(*commands)
-
-def catalog2():
-    goto('catalog2')
-    
-    run('python', 'gen_syscalls.c.py')
-
-    # -pagezero_size 0 is harmless with ld but not ld_classic (-static); not required either way
-    if False:
-        static = ['-dynamic', '-mdynamic-no-pic']
-    else:
-        static = ['-static']
-    compile_stuff(['catalog2.c', 'syscalls.c', 'iokitUser.c', 'mach_hostUser.c', 'libc.c'], 'catalog2', cflags=[static, '-marm'], ldflags=[static, '-segaddr', '__ZERO', '0', '-segprot', '__ZERO', 'rx', 'rx', '-segaddr', '__TEXT', '0x1000', '-L.'], combine=False)
 
 def chain():
     goto('chain')
@@ -143,7 +136,7 @@ def mroib():
     run(GCC, '-dynamiclib', '-o', 'mroib.dylib', 'power.c', 'timer.c', 'usb.c', 'mroib.c', 'clean.o', '-combine', '-fwhole-program', '-nostdinc', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-I.', '-Iincludes', '-DCONFIG_IPHONE_4G')
 
 def dejavu():
-    goo_catalog_dejavu()
+    catalog_dejavu()
     goto('dejavu')
     run('python', 'gen_dejavu.raw.py')
     run('t1asm', 'dejavu.raw', 'dejavu.pfb')
