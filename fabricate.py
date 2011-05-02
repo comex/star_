@@ -636,54 +636,36 @@ class InterposingRunner(Runner):
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
-#include <limits.h>
+#include <sys/param.h>
 #include <mach-o/dyld.h>
 #include <unistd.h>
 // from dyld-interposing.h
 #define DYLD_INTERPOSE(_replacement,_replacee)    __attribute__((used)) static struct{ const void* replacement; const void* replacee; } _interpose_##_replacee             __attribute__ ((section ("__DATA,__interpose"))) = { (const void*)(unsigned long)&_replacement, (const void*)(unsigned long)&_replacee };
 
-static pthread_key_t recursion_key;
-static pthread_once_t once = PTHREAD_ONCE_INIT;
 static int outf = -1;
 // sometimes files are opened very early in a fork - in this case, fprintf doesn't work
 #define output(fmt, args...) do { char obuf[1024]; write(outf, obuf, snprintf(obuf, 1024, fmt, ##args)); } while(0)
-static char *careful_realpath(const char *path, char *path_buf) {
-    if(!outf || pthread_getspecific(recursion_key) != NULL) {
-        return NULL;
-    }
-    pthread_setspecific(recursion_key, (void *) 1);
-    char *ret = realpath(path, path_buf);
-    pthread_setspecific(recursion_key, NULL);
-    return ret;
+
+static void record(const char *func, const char *path, bool is_write) {
+    if(!path || path[0] == '/' || (path[0] == '.' && !path[1])) return;
+    char wd[MAXPATHLEN]; getwd(wd);
+    output("!%s.%s %s/%s\\n", is_write ? "write" : "read", func, wd, path);
 }
 
+__attribute__((constructor))
 static void init() {
-    pthread_key_create(&recursion_key, NULL);
     outf = open(getenv("TRAIN_OUTPUT"), O_WRONLY | O_CREAT | O_APPEND, 0755);
     if(outf == -1) {
         char *error = "Could not open TRAIN_OUTPUT\\n";
         write(2, error, strlen(error));
         abort();
     }
-    char buf[PATH_MAX+1], buf2[PATH_MAX+1];
-    uint32_t bufsize = sizeof(buf);
+    char buf[PATH_MAX+1];
+    uint32_t bufsize = PATH_MAX;
     if(!_NSGetExecutablePath(buf, &bufsize)) {
         buf[bufsize] = 0;
-        char *path = careful_realpath(buf, buf2);
-        if(path) {
-            output("!read.init %s\\n", path);
-        }
+        record("init", buf, false);
     }
-}
-
-static void record(const char *func, const char *path, bool is_write) {
-    // malloc sometimes calls open for arc4_stir; this breaks malloc in careful_realpath and fprintf... no good.  but /dev/urandom isn't part of the project, so we can just ignore it
-    if(!path || !strncmp(path, "/dev/urandom", PATH_MAX)) return;
-    if(outf == -1) pthread_once(&once, init);
-    char buf[PATH_MAX+1];
-	char *path_ = careful_realpath(path, buf);
-	if(path_) output("!%s.%s %s\\n", is_write ? "write" : "read", func, path_);
-
 }
 
 #define do_generic(rettype, name, args1, args2, write) \\
@@ -776,6 +758,15 @@ DYLD_INTERPOSE(my_unlink, unlink)
                     assert line.startswith('!') 
                     read_write = line[1:line.find('.')]
                     name = line[line.find(' ')+1:-1]
+
+                    bits = []
+                    for bit in name.split('/'):
+                        if bit == '..':
+                            if len(bits) > 1: bits.pop()
+                        else:
+                            bits.append(bit)
+
+                    name = '/'.join(bits)
                 
                     if (self._builder._is_relevant(name)
                         and not self.ignore(name)
