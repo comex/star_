@@ -507,5 +507,5 @@ static void init() {
 __attribute__((destructor))
 static void fini() {
     // it's very dangerous to do this if you have anything mounted ;p
-    IOLog("vfs_fsremove: %d\n", vfs_fsremove(ft));
+    printf("vfs_fsremove: %d\n", vfs_fsremove(ft));
 }

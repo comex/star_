@@ -1,5 +1,4 @@
-#define _log(fmt, args...) logger(fmt "\n", ##args)
-static int (*logger)(const char *, ...);
+#define _log(fmt, args...) fprintf(stderr, fmt "\n", ##args)
 #include <common/common.h>
 #include <libtar.h>
 #include <lzma.h>
@@ -9,17 +8,18 @@ static int (*logger)(const char *, ...);
 #include <dirent.h>
 #include <notify.h>
 #include <stdarg.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <spawn.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>
+#include <sys/mman.h>
 #include <fts.h>
-#include <CoreFoundation/CoreFoundation.h>
 #include <signal.h>
 #import <Foundation/Foundation.h>
 
-bool GSSystemHasCapability(CFStringRef capability);
+bool GSSystemHasCapability(NSString *capability);
 
 extern void do_copy(char *, char *, ssize_t (*)(int, const void *, size_t));
 extern void init();
@@ -151,8 +151,8 @@ struct lzmactx {
 static int lzmaopen(const char *path, int oflag, int foo) {
     int realfd = open(path, O_RDONLY);
     _assert(realfd != -1);
-    off_t size = lseek(realfd, 0, SEEK_SET);
-    void *ptr = mmap(NULL, (size_t) size, PROT_READ, MAP_SHARED, fd, 0);
+    off_t size = lseek(realfd, 0, SEEK_END);
+    void *ptr = mmap(NULL, (size_t) size, PROT_READ, MAP_SHARED, realfd, 0);
     _assert(ptr != MAP_FAILED);
 
     struct lzmactx *ctx = malloc(sizeof(struct lzmactx));
@@ -212,11 +212,10 @@ static ssize_t lzmaread(int fd, void *buf_, size_t len) {
 
 tartype_t xztype = { (openfunc_t) lzmaopen, (closefunc_t) lzmaclose, (readfunc_t) lzmaread, (writefunc_t) NULL };
 
-static void extract() {
+static void extract(const char *fn) {
     TAR *tar;
-    char *fn = "<buf>";
     // TAR_VERBOSE
-    if(tar_open(&tar, fn, &xztype, O_RDONLY, 0, TAR_GNU)) {
+    if(tar_open(&tar, (char *) fn, &xztype, O_RDONLY, 0, TAR_GNU)) {
         _log("could not open %s: %s", fn, strerror(errno));
         exit(3);
     }
@@ -304,21 +303,24 @@ static void add_afc2() {
     }));
 }
 
+static void rename_launchd() {
+    _assert_zero(link("/sbin/launchd", "/sbin/launchd.real"));
+    _assert_zero(rename("/sbin/launchd.untether", "/sbin/launchd"));
+}
 
-void do_install(const char *freeze_, int freeze_len_, int (*logger_)(const char *, ...), void (*set_progress_)(float)) {
+void do_install(void (*set_progress_)(float)) {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     set_progress = set_progress_;
-    logger = logger_;
-    freeze = freeze_;
-    freeze_len = freeze_len_;
     
     chdir("/");
     _log("do_install");
     TIME(remount());
     TIME(dok48());
     TIME(add_afc2());
-    TIME(extract());
+    TIME(extract("/tmp/freeze.tar.xz"));
+    TIME(extract("/tmp/starstuff.tar.xz"));
     _log("extract out.");
+    TIME(rename_launchd());
     TIME(sync());
     _log("written_bytes = %d", written_bytes);
 }

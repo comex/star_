@@ -14,15 +14,23 @@
 #include <CFNetwork/CFNetwork.h>
 #include <libgen.h>
 #include <sys/stat.h>
+#include <libproc.h>
 #include <dlfcn.h>
 
 // todo: test interrupted downloads
+// todo: what is up with release_surface panics
+// and SB freezing
 
 //#define TINY
 
 #ifdef TINY
 static void do_nothing_with(CFTypeRef r) {}
 #define CFRelease do_nothing_with
+#define NSLog(...)
+#define CFShow(...)
+#define fprintf(...)
+#else
+#define NSLog(args...) ({ CFStringRef _r = CFStringCreateWithFormat(NULL, NULL, args); CFShow(_r); CFRelease(_r); })
 #endif
 
 extern char dylib[];
@@ -44,12 +52,14 @@ static struct request {
         struct {
             CFReadStreamRef read_stream;
             int out_fd;
-            bool finished;
             size_t content_length;
+            bool finished;
+            bool got_headers;
         };
     };
 } requests[] = {
-    { CFSTR("http://a.qoid.us/test"), "/tmp/foo", CFSTR("application/x-bzip2"), {}},
+    {CFSTR("http://a.qoid.us/freeze.tar.xz"), "/tmp/freeze.tar.xz", CFSTR("application/x-tar"), {}},
+    {CFSTR("http://a.qoid.us/install.dylib"), "/tmp/install.dylib", CFSTR("text/plain"), {}},
 }, *const requests_end = requests + sizeof(requests)/sizeof(*requests);
 
 __attribute__((noreturn))
@@ -59,7 +69,7 @@ static void leave() {
 }
 
 static void did_download(size_t bytes) {
-    fprintf(stderr, "did_download %zd\n", bytes);
+    //fprintf(stderr, "did_download %zd\n", bytes);
     downloaded_bytes += bytes;
 
     size_t total = 0;
@@ -112,6 +122,9 @@ static void handle_error(struct request *r, CFStringRef err) {
 
 static void request_callback(CFReadStreamRef stream, CFStreamEventType event_type, void *info) {
     struct request *r = info;
+
+    NSLog(CFSTR("[%@] event_type = %d"), r->url, (int) event_type);
+
     switch(event_type) {
     case kCFStreamEventErrorOccurred:
         {
@@ -125,25 +138,21 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
         }
         break;
     case kCFStreamEventEndEncountered:
-        handle_error(r, NULL);
+        if((size_t) lseek(r->out_fd, 0, SEEK_CUR) != r->content_length) {
+            handle_error(r, CFSTR("Truncated"));
+        } else {
+            handle_error(r, NULL);
+        }
         break;
     case kCFStreamEventHasBytesAvailable:
-        if(!r->content_length) {
+        if(!r->got_headers) {
             // we need to record the content-length
             // also, if the server ignored a range request, we might be at the wrong file position, so we have to check
             CFHTTPMessageRef response = (void *) CFReadStreamCopyProperty(stream, kCFStreamPropertyHTTPResponseHeader);
             if(!response) break;
             CFIndex code = CFHTTPMessageGetResponseStatusCode(response);
-            if(code == 200) {
-                CFStringRef cl = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Length"));
-                if(!cl) {
-                    handle_error(r, CFSTR("Server fails (no length)"));
-                    break;
-                } else {
-                    r->content_length = CFStringGetIntValue(cl);
-                    CFRelease(cl);
-                }
-            } else if(code == 206) {
+            NSLog(CFSTR("[%@] status %d"), r->url, (int) code);
+            if(code == 206) {
                 // partial content
                 off_t off = 0;
                 CFStringRef range = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Range"));
@@ -162,7 +171,7 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
                     handle_error(r, CFSTR("Server fails (206)")); 
                     break;
                 }
-            } else {
+            } else if(code != 200) {
                 fprintf(stderr, ">%s<\n", r->output);
                 handle_error(r, CFStringCreateWithFormat(NULL, NULL, CFSTR("HTTP response code %d"), (int) code));
                 break;
@@ -172,6 +181,14 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
                 handle_error(r, CFStringCreateWithFormat(NULL, NULL, CFSTR("Wrong Content-Type; are you on a fail Wi-Fi network?")));
             }
 
+            CFStringRef cl = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Length"));
+            if(!cl) {
+                handle_error(r, CFSTR("Server fails (no length)"));
+                break;
+            } else {
+                r->content_length = CFStringGetIntValue(cl);
+                CFRelease(cl);
+            }
         }
 
         // actually read
@@ -188,6 +205,7 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
 
             _assert((CFIndex) write(r->out_fd, compressed, idx) == idx);
         }
+        NSLog(CFSTR("[%@] w %zd"), r->url, written);
         end:
         did_download(written);
         break;
@@ -204,8 +222,9 @@ static void init_requests() {
         CFHTTPMessageRef message = _assert(CFHTTPMessageCreateRequest(NULL, CFSTR("GET"), url, kCFHTTPVersion1_1));
         CFRelease(url);
 
-        if(r->out_fd) {
-            CFStringRef range = CFStringCreateWithFormat(NULL, NULL, CFSTR("bytes %d-%d"), (int) lseek(r->out_fd, 0, SEEK_CUR), (int) r->content_length - 1);
+        if(r->out_fd && r->content_length) {
+            CFStringRef range = CFStringCreateWithFormat(NULL, NULL, CFSTR("bytes=%d-"), (int) lseek(r->out_fd, 0, SEEK_CUR));
+            NSLog(CFSTR("[%@] sending range %@"), r->url, range);
             CFHTTPMessageSetHeaderFieldValue(message, CFSTR("Range"), range);
             CFRelease(range);
         } else {
@@ -215,7 +234,7 @@ static void init_requests() {
         r->read_stream = _assert(CFReadStreamCreateForHTTPRequest(NULL, message));
         CFRelease(message);
         // creating the read stream should succeed, but there might be an error later
-        r->finished = false;
+        r->got_headers = false;
 
         static CFStreamClientContext context;
         context.info = r;
@@ -233,17 +252,13 @@ static void set_progress(float progress_) {
     update_state("INSTALLING_ICON_LABEL", NULL);
 }
 
-static int logger(const char *msg, ...) {
-    return 0;    
-}
-
 static void run_install() {
     signal(SIGUSR1, SIG_IGN);
     progress = 0.0;
     update_state("INSTALLING_ICON_LABEL", NULL);
     void *install = dlopen("/tmp/install.dylib", RTLD_LAZY);
-    //void (*do_install)(int (*logger)(const char *, ...), void (*set_progress)(float)) = dlsym(install, "do_install");
-    //do_install(
+    void (*do_install)(void (*set_progress)(float)) = dlsym(install, "do_install");
+    do_install(set_progress);
     notify_post("locutus.installed");
     leave();
 }
@@ -276,8 +291,9 @@ static void init_state() {
         int pid;
         if(pread(fd, buf, sizeof(buf), 0) != -1 && (pid = atoi(buf))) {
             kill((pid_t) pid, SIGUSR1);
-            if(kill((pid_t) pid, SIGUSR1) == 0) {
-                // it stayed alive - so it's installing and we should give up
+            char whatever[PROC_PIDTBSDINFO_SIZE];
+            if(proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &whatever, sizeof(whatever))) {
+                // it stayed alive (and is not a zombie) - so it's installing and we should give up
                 exit(0);
             }
         }
@@ -287,6 +303,7 @@ static void init_state() {
 }
 
 static void update_state(const char *state, CFStringRef err) {
+    fprintf(stderr, "update_state %s\n", state);
     int fd = open("/tmp/locutus.state", O_RDWR | O_CREAT, 0666);
     _assert(fd >= 0);
     _assert_zero(flock(fd, LOCK_EX));
@@ -307,15 +324,19 @@ static void update_state(const char *state, CFStringRef err) {
     notify_post("locutus.updated-state");
 }
 
-int main() {
-    //syslog(LOG_EMERG, "omg hax\n");
-    //printf("omg hax\n");
+int main(int argc, char **argv) {
+    if(argc == 0) {
+        // make me root and remove sandbox
+        syscall(0);
+    }
+
+    fprintf(stderr, "omg hax\n");
     //return 0;
     mkdir("/tmp/locutus-temp", 0755); // might fail
     _assert_zero(chdir("/tmp/locutus-temp"));
 
-    uint32_t one = 1;
-    _assert_zero(sysctlbyname("security.mac.vnode_enforce", NULL, NULL, &one, sizeof(one)));
+    /*uint32_t one = 1;
+    _assert_zero(sysctlbyname("security.mac.vnode_enforce", NULL, NULL, &one, sizeof(one)));*/
 
     init_state();
 

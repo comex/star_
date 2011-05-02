@@ -1,6 +1,7 @@
 #define IS_64BIT_PROCESS(x) 0
-extern void IOLog(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
-#define printf(args...) IOLog(args)
+//extern void IOLog(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
+//#define printf(args...) IOLog(args)
+#define printf(args...) (void) (args)
 /*
  * Copyright (c) 2000-2002 Apple Computer, Inc. All rights reserved.
  *

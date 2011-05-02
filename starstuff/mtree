@@ -1,0 +1,19 @@
+#mtree
+./private/var/null uid=0 gid=0 mode=0755 type=dir
+./private/var/null/Applications uid=0 gid=0 mode=0755 type=dir
+./private/var/null/bin uid=0 gid=0 mode=0755 type=dir
+./private/var/null/boot uid=0 gid=0 mode=0755 type=dir
+./private/var/null/cores uid=0 gid=0 mode=0755 type=dir
+./private/var/null/Developer uid=0 gid=0 mode=0755 type=dir
+./private/var/null/lib uid=0 gid=0 mode=0755 type=dir
+./private/var/null/Library uid=0 gid=0 mode=0755 type=dir
+./private/var/null/mnt uid=0 gid=0 mode=0755 type=dir
+./private/var/null/sbin uid=0 gid=0 mode=0755 type=dir
+./private/var/null/System uid=0 gid=0 mode=0755 type=dir
+./private/var/null/User uid=0 gid=0 mode=0755 type=dir
+./private/var/null/usr uid=0 gid=0 mode=0755 type=dir
+./sbin/launchd.untether uid=0 gid=0 mode=0755 type=file content=../catalog/launchd
+./sbin/lunchd uid=0 gid=0 mode=0755 type=file content=lunchd
+./usr/share/white uid=0 gid=0 mode=0755 type=dir content=
+./usr/share/white/nullfs_prelink.dylib uid=0 gid=0 mode=0644 type=file content=nullfs_prelink.dylib
+./usr/share/white/white_loader uid=0 gid=0 mode=0644 type=file content=../white/white_loader

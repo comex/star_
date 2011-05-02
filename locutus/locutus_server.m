@@ -1,3 +1,5 @@
+// WAAAH it has caused SB to hang on black
+
 #include <mach/mach.h>
 #include <mach-o/dyld.h>
 #include <stdio.h>
@@ -30,7 +32,7 @@ static bool is_installing;
 
 static inline NSString *_(NSString *key) {
     NSString *r = [[NSBundle mainBundle] localizedStringForKey:key value:nil table:@"SpringBoard"];
-    NSLog(@"_(%@) = %@", key, r);
+    //NSLog(@"_(%@) = %@", key, r);
     return r;
 }
 
@@ -63,7 +65,11 @@ static inline NSString *_(NSString *key) {
 @interface SBApplicationController {
 }
 +(id)sharedInstance;
+#if VERSION >= 0x040300
+-(void)loadApplicationsAndIcons:(id)identifier reveal:(BOOL)reveal popIn:(BOOL)popIn reloadAllIcons:(BOOL)reloadAllIcons;
+#else
 -(void)loadApplicationsAndIcons:(id)identifier reveal:(BOOL)reveal popIn:(BOOL)popIn;
+#endif
 @end
 
 @interface SBIconModel {
@@ -72,6 +78,11 @@ static inline NSString *_(NSString *key) {
 -(void)addIcon:(id)icon;
 //-(void)removeIcon:(id)icon;
 -(id)applicationIconForDisplayIdentifier:(id)displayIdentifier;
+@end
+
+@interface SpringBoard : UIApplication {
+}
+-(void)quitTopApplication:(void *)application;
 @end
 
 static notify_handler_t sk_handler = ^(int token) {
@@ -122,8 +133,10 @@ static void MyIcon_alertView_clickedButtonAtIndex(id self, SEL sel, UIAlertView 
 }
 
 static void set_progress(float progress) {
+    NSLog(@"set_progress %f", progress); 
     id _progress = nil;
-    object_getInstanceVariable(icon, "_progress", (void **) &_progress);
+    object_getInstanceVariable(icon, "_progressView", (void **) &_progress);
+    NSLog(@"i,p=%@, %@", icon, _progress);
     [_progress setProgress:progress];
 }
 
@@ -134,6 +147,7 @@ static void init() {
     
     application_controller = [objc_getClass("SBApplicationController") sharedInstance];
 
+    icon_model = [objc_getClass("SBIconModel") sharedInstance];
     bundle_identifier = (existing_icon = [icon_model applicationIconForDisplayIdentifier:@"com.saurik.Cydia"]) ? @"com.saurik.Cydia.notreally" : @"com.saurik.Cydia";
 
     char name[32];
@@ -149,7 +163,6 @@ static void init() {
     objc_registerClassPair(MyIcon);
 
     icon_controller = [objc_getClass("SBIconController") sharedInstance];
-    icon_model = [objc_getClass("SBIconModel") sharedInstance];
     NSLog(@"%@", icon_controller);
 
     NSLog(@"starting notify...");
@@ -192,17 +205,24 @@ static void init() {
         for(int i = 0; i < 3; i++) {
             notify_cancel(tokens[i]);
         }
+        NSLog(@"existing_icon = %@", existing_icon);
         if(existing_icon) {
             [icon remove];
             [icon_controller scrollToIconListContainingIcon:existing_icon animate:YES];
         } else {
-            [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO];
+#if VERSION >= 0x040300
+                [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO reloadAllIcons:NO];
+#else
+                [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO];
+#endif
         }
         icon = nil;
     });
 
     dispatch_async(dispatch_get_main_queue(), ^{
         NSLog(@"done, MyIcon is now %p", MyIcon);
+
+        [(SpringBoard *) [UIApplication sharedApplication] quitTopApplication:NULL];
 
         icon = [[MyIcon alloc] initWithLeafIdentifier:bundle_identifier];
         [icon setDelegate:icon_controller];

