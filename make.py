@@ -159,7 +159,7 @@ def starstuff():
     launchd()
     goto('starstuff')
     run('../white/universal/white_loader', '-k', '../config/cur/kern', '-p', '../nullfs/nullfs.dylib', 'nullfs_prelink.dylib')
-    run('gnutar', 'chvf', 'starstuff.tar', '-C', 'root', '.', '--owner', '0', '--group', 0)
+    run('gnutar', 'chvf', 'starstuff.tar', '-C', 'root', '.', '--owner', '0', '--group', 0, '--exclude', '.ignore')
     run('sh', '-c', 'xz < starstuff.tar > starstuff_%s_%s.tar.xz' % (device, build_num))
 
 def foo():
