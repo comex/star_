@@ -1,5 +1,3 @@
-// WAAAH it has caused SB to hang on black
-
 #include <mach/mach.h>
 #include <mach-o/dyld.h>
 #include <stdio.h>
@@ -27,7 +25,7 @@ static id icon_model;
 // Cancel Retry
 // quit   pause
 static UIAlertView *alert_view;
-static NSString *display_name;
+static NSString *display_name, *old_display_key;
 static bool is_installing;
 
 static inline NSString *_(NSString *key) {
@@ -133,10 +131,8 @@ static void MyIcon_alertView_clickedButtonAtIndex(id self, SEL sel, UIAlertView 
 }
 
 static void set_progress(float progress) {
-    NSLog(@"set_progress %f", progress); 
     id _progress = nil;
     object_getInstanceVariable(icon, "_progressView", (void **) &_progress);
-    NSLog(@"i,p=%@, %@", icon, _progress);
     [_progress setProgress:progress];
 }
 
@@ -171,19 +167,21 @@ static void init() {
 
     notify_register_dispatch("locutus.updated-state", &tokens[1], dispatch_get_main_queue(), ^(int token) {
         NSString *state = [NSString stringWithContentsOfFile:@"/tmp/locutus.state" encoding:NSUTF8StringEncoding error:nil] ;
-        NSLog(@"state = <%@>", state);
         NSArray *bits = [state componentsSeparatedByString:@"\t"];
         if([bits count] < 4) {
-            NSLog(@"fail state");
+            NSLog(@"fail state '%@'", state);
             return;
         }
 
         NSString *display_key = [bits objectAtIndex:1];
-        display_name = _(display_key);
+        if(display_key != old_display_key) {
+            old_display_key = display_key;
+            display_name = _(display_key);
+            [icon updateDisplayName];
+        }
 
         if(icon) {
             set_progress([[bits objectAtIndex:2] floatValue]);
-            [icon updateDisplayName];
         }
         
         if(is_installing = [display_key isEqualToString:@"INSTALLING_ICON_LABEL"]) {
@@ -191,7 +189,6 @@ static void init() {
         }
 
         NSString *err = [bits objectAtIndex:3];
-        NSLog(@"err = <%@>", err);
         if(![err isEqualToString:@"ok"]) {
             // don't keep going behind the alert
             [alert_view dismissWithClickedButtonIndex:0 animated:YES]; // shouldn't happen!
@@ -227,7 +224,6 @@ static void init() {
         icon = [[MyIcon alloc] initWithLeafIdentifier:bundle_identifier];
         [icon setDelegate:icon_controller];
         display_name = _(@"WAITING_ICON_LABEL");
-        NSLog(@"%@", icon);
         [icon_model addIcon:icon];
         [icon_controller addNewIconToDesignatedLocation:icon animate:NO scrollToList:NO saveIconState:YES];
         [icon_controller setIconToReveal:icon];

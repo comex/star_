@@ -12,20 +12,21 @@ os.environ['PYTHONPATH'] = ROOT+'/datautils:'+ROOT+'/goo'
 
 m = re.search('bs/(i[A-Z][a-z]+[0-9],[0-9])_([0-9\.]+)_([A-Z0-9]+)', os.readlink(ROOT + '/config/cur'))
 os.environ['DEVICE'] = device = m.group(1)
-os.environ['VERSION'] = m.group(2)
+os.environ['VERSION'] = version = m.group(2)
+os.environ['BUILD_NUM'] = build_num = m.group(3)
 is_armv7 = device not in ['iPhone1,1', 'iPhone1,2', 'iPod1,1', 'iPod2,1']
 #os.environ['ARMV7'] = str(int(is_armv7))
 #def cify(x):
 #    return re.sub('[^A-Z0-9]', '_', x.upper())
-version = m.group(2).split('.') + [0, 0]
-version = int(version[0]) * 0x10000 + int(version[1]) * 0x100 + int(version[2])
+iversion = version.split('.') + [0, 0]
+iversion = int(iversion[0]) * 0x10000 + int(iversion[1]) * 0x100 + int(iversion[2])
 
 
 GCC_FLAGS = ['-std=gnu99', '-gstabs', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wall', '-Wextra', '-Wreturn-type', '-Wno-unused', '-Os']
 SDK = '/var/sdk'
 BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
 GCC_BIN = BIN + '/gcc-4.2'
-GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fblocks', '-mapcs-frame', '-fomit-frame-pointer', '-DVERSION=0x%x' % version]
+GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fblocks', '-mapcs-frame', '-fomit-frame-pointer', '-DVERSION=0x%x' % iversion]
 GCC = [GCC_BASE, '-arch', ('armv7' if is_armv7 else 'armv6'), '-mthumb']
 GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7', '-mthumb']
 GCC_ARMV6 = [GCC_BASE, '-arch', 'armv6', '-mthumb']
@@ -59,7 +60,7 @@ def locutus():
     cflags = ['-DFNO_ASSERT_MESSAGES', '-fblocks', '-Oz', '-Wno-parentheses', '-miphoneos-version-min=4.0', '-Wno-deprecated-declarations']
     compile_stuff(['locutus_server.m'], 'locutus_server.dylib', gcc=GCC_ARMV6, cflags=cflags, ldflags=['-dynamiclib', '-framework', 'Foundation', '-framework', 'UIKit', '-install_name', 'X'*32]+cflags, ldid=False)
     run('sh', '-c', 'xxd -i locutus_server.dylib | sed "s/locutus_server_//g" > locutus_server_.c')
-    compile_stuff(['locutus.c', 'inject.c', 'baton.S',  'locutus_server_.c'], 'locutus', gcc=GCC_ARMV6, cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork']+cflags, ldid=True, ent='ent.plist')
+    compile_stuff(['locutus.c', 'inject.c', 'baton.S',  'locutus_server_.c'], 'locutus', gcc=GCC_ARMV6, cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork', '-framework', 'Foundation']+cflags, ldid=True, ent='ent.plist')
 build = locutus
 
 def goo():
@@ -129,7 +130,8 @@ def sandbox2():
 
 def nullfs():
     goto('nullfs')
-    run(GCC, '-dynamiclib', '-o', 'nullfs.dylib', 'null_subr.c', 'null_vfsops.c', 'null_vnops.c', 'vfs_pasta.c', '-fwhole-program', '-combine', '-nostdinc', '-nodefaultlibs', '-lgcc', '-Wno-error', '-Wno-parentheses', '-Wno-format', '-I.', '-Ixnu', '-Ixnu/bsd', '-Ixnu/libkern', '-Ixnu/osfmk', '-Ixnu/bsd/i386', '-Ixnu/bsd/sys', '-Ixnu/EXTERNAL_HEADERS', '-Ixnu/osfmk/libsa', '-D__i386__', '-DKERNEL', '-DKERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE', '-D__APPLE_API_PRIVATE', '-DXNU_KERNEL_PRIVATE', '-flat_namespace', '-undefined', 'dynamic_lookup', '-fno-builtin-printf', '-DNULLFS_DIAGNOSTIC')
+    run_multiple([GCC, '-dynamiclib', '-o', 'nullfs.dylib', 'null_subr.c', 'null_vfsops.c', 'null_vnops.c', 'vfs_pasta.c', '-fwhole-program', '-combine', '-nostdinc', '-nodefaultlibs', '-lgcc', '-Wno-error', '-Wno-parentheses', '-Wno-format', '-I.', '-Ixnu', '-Ixnu/bsd', '-Ixnu/libkern', '-Ixnu/osfmk', '-Ixnu/bsd/i386', '-Ixnu/bsd/sys', '-Ixnu/EXTERNAL_HEADERS', '-Ixnu/osfmk/libsa', '-D__i386__', '-DKERNEL', '-DKERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE', '-D__APPLE_API_PRIVATE', '-DXNU_KERNEL_PRIVATE', '-flat_namespace', '-undefined', 'dynamic_lookup', '-fno-builtin-printf', '-DNULLFS_DIAGNOSTIC'],
+                  ['strip', '-ur', 'nullfs.dylib'])
 
 def mroib():
     goto('mroib')
@@ -156,9 +158,11 @@ def starstuff():
     launchd()
     goto('starstuff')
     run('../white/universal/white_loader', '-k', '../config/cur/kern', '-p', '../nullfs/nullfs.dylib', 'nullfs_prelink.dylib')
-    run('tar', 'cvf', 'starstuff.tar', '@mtree')
-    run('xz', '-fk', 'starstuff.tar')
-    
+    run('gnutar', 'chvf', 'starstuff.tar', '-C', 'root', '.', '--owner', '0', '--group', 0)
+    run('sh', '-c', 'xz < starstuff.tar > starstuff_%s_%s.tar.xz' % (device, build_num))
+
+def foo():
+    run('touch', 'foo')
 
 def clean():
     goto('.')

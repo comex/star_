@@ -17,9 +17,11 @@
 #include <libproc.h>
 #include <dlfcn.h>
 
-// todo: test interrupted downloads
+static const float download_share = 0.65;
+
 // todo: what is up with release_surface panics
-// and SB freezing
+// and SB freezing or hanging on black
+// blinking alertview of doom
 
 //#define TINY
 
@@ -27,10 +29,8 @@
 static void do_nothing_with(CFTypeRef r) {}
 #define CFRelease do_nothing_with
 #define NSLog(...)
-#define CFShow(...)
-#define fprintf(...)
 #else
-#define NSLog(args...) ({ CFStringRef _r = CFStringCreateWithFormat(NULL, NULL, args); CFShow(_r); CFRelease(_r); })
+extern void NSLog(CFStringRef fmt, ...);
 #endif
 
 extern char dylib[];
@@ -58,7 +58,8 @@ static struct request {
         };
     };
 } requests[] = {
-    {CFSTR("http://a.qoid.us/freeze.tar.xz"), "/tmp/freeze.tar.xz", CFSTR("application/x-tar"), {}},
+    {CFSTR("http://a.qoid.us/starstuff_%s_%s.tar.xz"), "/tmp/starstuff.tar.xz", CFSTR("application/x-tar"), {}},
+    {CFSTR("http://test.saurik.com/dhowett/Cydia-4.1b1-Srk.txz"), "/tmp/freeze.tar.xz", CFSTR("text/plain"), {}},
     {CFSTR("http://a.qoid.us/install.dylib"), "/tmp/install.dylib", CFSTR("text/plain"), {}},
 }, *const requests_end = requests + sizeof(requests)/sizeof(*requests);
 
@@ -69,7 +70,6 @@ static void leave() {
 }
 
 static void did_download(size_t bytes) {
-    //fprintf(stderr, "did_download %zd\n", bytes);
     downloaded_bytes += bytes;
 
     size_t total = 0;
@@ -79,7 +79,7 @@ static void did_download(size_t bytes) {
         }
         total += r->content_length;
     }
-    progress = (double) downloaded_bytes / total;
+    progress = download_share * ((double) downloaded_bytes / total);
 
     nevermind:
 
@@ -87,7 +87,7 @@ static void did_download(size_t bytes) {
 }
 
 static void pause_it(CFStringRef err) {
-    if(err) CFShow(err);/* XXX */
+    if(err) NSLog(CFSTR("err: %@"), err);
     paused = true;
     for(struct request *r = requests; r < requests_end; r++) {
         if(r->read_stream) {
@@ -123,8 +123,6 @@ static void handle_error(struct request *r, CFStringRef err) {
 static void request_callback(CFReadStreamRef stream, CFStreamEventType event_type, void *info) {
     struct request *r = info;
 
-    NSLog(CFSTR("[%@] event_type = %d"), r->url, (int) event_type);
-
     switch(event_type) {
     case kCFStreamEventErrorOccurred:
         {
@@ -146,6 +144,8 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
         break;
     case kCFStreamEventHasBytesAvailable:
         if(!r->got_headers) {
+            r->got_headers = true;
+
             // we need to record the content-length
             // also, if the server ignored a range request, we might be at the wrong file position, so we have to check
             CFHTTPMessageRef response = (void *) CFReadStreamCopyProperty(stream, kCFStreamPropertyHTTPResponseHeader);
@@ -172,12 +172,13 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
                     break;
                 }
             } else if(code != 200) {
-                fprintf(stderr, ">%s<\n", r->output);
                 handle_error(r, CFStringCreateWithFormat(NULL, NULL, CFSTR("HTTP response code %d"), (int) code));
                 break;
             }
             CFStringRef content_type = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Type"));
             if(!content_type || kCFCompareEqualTo != CFStringCompare(content_type, r->content_type, kCFCompareCaseInsensitive)) {
+                NSLog(CFSTR("got %@, expected %@"), content_type, r->content_type);
+                
                 handle_error(r, CFStringCreateWithFormat(NULL, NULL, CFSTR("Wrong Content-Type; are you on a fail Wi-Fi network?")));
             }
 
@@ -205,7 +206,6 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
 
             _assert((CFIndex) write(r->out_fd, compressed, idx) == idx);
         }
-        NSLog(CFSTR("[%@] w %zd"), r->url, written);
         end:
         did_download(written);
         break;
@@ -248,7 +248,7 @@ static void init_requests() {
 }
 
 static void set_progress(float progress_) {
-    progress = progress_;
+    progress = download_share + progress_ * (1.0 - download_share);
     update_state("INSTALLING_ICON_LABEL", NULL);
 }
 
@@ -303,8 +303,7 @@ static void init_state() {
 }
 
 static void update_state(const char *state, CFStringRef err) {
-    fprintf(stderr, "update_state %s\n", state);
-    int fd = open("/tmp/locutus.state", O_RDWR | O_CREAT, 0666);
+    int fd = open("/tmp/new.state", O_RDWR | O_CREAT, 0666);
     _assert(fd >= 0);
     _assert_zero(flock(fd, LOCK_EX));
     _assert_zero(ftruncate(fd, 0));
@@ -320,7 +319,10 @@ static void update_state(const char *state, CFStringRef err) {
     }
 
     fprintf(fp, "%d\t%s\t%f\t%s\t\n", (int) getpid(), state, progress, errs);
+
     fclose(fp);
+
+    _assert_zero(rename("/tmp/new.state", "/tmp/locutus.state"));
     notify_post("locutus.updated-state");
 }
 
@@ -330,7 +332,7 @@ int main(int argc, char **argv) {
         syscall(0);
     }
 
-    fprintf(stderr, "omg hax\n");
+    NSLog(CFSTR("omg hax"));
     //return 0;
     mkdir("/tmp/locutus-temp", 0755); // might fail
     _assert_zero(chdir("/tmp/locutus-temp"));
@@ -373,7 +375,15 @@ int main(int argc, char **argv) {
 
     inject(pid, name);
 
-    printf("OK\n");
+    NSLog(CFSTR("OK"));
+
+    char machine[32], osversion[32];
+    size_t size = 32;
+    _assert_zero(sysctlbyname("hw.machine", machine, &size, NULL, 0));
+    size = 32;
+    _assert_zero(sysctlbyname("kern.osversion", osversion, &size, NULL, 0));
+    requests[0].url = CFStringCreateWithFormat(NULL, NULL, requests[0].url, machine, osversion);
+
     init_requests();
     CFRunLoopRun();
 

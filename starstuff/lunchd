@@ -1,7 +1,9 @@
 #!/bin/bash
 shopt -s nullglob
 
-/usr/share/white/white_loader -l /usr/share/white/nullfs.dylib
+echo "Hello" >&2
+
+/usr/share/white/white_loader -l /usr/share/white/nullfs_prelink.dylib
 
 for i in Applications Developer Library System User bin boot cores lib mnt sbin usr; do
     mount -t null -o union /private/var/null/$i /$i &

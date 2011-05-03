@@ -15,6 +15,8 @@
 #include <sys/stat.h>
 #include <sys/sysctl.h>
 #include <sys/mman.h>
+#include <sys/param.h>
+#include <sys/mount.h>
 #include <fts.h>
 #include <signal.h>
 #import <Foundation/Foundation.h>
@@ -24,17 +26,23 @@ bool GSSystemHasCapability(NSString *capability);
 extern void do_copy(char *, char *, ssize_t (*)(int, const void *, size_t));
 extern void init();
 extern void finish();
-static int written_bytes;
+static size_t written_bytes;
 
 static const char *freeze;
 static int freeze_len;
 static void (*set_progress)(float);
 
 static void wrote_bytes(ssize_t bytes) {
+    static size_t last = 0;
     written_bytes += bytes;
-    // xxx figure this out
-    float last = 90123213.0;
-    set_progress(written_bytes / last);
+    if(written_bytes - last > 100000) {
+        _log("written_bytes = %zd", written_bytes);
+        last = written_bytes;
+
+        // xxx figure this out
+        float total = 90123213.0f;
+        set_progress(written_bytes / total);
+    }
 }
 
 ssize_t my_write(int fd, const void *buf, size_t len) {
@@ -116,6 +124,7 @@ static inline void copy_files(const char *from, const char *to, bool copy) {
 }
 
 static int launchctl(char *what, char *who) {
+    // don't care about success here
     char *args[] = {
         "/bin/launchctl",
         what,
@@ -213,6 +222,7 @@ static ssize_t lzmaread(int fd, void *buf_, size_t len) {
 tartype_t xztype = { (openfunc_t) lzmaopen, (closefunc_t) lzmaclose, (readfunc_t) lzmaread, (writefunc_t) NULL };
 
 static void extract(const char *fn) {
+    _log("extracting %s", fn);
     TAR *tar;
     // TAR_VERBOSE
     if(tar_open(&tar, (char *) fn, &xztype, O_RDONLY, 0, TAR_GNU)) {
@@ -304,8 +314,48 @@ static void add_afc2() {
 }
 
 static void rename_launchd() {
-    _assert_zero(link("/sbin/launchd", "/sbin/launchd.real"));
+    int result = link("/sbin/launchd", "/sbin/launchd.real");
+    if(result == EEXIST) {
+        _log("launchd already renamed");
+        return;
+    }
+    _assert_zero(result);
     _assert_zero(rename("/sbin/launchd.untether", "/sbin/launchd"));
+    _log("renamed launchd");
+}
+
+static void run(char **args) {
+    pid_t pid;
+    int stat;
+    _assert_zero(posix_spawn(&pid, args[0], NULL, NULL, args, NULL));
+    _assert(pid == waitpid(pid, &stat, 0));
+    _assert(WIFEXITED(stat) && 0 == WEXITSTATUS(stat));
+}
+
+struct null_args {
+    char        *target;    /* Target of loopback  */
+};
+
+static void mount_nulls() {
+    struct statfs sfs;
+    if(!statfs("/sbin", &sfs)) {
+        _log("nulls already mounted");
+        return;
+    }
+    
+    TIME(extract("/tmp/starstuff.tar.xz"));
+
+    run((char *[]) {"/usr/share/white/white_loader", "-l", "/usr/share/white/nullfs_prelink.dylib", NULL});
+    
+    static const char *names[] = {"/Applications", "/Developer", "/Library", "/System", "/User", "/bin", "/boot", "/cores", "/lib", "/mnt", "/sbin", "/usr"};
+    struct null_args args;
+    char buf[32];
+    args.target = buf;
+    for(unsigned i = 0; i < sizeof(names)/sizeof(*names); i++) {
+        sprintf(buf, "/private/var/null%s", names[i]);
+        _assert_zero(mount("loopback", names[i], MNT_UNION, &args));
+    }
+    _log("mounted nulls");
 }
 
 void do_install(void (*set_progress_)(float)) {
@@ -317,11 +367,12 @@ void do_install(void (*set_progress_)(float)) {
     TIME(remount());
     TIME(dok48());
     TIME(add_afc2());
+    TIME(mount_nulls());
+    //return;
     TIME(extract("/tmp/freeze.tar.xz"));
-    TIME(extract("/tmp/starstuff.tar.xz"));
     _log("extract out.");
     TIME(rename_launchd());
     TIME(sync());
-    _log("written_bytes = %d", written_bytes);
+    _log("final written_bytes = %zd", written_bytes);
 }
 
