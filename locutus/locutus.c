@@ -19,9 +19,10 @@
 
 static const float download_share = 0.65;
 
-// todo: what is up with release_surface panics
 // and SB freezing or hanging on black
 // blinking alertview of doom
+// if Cydia was not actually created *or locutus crashes*, don't sit on installing forever (so we should use a socket - that would also handle the locking issue)
+// Safari is respawning and reloading it - I think this can be avoided by having JavaScript load the pdf
 
 //#define TINY
 
@@ -254,8 +255,7 @@ static void set_progress(float progress_) {
 
 static void run_install() {
     signal(SIGUSR1, SIG_IGN);
-    progress = 0.0;
-    update_state("INSTALLING_ICON_LABEL", NULL);
+    set_progress(0.0);
     void *install = dlopen("/tmp/install.dylib", RTLD_LAZY);
     void (*do_install)(void (*set_progress)(float)) = dlsym(install, "do_install");
     do_install(set_progress);

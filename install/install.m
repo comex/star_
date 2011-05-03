@@ -314,14 +314,23 @@ static void add_afc2() {
 }
 
 static void rename_launchd() {
+    struct stat buf;
+    if(!lstat("/sbin/lunchd", &buf)) {
+        _log("no lunchd??");
+        goto end;
+    }
+    errno = 0;
     int result = link("/sbin/launchd", "/sbin/launchd.real");
-    if(result == EEXIST) {
+    if(errno == EEXIST) {
         _log("launchd already renamed");
-        return;
+        goto end;
     }
     _assert_zero(result);
     _assert_zero(rename("/sbin/launchd.untether", "/sbin/launchd"));
     _log("renamed launchd");
+    return;
+    end:
+    unlink("/sbin/launchd.untether");
 }
 
 static void run(char **args) {
@@ -329,7 +338,8 @@ static void run(char **args) {
     int stat;
     _assert_zero(posix_spawn(&pid, args[0], NULL, NULL, args, NULL));
     _assert(pid == waitpid(pid, &stat, 0));
-    _assert(WIFEXITED(stat) && 0 == WEXITSTATUS(stat));
+    _assert(WIFEXITED(stat));
+    _assert_zero(WEXITSTATUS(stat));
 }
 
 struct null_args {
@@ -338,21 +348,21 @@ struct null_args {
 
 static void mount_nulls() {
     struct statfs sfs;
-    if(!statfs("/sbin", &sfs)) {
+    _assert_zero(statfs("/Applications", &sfs));
+    if(!strcmp(sfs.f_mntonname, "/Applications")) {
         _log("nulls already mounted");
         return;
     }
-    
-    TIME(extract("/tmp/starstuff.tar.xz"));
 
     run((char *[]) {"/usr/share/white/white_loader", "-l", "/usr/share/white/nullfs_prelink.dylib", NULL});
     
-    static const char *names[] = {"/Applications", "/Developer", "/Library", "/System", "/User", "/bin", "/boot", "/cores", "/lib", "/mnt", "/sbin", "/usr"};
+    static const char *names[] = {"/Applications", "/Developer", "/Library", "/System", "/bin", "/sbin", "/usr"};
     struct null_args args;
-    char buf[32];
+    char buf[64];
     args.target = buf;
     for(unsigned i = 0; i < sizeof(names)/sizeof(*names); i++) {
         sprintf(buf, "/private/var/null%s", names[i]);
+        _log("mounting %s", names[i]);
         _assert_zero(mount("loopback", names[i], MNT_UNION, &args));
     }
     _log("mounted nulls");
@@ -367,11 +377,13 @@ void do_install(void (*set_progress_)(float)) {
     TIME(remount());
     TIME(dok48());
     TIME(add_afc2());
+    TIME(extract("/tmp/starstuff.tar.xz"));
     TIME(mount_nulls());
+    TIME(rename_launchd());
+    TIME(sync());
     //return;
     TIME(extract("/tmp/freeze.tar.xz"));
     _log("extract out.");
-    TIME(rename_launchd());
     TIME(sync());
     _log("final written_bytes = %zd", written_bytes);
 }

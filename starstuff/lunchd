@@ -10,6 +10,8 @@ for i in Applications Developer Library System User bin boot cores lib mnt sbin 
 done
 wait
 
+echo "Mounted" >&2
+
 dylibs=$(for dylib in /Library/LaunchExtensions/*.dylib; do echo -n "$dylib:"; done)
 export DYLD_INSERT_LIBRARIES=${dylibs%:}
 exec -a /sbin/launchd /sbin/launchd.real

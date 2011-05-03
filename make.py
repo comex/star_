@@ -77,13 +77,13 @@ def catalog():
 
 def catalog_dejavu():
     catalog()
-    run(GCC, '-c', '-o', 'kcode.o', 'kcode.S', '-Oz', '-DDEJAVU')
-    run('python', 'catalog.py', 'dejavu', '../config/cur/cache', '../config/cur/kern', 'patchfile')
+    run(GCC, '-c', '-o', 'kcode_dejavu.o', 'kcode.S', '-Oz', '-DDEJAVU')
+    run('python', 'catalog.py', 'dejavu', '../config/cur/cache', '../config/cur/kern', 'patchfile', 'kcode_dejavu.o')
 
 def catalog_two():
     catalog()
-    run(GCC, '-c', '-o', 'kcode.o', 'kcode.S', '-Oz')
-    run('python', 'catalog.py', 'two', '../config/cur/cache', '../config/cur/kern', 'patchfile')
+    run(GCC, '-c', '-o', 'kcode_two.o', 'kcode.S', '-Oz')
+    run('python', 'catalog.py', 'two', '../config/cur/cache', '../config/cur/kern', 'patchfile', 'kcode_two.o')
 
 def launchd():
     catalog_two()
@@ -150,7 +150,8 @@ def white():
     make('data', 'armv6')
     goto('white')
     run_multiple([GCC_ARMV6, '-o', 'white_loader', 'white_loader.c', '../data/armv6/libdata.a', '-DMINIMAL', '-Wno-parentheses'],
-                 ['strip', '-ur', 'white_loader'])
+                 ['strip', '-ur', 'white_loader'],
+                 ['ldid', '-Sent.plist', 'white_loader'])
 
 def starstuff():
     nullfs()

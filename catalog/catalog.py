@@ -18,11 +18,11 @@ PROT_EXEC = 4
 
 four_dot_three = '4.3' in os.environ['VERSION']
 
-if len(sys.argv) != 5:
+if len(sys.argv) != 6:
     print >> sys.stderr, "usage: python catalog.py dejavu|two cache kern patchfile"
     sys.exit(1)
 
-mode, cachefile, kernfile, patchfile = sys.argv[1:]
+mode, cachefile, kernfile, patchfile, kcode = sys.argv[1:]
 assert mode in ['dejavu', 'two']
 patchfp = open(patchfile)
 
@@ -50,7 +50,7 @@ dmini.init(kernfile, False)
 sysent = dmini.cur.find_basic('- 00 10 86 00') + 4
 
 code_addr = 0x80000400 # XXX
-weirdfile = dmini.Connection('kcode.o', rw=True).relocate(dmini.cur, code_addr).nth_segment(0)[:-8]
+weirdfile = dmini.Connection(kcode, rw=True).relocate(dmini.cur, code_addr).nth_segment(0)[:-8]
 count = 0
 stuff = ''
 while True:
@@ -59,7 +59,7 @@ while True:
     name = patchfp.read(struct.unpack('I', namelen)[0])
     addr, = struct.unpack('I', patchfp.read(4))
     data = patchfp.read(struct.unpack('I', patchfp.read(4))[0])
-    if addr == 0 or len(data) == 0 or name.startswith('+'): # in place only
+    if addr == 0 or len(data) == 0 or name.startswith('-'): # before the fact only
         continue
     stuff += I(addr, len(data)) + data
     count += 1
