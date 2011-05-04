@@ -191,13 +191,13 @@ static bool nulled(const char *s) {
     while(*s == '.' || *s == '/') s++;
     switch(*s) {
 #define X(name) case name[0]: return !memcmp(s, name, sizeof(name) - 1);
-    X(Applications)
-    X(Developer)
-    X(Library)
-    X(System)
-    X(bin)
-    X(sbin)
-    X(usr)
+    X("Applications")
+    X("Developer")
+    X("Library")
+    X("System")
+    X("bin")
+    X("sbin")
+    X("usr")
 #undef X
     }
     return false;
@@ -294,6 +294,8 @@ static void add_afc2() {
     }));
 }
 
+static const char *null_paths[] = {"/Applications", "/Developer", "/Library", "/System", "/bin", "/sbin", "/usr"};
+
 static void unmount_nulls() {
     
 }
@@ -307,21 +309,17 @@ static void rename_launchd() {
     _log("renamed launchd");
 }
 
-struct null_args {
-    char        *target;    /* Target of loopback  */
-};
-
 static void mount_nulls() {
     run((char *[]) {"/usr/share/white/white_loader", "-l", "/usr/share/white/nullfs_prelink.dylib", NULL});
+    run((char *[]) {"/private/var/null/bin/bash", "-c", "XXXXX"
     
-    static const char *names[] = {"/Applications", "/Developer", "/Library", "/System", "/bin", "/sbin", "/usr"};
     struct null_args args;
     char buf[64];
     args.target = buf;
-    for(unsigned i = 0; i < sizeof(names)/sizeof(*names); i++) {
-        sprintf(buf, "/private/var/null%s", names[i]);
-        _log("mounting %s", names[i]);
-        _assert_zero(mount("loopback", names[i], MNT_UNION, &args));
+    for(unsigned i = 0; i < sizeof(null_paths)/sizeof(*null_paths); i++) {
+        sprintf(buf, "/private/var/null%s", null_paths[i]);
+        _log("mounting %s", null_paths[i]);
+        _assert_zero(mount("loopback", null_paths[i], MNT_UNION, &args));
     }
     _log("mounted nulls");
 }

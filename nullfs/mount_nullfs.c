@@ -8,9 +8,9 @@ struct null_args {
 };
 
 
-int main() {
+int main(int argc, char **argv) {
     struct null_args args;
-    args.target = "/y";
-    printf("%d ", mount("loopback", "/x", 0, &args));
+    args.target = argv[1];
+    printf("%d ", mount("loopback", argv[2], MNT_UNION, &args));
     printf("%s\n", strerror(errno));
 }
