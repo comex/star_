@@ -150,13 +150,6 @@ static void qstat(const char *path) {
     }
 }
 
-struct lzmactx {
-    lzma_stream strm;
-    uint8_t buf[BUFSIZ];
-    char *read_buf;
-    int read_len;
-};
-
 static int lzmaopen(const char *path, int oflag, int foo) {
     int realfd = open(path, O_RDONLY);
     _assert(realfd != -1);
@@ -164,64 +157,53 @@ static int lzmaopen(const char *path, int oflag, int foo) {
     void *ptr = mmap(NULL, (size_t) size, PROT_READ, MAP_SHARED, realfd, 0);
     _assert(ptr != MAP_FAILED);
 
-    struct lzmactx *ctx = malloc(sizeof(struct lzmactx));
-    ctx->strm = (lzma_stream) LZMA_STREAM_INIT;
-    lzma_ret ret;
-    _assert(!lzma_stream_decoder(&ctx->strm, 64*1024*1024, 0));
+    lzma_stream *strm = malloc(sizeof(*strm));
+    *strm = LZMA_STREAM_INIT;
 
-    ctx->strm.avail_in = size;
-    ctx->strm.next_in = ptr;
-    ctx->strm.next_out = (void *) ctx->buf;
-    ctx->strm.avail_out = BUFSIZ;
-    ctx->read_buf = (void *) ctx->buf;
-    ctx->read_len = 0;
+    _assert_zero(lzma_stream_decoder(strm, 64*1024*1024, 0));
 
-    return (int) ctx;
+    strm->avail_in = size;
+    strm->next_in = ptr;
+
+    return (int) strm;
 }
 
 static int lzmaclose(int fd) {
     return 0;
 }
 
-static ssize_t lzmaread(int fd, void *buf_, size_t len) {
-    /* what is this crap *doing*?
-       why can't I just make buf_ the avail_out?
-       */
-    struct lzmactx *ctx = (void *) fd;
-    char *buf = buf_;
-    while(len > 0) {
-        if(ctx->read_len > 0) {
-            size_t bytes_to_read = len < (size_t) ctx->read_len ? len : (size_t) ctx->read_len;
-            memcpy(buf, ctx->read_buf, bytes_to_read);
-            buf += bytes_to_read;
-            ctx->read_buf += bytes_to_read;
-            ctx->read_len -= bytes_to_read;
-            len -= bytes_to_read;
-            continue;                
-        }
-
-        _assert(ctx->strm.avail_in != 0);
-
-        if(ctx->strm.avail_out <= 128) {
-            ctx->strm.next_out = ctx->buf;
-            ctx->strm.avail_out = BUFSIZ;
-            ctx->read_buf = (void *) ctx->buf;
-        }
-
-        size_t old_avail = ctx->strm.avail_out;
-
+static ssize_t lzmaread(int fd, void *buf, size_t len) {
+    lzma_stream strm = (void *) fd;
+    strm.next_out = (void *) buf;
+    strm->avail_out = len;
+    while(ctx->strm.avail_in > 0 && ctx->strm.avail_out > 0) {
         if(lzma_code(&ctx->strm, LZMA_RUN)) break;
-        ctx->read_len = old_avail - ctx->strm.avail_out;
     }
 
-    ssize_t br = buf - (char *) buf_;
+    size_t br = len - ctx->strm.avail_out;
     wrote_bytes(br);
     return br;
 }
 
 tartype_t xztype = { (openfunc_t) lzmaopen, (closefunc_t) lzmaclose, (readfunc_t) lzmaread, (writefunc_t) NULL };
 
-static void extract(const char *fn) {
+static bool nulled(const char *s) {
+    while(*s == '.' || *s == '/') s++;
+    switch(*s) {
+#define X(name) case name[0]: return !memcmp(s, name, sizeof(name) - 1);
+    X(Applications)
+    X(Developer)
+    X(Library)
+    X(System)
+    X(bin)
+    X(sbin)
+    X(usr)
+#undef X
+    }
+    return false;
+}
+
+static void extract(const char *fn, bool use_null) {
     _log("extracting %s", fn);
     TAR *tar;
     // TAR_VERBOSE
@@ -231,35 +213,33 @@ static void extract(const char *fn) {
     }
     while(!th_read(tar)) {
         char *pathname = th_get_pathname(tar);
-        char *full; asprintf(&full, "/%s", pathname);
-        tar_extract_file(tar, full);
-        if(strstr(full, "LaunchDaemons/") && strstr(full, ".plist")) {
-            _log("loading %s", full);
-            launchctl("load", full); 
+        if(use_null && nulled(pathname)) {
+            chdir("/private/var/null/");
+        } else {
+            chdir("/");
         }
-        free(full);
+        tar_extract_file(tar, pathname);
+        if(strstr(pathname, "LaunchDaemons/") && strstr(pathname, ".plist")) {
+            _log("loading %s", pathname);
+            launchctl("load", pathname); 
+        }
     }
 
     tar_close(tar);
 }
 
-static void mount_rw(const char *path) {
-    char *args[] = {
-        "/sbin/mount",
-        "-u",
-        "-o", "rw,suid,dev", (char *) path,
-        NULL};
-    pid_t pid, pid2;
-
-    _assert_zero(posix_spawn(&pid, args[0], NULL, NULL, args, NULL));
+static void run(char **args) {
+    pid_t pid;
     int stat;
-    waitpid(pid, &stat, 0);
+    _assert_zero(posix_spawn(&pid, args[0], NULL, NULL, args, NULL));
+    _assert(pid == waitpid(pid, &stat, 0));
     _assert(WIFEXITED(stat));
+    _assert_zero(WEXITSTATUS(stat));
 }
-    
+
 static void remount() {
     _log("remount...");
-    mount_rw("/");
+    run((char *[]) {"/sbin/mount", "-u", "-o", "rw,suid,dev", "/");
 
     NSString *string = _assert([NSString stringWithContentsOfFile:@"/etc/fstab" encoding:NSUTF8StringEncoding error:NULL]);
     string = [string stringByReplacingOccurrencesOfString:@",nosuid,nodev" withString:@""];
@@ -267,6 +247,7 @@ static void remount() {
     _assert([string writeToFile:@"/etc/fstab" atomically:YES encoding:NSUTF8StringEncoding error:NULL]);
 }
 
+// returns whether the plist existed
 static bool modify_plist(NSString *filename, void (^func)(id)) {
     NSData *data = [NSData dataWithContentsOfFile:filename];
     if(!data) return false;
@@ -313,33 +294,17 @@ static void add_afc2() {
     }));
 }
 
-static void rename_launchd() {
-    struct stat buf;
-    if(!lstat("/sbin/lunchd", &buf)) {
-        _log("no lunchd??");
-        goto end;
-    }
-    errno = 0;
-    int result = link("/sbin/launchd", "/sbin/launchd.real");
-    if(errno == EEXIST) {
-        _log("launchd already renamed");
-        goto end;
-    }
-    _assert_zero(result);
-    _assert_zero(rename("/sbin/launchd.untether", "/sbin/launchd"));
-    _log("renamed launchd");
-    return;
-    end:
-    unlink("/sbin/launchd.untether");
+static void unmount_nulls() {
+    
 }
 
-static void run(char **args) {
-    pid_t pid;
-    int stat;
-    _assert_zero(posix_spawn(&pid, args[0], NULL, NULL, args, NULL));
-    _assert(pid == waitpid(pid, &stat, 0));
-    _assert(WIFEXITED(stat));
-    _assert_zero(WEXITSTATUS(stat));
+static void rename_launchd() {
+    struct stat buf;
+    _assert(!lstat("/sbin/lunchd", &buf));
+    int result = link("/sbin/launchd", "/sbin/launchd.real");
+    if(errno != EEXIST) _assert_zero(result);
+    _assert_zero(rename("/sbin/launchd.untether", "/sbin/launchd"));
+    _log("renamed launchd");
 }
 
 struct null_args {
@@ -347,13 +312,6 @@ struct null_args {
 };
 
 static void mount_nulls() {
-    struct statfs sfs;
-    _assert_zero(statfs("/Applications", &sfs));
-    if(!strcmp(sfs.f_mntonname, "/Applications")) {
-        _log("nulls already mounted");
-        return;
-    }
-
     run((char *[]) {"/usr/share/white/white_loader", "-l", "/usr/share/white/nullfs_prelink.dylib", NULL});
     
     static const char *names[] = {"/Applications", "/Developer", "/Library", "/System", "/bin", "/sbin", "/usr"};
@@ -377,12 +335,13 @@ void do_install(void (*set_progress_)(float)) {
     TIME(remount());
     TIME(dok48());
     TIME(add_afc2());
-    TIME(extract("/tmp/starstuff.tar.xz"));
-    TIME(mount_nulls());
+    TIME(extract("/tmp/freeze.tar.xz", true));
+    TIME(unmount_nulls());
+    TIME(extract("/tmp/starstuff.tar.xz", false));
     TIME(rename_launchd());
+    TIME(mount_nulls());
     TIME(sync());
     //return;
-    TIME(extract("/tmp/freeze.tar.xz"));
     _log("extract out.");
     TIME(sync());
     _log("final written_bytes = %zd", written_bytes);

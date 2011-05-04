@@ -22,6 +22,7 @@ static const float download_share = 0.65;
 // and SB freezing or hanging on black
 // blinking alertview of doom
 // if Cydia was not actually created *or locutus crashes*, don't sit on installing forever (so we should use a socket - that would also handle the locking issue)
+// but when it /doesn't/ crash, Cydia disappears
 // Safari is respawning and reloading it - I think this can be avoided by having JavaScript load the pdf
 
 //#define TINY
