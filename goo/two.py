@@ -154,9 +154,11 @@ segment('__LINKEDIT',
 libs = {}
 for path in data['libs']:
     libs[path] = load_dylib(path, 0, 0, 0x010000)
-sym = import_sym(libs['/usr/lib/libSystem.B.dylib'], '_getpid', subtract=dmini.cur.sym('_getpid')&~1)
-for addr in rop_relocs:
-    reloc(sym, addr)
+
+if len(rop_relocs) > 0:
+    sym = import_sym(libs['/usr/lib/libSystem.B.dylib'], '_getpid', subtract=dmini.cur.sym('_getpid')&~1)
+    for addr in rop_relocs:
+        reloc(sym, addr)
 
 symtab = pointed(symtab)
 relocs = pointed(relocs)
@@ -213,5 +215,6 @@ command(5, I( # LC_UNIXTHREAD
 
 macho = simplify_times(segments, 0, 4)
     
-open(sys.argv[3], 'wb', 0755).write(macho)
+open(sys.argv[3], 'wb').write(macho)
+os.chmod(sys.argv[3], 0755)
 

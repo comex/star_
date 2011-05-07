@@ -647,9 +647,13 @@ static int outf = -1;
 #define output(fmt, args...) do { char obuf[1024]; write(outf, obuf, snprintf(obuf, 1024, fmt, ##args)); } while(0)
 
 static void record(const char *func, const char *path, bool is_write) {
-    if(!path || path[0] == '/' || (path[0] == '.' && !path[1])) return;
-    char wd[MAXPATHLEN]; getwd(wd);
-    output("!%s.%s %s/%s\\n", is_write ? "write" : "read", func, wd, path);
+    if(!path || (path[0] == '.' && !path[1])) return;
+    if(path[0] == '/') {
+        output("!%s.%s %s\\n", is_write ? "write" : "read", func, path);
+    } else {
+        char wd[MAXPATHLEN]; getwd(wd);
+        output("!%s.%s %s/%s\\n", is_write ? "write" : "read", func, wd, path);
+    }
 }
 
 __attribute__((constructor))

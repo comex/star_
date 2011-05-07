@@ -1,7 +1,3 @@
-#define IS_64BIT_PROCESS(x) 0
-//extern void IOLog(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
-//#define printf(args...) IOLog(args)
-#define printf(args...) (void) (args)
 /*
  * Copyright (c) 2000-2002 Apple Computer, Inc. All rights reserved.
  *
@@ -74,6 +70,7 @@
 #ifndef __NULLFS_NULL_H__
 #define __NULLFS_NULL_H__
 
+#include "../fs.h"
 #include  <sys/appleapiopts.h>
 
 #ifdef __APPLE_API_PRIVATE

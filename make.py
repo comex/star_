@@ -68,7 +68,6 @@ def goo():
     #run('python', 'setup.py'
 
 def catalog():
-    locutus()
     goo()
     make('data', 'universal')
     make('datautils0', 'universal')
@@ -76,19 +75,20 @@ def catalog():
     run('../datautils0/universal/make_kernel_patchfile', '../config/cur/kern', 'patchfile')
 
 def catalog_dejavu():
+    locutus()
     catalog()
     run(GCC, '-c', '-o', 'kcode_dejavu.o', 'kcode.S', '-Oz', '-DDEJAVU')
     run('python', 'catalog.py', 'dejavu', '../config/cur/cache', '../config/cur/kern', 'patchfile', 'kcode_dejavu.o')
 
-def catalog_two():
+def catalog_untether():
     catalog()
     run(GCC, '-c', '-o', 'kcode_two.o', 'kcode.S', '-Oz')
-    run('python', 'catalog.py', 'two', '../config/cur/cache', '../config/cur/kern', 'patchfile', 'kcode_two.o')
+    run('python', 'catalog.py', 'untether', '../config/cur/cache', '../config/cur/kern', 'patchfile', 'kcode_two.o')
 
-def launchd():
-    catalog_two()
+def untether():
+    catalog_untether()
     goto('catalog')
-    run('python', '../goo/two.py', '../config/cur/cache', 'two.txt', 'launchd')
+    run('python', '../goo/two.py', '../config/cur/cache', 'two.txt', 'untether')
 
 def pdf():
     dejavu()
@@ -128,10 +128,11 @@ def sandbox2():
     goto('sandbox2')
     run(GCC_ARMV6, '-c', '-o', 'sandbox.o', 'sandbox.S')
 
-def nullfs():
-    goto('nullfs')
-    run_multiple([GCC, '-dynamiclib', '-o', 'nullfs.dylib', 'null_subr.c', 'null_vfsops.c', 'null_vnops.c', 'vfs_pasta.c', '-fwhole-program', '-combine', '-nostdinc', '-nodefaultlibs', '-lgcc', '-Wno-error', '-Wno-parentheses', '-Wno-format', '-I.', '-Ixnu', '-Ixnu/bsd', '-Ixnu/libkern', '-Ixnu/osfmk', '-Ixnu/bsd/i386', '-Ixnu/bsd/sys', '-Ixnu/EXTERNAL_HEADERS', '-Ixnu/osfmk/libsa', '-D__i386__', '-DKERNEL', '-DKERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE', '-D__APPLE_API_PRIVATE', '-DXNU_KERNEL_PRIVATE', '-flat_namespace', '-undefined', 'dynamic_lookup', '-fno-builtin-printf', '-DNULLFS_DIAGNOSTIC'],
-                  ['strip', '-ur', 'nullfs.dylib'])
+def fs():
+    goto('fs')
+    crap = [GCC, '-dynamiclib', '-g0',  '-fwhole-program', '-combine', '-nostdinc', '-nodefaultlibs', '-lgcc', '-Wno-error', '-Wno-parentheses', '-Wno-format', '-I.', '-Ixnu', '-Ixnu/bsd', '-Ixnu/libkern', '-Ixnu/osfmk', '-Ixnu/bsd/i386', '-Ixnu/bsd/sys', '-Ixnu/EXTERNAL_HEADERS', '-Ixnu/osfmk/libsa', '-D__i386__', '-DKERNEL', '-DKERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE', '-D__APPLE_API_PRIVATE', '-DXNU_KERNEL_PRIVATE', '-flat_namespace', '-undefined', 'dynamic_lookup', '-fno-builtin-printf', '-fno-builtin-log', '-DNULLFS_DIAGNOSTIC', '-dead_strip']
+    #run(*(crap + ['-o', 'nullfs.dylib', 'kpi_vfs.c', 'null/null_subr.c', 'null/null_vfsops.c', 'null/null_vnops.c']))
+    run(*(crap + ['-o', 'union.dylib', 'kpi_vfs.c', 'union/union_subr.c', 'union/union_vfsops.c', 'union/union_vnops.c']))
 
 def mroib():
     goto('mroib')
@@ -154,11 +155,12 @@ def white():
                  ['ldid', '-Sent.plist', 'white_loader'])
 
 def starstuff():
-    nullfs()
+    fs()
     white()
-    launchd()
+    untether()
     goto('starstuff')
-    run('../white/universal/white_loader', '-k', '../config/cur/kern', '-p', '../nullfs/nullfs.dylib', 'nullfs_prelink.dylib')
+    compile_stuff(['mount_nulls.c'], 'mount_nulls', ldid=False, gcc=GCC_ARMV6)
+    run('../white/universal/white_loader', '-k', '../config/cur/kern', '-p', '../fs/union.dylib', 'union_prelink.dylib')
     run('gnutar', 'chvf', 'starstuff.tar', '-C', 'root', '.', '--owner', '0', '--group', 0, '--exclude', '.ignore')
     run('sh', '-c', 'xz < starstuff.tar > starstuff_%s_%s.tar.xz' % (device, build_num))
 

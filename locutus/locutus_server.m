@@ -4,15 +4,16 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <syslog.h>
-#include <dispatch/dispatch.h>
-#include <notify.h>
 #import <UIKit/UIKit.h>
 #include <objc/runtime.h>
+#include <pthread.h>
+#include <dispatch/dispatch.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 static NSString *bundle_identifier;
 static id existing_icon;
 
-static notify_handler_t sk_handler;
 static int tokens[3];
 
 static Class MyIcon;
@@ -27,6 +28,7 @@ static id icon_model;
 static UIAlertView *alert_view;
 static NSString *display_name, *old_display_key;
 static bool is_installing;
+static int sock;
 
 static inline NSString *_(NSString *key) {
     NSString *r = [[NSBundle mainBundle] localizedStringForKey:key value:nil table:@"SpringBoard"];
@@ -83,15 +85,13 @@ static inline NSString *_(NSString *key) {
 -(void)quitTopApplication:(void *)application;
 @end
 
-static notify_handler_t sk_handler = ^(int token) {
-    NSLog(@"s/k");
+static void (^sk)() = ^{
     [alert_view dismissWithClickedButtonIndex:0 animated:YES];
-    // do something ...
-    for(int i = 0; i < 3; i++) {
-        notify_cancel(tokens[i]);
-    }
     [icon remove];
     icon = nil;
+    [icon_controller setIconToReveal:nil];
+    close(sock);
+    sock = 0;
 };
 
 static NSString *MyIcon_displayName(id self, SEL sel) {
@@ -103,7 +103,8 @@ static NSString *MyIcon_applicationBundleID(id self, SEL sel) {
 }
 
 static void MyIcon_launch(id self, SEL sel) {
-    notify_post("locutus.pause"); 
+    NSLog(@"%d", write(sock, "p", 1));
+	NSLog(@"%s", strerror(errno));  
 }
 
 static BOOL MyIcon_allowsUninstall(id self, SEL sel) {
@@ -112,8 +113,7 @@ static BOOL MyIcon_allowsUninstall(id self, SEL sel) {
 
 static void MyIcon_closeBoxTapped(id self, SEL sel) {
     // don't download behind the user's back
-    notify_post("locutus.pause");
-    
+    NSLog(@"%d", write(sock, "p", 1));
 
     alert_view = [[UIAlertView alloc] initWithTitle:@"Remove Download" message:@"Are you sure you want to remove “Cydia”?" delegate:icon cancelButtonTitle:@"Remove" otherButtonTitles:@"Cancel", nil];
     [alert_view show];
@@ -122,9 +122,9 @@ static void MyIcon_closeBoxTapped(id self, SEL sel) {
 
 static void MyIcon_alertView_clickedButtonAtIndex(id self, SEL sel, UIAlertView *alertView, NSInteger buttonIndex) {
     if(buttonIndex == 0) {
-        sk_handler(0);
+        sk();
     } else {
-        notify_post("locutus.pause"); 
+		NSLog(@"%d", write(sock, "p", 1));
     }
     [alert_view release];
     alert_view = nil;
@@ -136,10 +136,89 @@ static void set_progress(float progress) {
     [_progress setProgress:progress];
 }
 
+static void installed() {
+    NSLog(@"installed; existing_icon = %@", existing_icon);
+    if(existing_icon) {
+        [icon remove];
+        [icon_controller scrollToIconListContainingIcon:existing_icon animate:YES];
+    } else {
+#if VERSION >= 0x040300
+        [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO reloadAllIcons:NO];
+#else
+        [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO];
+#endif
+    }
+    icon = nil;
+    sk();
+}
+    
+static void *read_state(void *fp_) {
+    FILE *fp = fp_;
+    while(1) {
+        struct {
+            char state[128], errs[128];
+        } s;
+        float progress;
+
+        char buf[1024];
+        if(!fgets(buf, sizeof(buf), fp) ||
+            sscanf(buf, "%128s\t%f\t%128[^;]", s.state, &progress, s.errs) != 3) {
+            dispatch_async(dispatch_get_main_queue(), (dispatch_block_t) sk);
+            return NULL;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if(s.state[0] == '`') {
+                installed();
+                return;
+            }
+            
+            if(icon) {
+                set_progress(progress);
+            }
+
+            if(s.errs[0] != '`') {
+                // don't keep going behind the alert
+                [alert_view dismissWithClickedButtonIndex:0 animated:YES]; // shouldn't happen!
+                alert_view = [[UIAlertView alloc] initWithTitle:@"There was a problem downloading the jailbreak files." message:[NSString stringWithCString:s.errs] delegate:icon cancelButtonTitle:@"Cancel" otherButtonTitles:@"Retry", nil];
+                [alert_view show];
+            }
+
+            NSString *display_key = [NSString stringWithCString:s.state encoding:NSUTF8StringEncoding];
+
+            if([display_key isEqualToString:old_display_key]) return;
+            [old_display_key release];
+            old_display_key = [display_key retain];
+            display_name = _(display_key);
+            [icon updateDisplayName];
+
+
+            if(is_installing = [display_key isEqualToString:@"INSTALLING_ICON_LABEL"]) {
+                [icon setShowsCloseBox:NO];
+            }
+        });
+    }
+}
+
 __attribute__((constructor))
 static void init() {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     NSLog(@"i'm alive");
+    
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(1021);
+    addr.sin_addr.s_addr = htonl(0x7f000001);
+
+    sock = socket(PF_INET, SOCK_STREAM, 0);
+    if(sock == -1) return;
+
+    if(connect(sock, (void *) &addr, sizeof(addr))) return;
+
+    FILE *fp = fdopen(sock, "r");
+        
+    pthread_t thread;
+    pthread_create(&thread, NULL, read_state, fp);
     
     application_controller = [objc_getClass("SBApplicationController") sharedInstance];
 
@@ -159,62 +238,7 @@ static void init() {
     objc_registerClassPair(MyIcon);
 
     icon_controller = [objc_getClass("SBIconController") sharedInstance];
-    NSLog(@"%@", icon_controller);
-
-    NSLog(@"starting notify...");
-
-    notify_register_dispatch("locutus.go-away", &tokens[0], dispatch_get_main_queue(), sk_handler);
-
-    notify_register_dispatch("locutus.updated-state", &tokens[1], dispatch_get_main_queue(), ^(int token) {
-        NSString *state = [NSString stringWithContentsOfFile:@"/tmp/locutus.state" encoding:NSUTF8StringEncoding error:nil] ;
-        NSArray *bits = [state componentsSeparatedByString:@"\t"];
-        if([bits count] < 4) {
-            NSLog(@"fail state '%@'", state);
-            return;
-        }
-
-        NSString *display_key = [bits objectAtIndex:1];
-        if(display_key != old_display_key) {
-            old_display_key = display_key;
-            display_name = _(display_key);
-            [icon updateDisplayName];
-        }
-
-        if(icon) {
-            set_progress([[bits objectAtIndex:2] floatValue]);
-        }
-        
-        if(is_installing = [display_key isEqualToString:@"INSTALLING_ICON_LABEL"]) {
-            [icon setShowsCloseBox:NO];
-        }
-
-        NSString *err = [bits objectAtIndex:3];
-        if(![err isEqualToString:@"ok"]) {
-            // don't keep going behind the alert
-            [alert_view dismissWithClickedButtonIndex:0 animated:YES]; // shouldn't happen!
-            alert_view = [[UIAlertView alloc] initWithTitle:@"There was a problem downloading the jailbreak files." message:err delegate:icon cancelButtonTitle:@"Cancel" otherButtonTitles:@"Retry", nil];
-            [alert_view show];
-        }
-
-    });
-
-    notify_register_dispatch("locutus.installed", &tokens[2], dispatch_get_main_queue(), ^(int token) {
-        for(int i = 0; i < 3; i++) {
-            notify_cancel(tokens[i]);
-        }
-        NSLog(@"existing_icon = %@", existing_icon);
-        if(existing_icon) {
-            [icon remove];
-            [icon_controller scrollToIconListContainingIcon:existing_icon animate:YES];
-        } else {
-#if VERSION >= 0x040300
-                [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO reloadAllIcons:NO];
-#else
-                [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO];
-#endif
-        }
-        icon = nil;
-    });
+    NSLog(@"icon_controller = %@", icon_controller);
 
     dispatch_async(dispatch_get_main_queue(), ^{
         NSLog(@"done, MyIcon is now %p", MyIcon);

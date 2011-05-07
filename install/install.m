@@ -26,21 +26,20 @@ bool GSSystemHasCapability(NSString *capability);
 extern void do_copy(char *, char *, ssize_t (*)(int, const void *, size_t));
 extern void init();
 extern void finish();
-static size_t written_bytes;
 
-static const char *freeze;
-static int freeze_len;
+static size_t written_bytes;
 static void (*set_progress)(float);
+static NSMutableArray *to_load;
 
 static void wrote_bytes(ssize_t bytes) {
     static size_t last = 0;
     written_bytes += bytes;
     if(written_bytes - last > 100000) {
-        _log("written_bytes = %zd", written_bytes);
+        //_log("written_bytes = %zd", written_bytes);
         last = written_bytes;
 
         // xxx figure this out
-        float total = 90123213.0f;
+        float total = 36938240.0f;
         set_progress(written_bytes / total);
     }
 }
@@ -84,58 +83,22 @@ static void remove_files(const char *path) {
     free(path_);
 }
 
-static inline void copy_file(const char *a, const char *b) {
-    int fd1 = open(a, O_RDONLY);
-    _assert(fd1, a);
-    struct stat st;
-    fstat(fd1, &st);
-    int fd2 = open(b, O_WRONLY | O_CREAT, st.st_mode);
-    _assert(fd2, b);
-    _assert_zero(fchmod(fd2, st.st_mode), b);
-    _assert_zero(fchown(fd2, 0, 0), b);
-    char *buf = malloc(st.st_size);
-    _assert(st.st_size == read(fd1, buf, st.st_size), a);
-    _assert(st.st_size == my_write(fd2, buf, st.st_size), b);
-    free(buf);
-    close(fd1);
-    close(fd2);
-}
-
-static inline void copy_files(const char *from, const char *to, bool copy) {
-    DIR *dir = opendir(from);
-    char *a = malloc(1025 + strlen(from));
-    char *b = malloc(1025 + strlen(to));
-    _log("copy_files %s -> %s", from, to);
-    struct dirent *ent;
-    while((ent = readdir(dir))) {
-        if(ent->d_type == DT_REG) {
-            sprintf(a, "%s/%s", from, ent->d_name);
-            sprintf(b, "%s/%s", to, ent->d_name);
-            //printf("%s %s -> %s\n", copy ? "Copy" : "Move", a, b);
-            if(copy) {
-                copy_file(a, b);
-            } else {
-                _assert(!rename(a, b));
-            }
-        }
+static int run(char **args) {
+    fprintf(stderr, "run:");
+    for(char **p = args; *p; p++) {
+        fprintf(stderr, " %s", *p);
     }
-    free(a);
-    free(b);
-}
+    fprintf(stderr, "\n");
 
-static int launchctl(char *what, char *who) {
-    // don't care about success here
-    char *args[] = {
-        "/bin/launchctl",
-        what,
-        who,
-    NULL };
     pid_t pid;
     int stat;
-    posix_spawn(&pid, args[0], NULL, NULL, args, NULL);
-    waitpid(pid, &stat, 0);
-    return stat;
+    if(posix_spawn(&pid, args[0], NULL, NULL, args, NULL)) return 255;
+    if(pid != waitpid(pid, &stat, 0)) return 254;
+    if(!WIFEXITED(stat)) return 253;
+    return WEXITSTATUS(stat);
 }
+
+
 
 unsigned int config_vnode_patch;
 
@@ -158,7 +121,7 @@ static int lzmaopen(const char *path, int oflag, int foo) {
     _assert(ptr != MAP_FAILED);
 
     lzma_stream *strm = malloc(sizeof(*strm));
-    *strm = LZMA_STREAM_INIT;
+    *strm = (lzma_stream) LZMA_STREAM_INIT;
 
     _assert_zero(lzma_stream_decoder(strm, 64*1024*1024, 0));
 
@@ -173,35 +136,19 @@ static int lzmaclose(int fd) {
 }
 
 static ssize_t lzmaread(int fd, void *buf, size_t len) {
-    lzma_stream strm = (void *) fd;
-    strm.next_out = (void *) buf;
+    lzma_stream *strm = (void *) fd;
+    strm->next_out = (void *) buf;
     strm->avail_out = len;
-    while(ctx->strm.avail_in > 0 && ctx->strm.avail_out > 0) {
-        if(lzma_code(&ctx->strm, LZMA_RUN)) break;
+    while(strm->avail_in > 0 && strm->avail_out > 0) {
+        if(lzma_code(strm, LZMA_RUN)) break;
     }
 
-    size_t br = len - ctx->strm.avail_out;
+    size_t br = len - strm->avail_out;
     wrote_bytes(br);
     return br;
 }
 
 tartype_t xztype = { (openfunc_t) lzmaopen, (closefunc_t) lzmaclose, (readfunc_t) lzmaread, (writefunc_t) NULL };
-
-static bool nulled(const char *s) {
-    while(*s == '.' || *s == '/') s++;
-    switch(*s) {
-#define X(name) case name[0]: return !memcmp(s, name, sizeof(name) - 1);
-    X("Applications")
-    X("Developer")
-    X("Library")
-    X("System")
-    X("bin")
-    X("sbin")
-    X("usr")
-#undef X
-    }
-    return false;
-}
 
 static void extract(const char *fn, bool use_null) {
     _log("extracting %s", fn);
@@ -213,33 +160,36 @@ static void extract(const char *fn, bool use_null) {
     }
     while(!th_read(tar)) {
         char *pathname = th_get_pathname(tar);
-        if(use_null && nulled(pathname)) {
+        while(*pathname == '.' || *pathname == '/') pathname++;
+        if(use_null && (
+#define O(x) !memcmp(pathname, x, strlen(x))
+            O("Applications") ||
+            //O("Library") ||
+            //O("System") ||
+            //O("bin") ||
+            //O("sbin") ||
+            //O("usr") ||
+            //O("private/etc") ||
+            0
+#undef O
+        )) {
             chdir("/private/var/null/");
         } else {
             chdir("/");
         }
         tar_extract_file(tar, pathname);
         if(strstr(pathname, "LaunchDaemons/") && strstr(pathname, ".plist")) {
-            _log("loading %s", pathname);
-            launchctl("load", pathname); 
+            _log("queueing ld %s", pathname);
+            [to_load addObject:[NSData dataWithBytes:pathname length:strlen(pathname)+1]];
         }
     }
 
     tar_close(tar);
 }
 
-static void run(char **args) {
-    pid_t pid;
-    int stat;
-    _assert_zero(posix_spawn(&pid, args[0], NULL, NULL, args, NULL));
-    _assert(pid == waitpid(pid, &stat, 0));
-    _assert(WIFEXITED(stat));
-    _assert_zero(WEXITSTATUS(stat));
-}
-
 static void remount() {
     _log("remount...");
-    run((char *[]) {"/sbin/mount", "-u", "-o", "rw,suid,dev", "/");
+    _assert_zero(run((char *[]) {"/sbin/mount", "-u", "-o", "rw,suid,dev", "/", NULL}));
 
     NSString *string = _assert([NSString stringWithContentsOfFile:@"/etc/fstab" encoding:NSUTF8StringEncoding error:NULL]);
     string = [string stringByReplacingOccurrencesOfString:@",nosuid,nodev" withString:@""];
@@ -294,53 +244,29 @@ static void add_afc2() {
     }));
 }
 
-static const char *null_paths[] = {"/Applications", "/Developer", "/Library", "/System", "/bin", "/sbin", "/usr"};
-
-static void unmount_nulls() {
-    
-}
-
-static void rename_launchd() {
-    struct stat buf;
-    _assert(!lstat("/sbin/lunchd", &buf));
-    int result = link("/sbin/launchd", "/sbin/launchd.real");
-    if(errno != EEXIST) _assert_zero(result);
-    _assert_zero(rename("/sbin/launchd.untether", "/sbin/launchd"));
-    _log("renamed launchd");
-}
-
-static void mount_nulls() {
-    run((char *[]) {"/usr/share/white/white_loader", "-l", "/usr/share/white/nullfs_prelink.dylib", NULL});
-    run((char *[]) {"/private/var/null/bin/bash", "-c", "XXXXX"
-    
-    struct null_args args;
-    char buf[64];
-    args.target = buf;
-    for(unsigned i = 0; i < sizeof(null_paths)/sizeof(*null_paths); i++) {
-        sprintf(buf, "/private/var/null%s", null_paths[i]);
-        _log("mounting %s", null_paths[i]);
-        _assert_zero(mount("loopback", null_paths[i], MNT_UNION, &args));
+static void finish_up() {
+    int ret = symlink("/boot/untether", "/usr/libexec/dirhelper");
+    if(errno != EEXIST) _assert_zero(ret);
+    TIME(_assert_zero(run((char *[]) {"/boot/mount_nulls", NULL})));
+    for(NSData *pathname in to_load) {
+        chdir("/");
+        run((char *[]) {"/bin/launchctl", "load", (char *) [pathname bytes], NULL});
     }
-    _log("mounted nulls");
 }
 
 void do_install(void (*set_progress_)(float)) {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     set_progress = set_progress_;
+    to_load = [NSMutableArray array];
     
     chdir("/");
     _log("do_install");
     TIME(remount());
     TIME(dok48());
     TIME(add_afc2());
-    TIME(extract("/tmp/freeze.tar.xz", true));
-    TIME(unmount_nulls());
     TIME(extract("/tmp/starstuff.tar.xz", false));
-    TIME(rename_launchd());
-    TIME(mount_nulls());
-    TIME(sync());
-    //return;
-    _log("extract out.");
+    TIME(extract("/tmp/freeze.tar.xz", true));
+    TIME(finish_up());
     TIME(sync());
     _log("final written_bytes = %zd", written_bytes);
 }

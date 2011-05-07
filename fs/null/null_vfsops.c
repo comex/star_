@@ -86,12 +86,6 @@
 #include <sys/mount.h>
 #include <sys/vm.h>
 
-int x_namei(struct nameidata *ndp)
-asm("$bl1__vnode_lookup");
-void x_nameidone(struct nameidata *)
-asm("$bl2__vnode_lookup");
-
-
 struct proc *current_proc(void);
 
 struct vfs_attr;
@@ -195,9 +189,9 @@ nullfs_mount(mp, devvp, data, context)
      */
     NDINIT(&nd, LOOKUP, FOLLOW|WANTPARENT,
         UIO_USERSPACE, args.target, context);
-    if (error = x_namei(&nd))
+    if (error = namei(&nd))
         return (error);
-    x_nameidone(&nd);
+    nameidone(&nd);
     /*
      * Sanity check on lower vnode
      */

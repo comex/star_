@@ -1,8 +1,15 @@
+#if VERSION >= 0x040300
+#define c(a, b) a
+#else
+#define c(a, b) b
+#endif
+
 .syntax unified
 .arm
 start:
-    ldr sp, [sp, #(0x18 - 0x70)]
+    asr sp, r5, #1
     sub sp, #0x18
+    mov r6, r0
 
     adr r0, inspiring
     bl _IOLog
@@ -29,15 +36,15 @@ pf_loop:
 
 end:
     bl _IOLockAlloc
-    str r0, [r6, #0x2d8]
-    str r8, [r6, #0x238]
-    str r8, [r6, #0x2d4]
+    str r0, [r6, #c(0x2d8, 0x23c)]
+    str r8, [r6, #c(0x238, 0x19c)]
+    str r8, [r6, #c(0x2d4, 0x238)]
     # fix up linked lists
-    add r0, r6, #0x218
-    str r0, [r6, #0x21c]
-    add r0, r6, #0x220
-    str r0, [r6, #0x220]
-    str r0, [r6, #0x224]
+    add r0, r6, #c(0x218, 0x180)
+    str r0, [r6, #c(0x21c, 0x184)]
+    add r0, r6, #c(0x220, 0x188)
+    str r0, [r6, #c(0x220, 0x188)]
+    str r0, [r6, #c(0x224, 0x18c)]
 
 #ifdef DEJAVU
     ldr r0, sysent
@@ -69,5 +76,3 @@ inspiring: .asciz "I exist!\n"
 sysent: .long 0
 count: .long 0
 stuff:
-    
-    #patch("sysent", 0, uint32_t, {find_int32(b_macho_segrange(binary, "__DATA"), 0x861000, true) + 4});

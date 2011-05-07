@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <unistd.h>
-#include <notify.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <pthread.h>
 #include <sys/sysctl.h>
 #include <stdlib.h>
@@ -16,8 +17,10 @@
 #include <sys/stat.h>
 #include <libproc.h>
 #include <dlfcn.h>
+#include <pthread.h>
+#include <dispatch/dispatch.h>
 
-static const float download_share = 0.65;
+static const float download_share = 0.50;
 
 // and SB freezing or hanging on black
 // blinking alertview of doom
@@ -38,6 +41,8 @@ extern void NSLog(CFStringRef fmt, ...);
 extern char dylib[];
 extern unsigned int dylib_len;
 
+static int listen_sock;
+static FILE *state_fp;
 static void update_state(const char *state, CFStringRef err);
 static void run_install();
 
@@ -64,12 +69,6 @@ static struct request {
     {CFSTR("http://test.saurik.com/dhowett/Cydia-4.1b1-Srk.txz"), "/tmp/freeze.tar.xz", CFSTR("text/plain"), {}},
     {CFSTR("http://a.qoid.us/install.dylib"), "/tmp/install.dylib", CFSTR("text/plain"), {}},
 }, *const requests_end = requests + sizeof(requests)/sizeof(*requests);
-
-__attribute__((noreturn))
-static void leave() {
-    // maybe remove temp?
-    exit(0);
-}
 
 static void did_download(size_t bytes) {
     downloaded_bytes += bytes;
@@ -108,7 +107,7 @@ static void handle_error(struct request *r, CFStringRef err) {
     if(err) {
         pause_it(err);
     } else {
-        rename(basename((char *) r->output), r->output);
+        //rename(basename((char *) r->output), r->output);
         r->finished = true;
         CFReadStreamClose(r->read_stream);
         CFRelease(r->read_stream);
@@ -130,18 +129,19 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
         {
         CFErrorRef error = _assert(CFReadStreamCopyError(stream));
         CFStringRef description = CFErrorCopyDescription(error);
-        /*if(CFErrorGetDomain(error) == kCFErrorDomainCFNetwork) {
-
-        }*/
         handle_error(r, description);
         CFRelease(error);
         }
         break;
     case kCFStreamEventEndEncountered:
-        if((size_t) lseek(r->out_fd, 0, SEEK_CUR) != r->content_length) {
+        {
+        size_t actual_length = lseek(r->out_fd, 0, SEEK_CUR);
+        //NSLog(CFSTR("[%@] %p, %p, %zd, %zd"), r->url, stream, r->read_stream, actual_length, r->content_length);
+        if(actual_length != r->content_length) {
             handle_error(r, CFSTR("Truncated"));
         } else {
             handle_error(r, NULL);
+        }
         }
         break;
     case kCFStreamEventHasBytesAvailable:
@@ -154,11 +154,12 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
             if(!response) break;
             CFIndex code = CFHTTPMessageGetResponseStatusCode(response);
             NSLog(CFSTR("[%@] status %d"), r->url, (int) code);
+            off_t off = 0;
             if(code == 206) {
                 // partial content
-                off_t off = 0;
                 CFStringRef range = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Range"));
                 if(range) {
+                    //NSLog(CFSTR("got range %@"), range);
                     if(kCFCompareEqualTo == CFStringCompareWithOptions(range, CFSTR("bytes "), CFRangeMake(0, 6), kCFCompareCaseInsensitive)) {
                         CFRange r = CFStringFind(range, CFSTR("-"), 0);
                         if(r.length != 0 && r.location > 6) {
@@ -169,28 +170,30 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
                     }
                     CFRelease(range);
                 }
-                if(off != lseek(r->out_fd, off, SEEK_SET)) {
-                    handle_error(r, CFSTR("Server fails (206)")); 
+            } else if(code == 200) {
+                CFStringRef cl = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Length"));
+                if(!cl) {
+                    handle_error(r, CFSTR("Server fails (no length)"));
                     break;
                 }
-            } else if(code != 200) {
+                r->content_length = CFStringGetIntValue(cl);
+                CFRelease(cl);
+            } else {
                 handle_error(r, CFStringCreateWithFormat(NULL, NULL, CFSTR("HTTP response code %d"), (int) code));
                 break;
             }
+            off_t old = lseek(r->out_fd, 0, SEEK_CUR);
+            NSLog(CFSTR("seeking to %lld (%lld)"), off, old);
+            if(off != lseek(r->out_fd, off, SEEK_SET)) {
+                handle_error(r, CFSTR("Server fails (206)")); 
+                break;
+            }
+            downloaded_bytes -= (old - off);
             CFStringRef content_type = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Type"));
             if(!content_type || kCFCompareEqualTo != CFStringCompare(content_type, r->content_type, kCFCompareCaseInsensitive)) {
                 NSLog(CFSTR("got %@, expected %@"), content_type, r->content_type);
                 
                 handle_error(r, CFStringCreateWithFormat(NULL, NULL, CFSTR("Wrong Content-Type; are you on a fail Wi-Fi network?")));
-            }
-
-            CFStringRef cl = CFHTTPMessageCopyHeaderFieldValue(response, CFSTR("Content-Length"));
-            if(!cl) {
-                handle_error(r, CFSTR("Server fails (no length)"));
-                break;
-            } else {
-                r->content_length = CFStringGetIntValue(cl);
-                CFRelease(cl);
             }
         }
 
@@ -218,24 +221,25 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
 static void init_requests() {
     paused = false;
     for(struct request *r = requests; r < requests_end; r++) {
-        if(r->read_stream) continue;
+        if(r->read_stream || r->finished) continue;
 
         CFURLRef url = _assert(CFURLCreateWithString(NULL, r->url, NULL));
         CFHTTPMessageRef message = _assert(CFHTTPMessageCreateRequest(NULL, CFSTR("GET"), url, kCFHTTPVersion1_1));
         CFRelease(url);
 
-        if(r->out_fd && r->content_length) {
+        if(r->out_fd) {
             CFStringRef range = CFStringCreateWithFormat(NULL, NULL, CFSTR("bytes=%d-"), (int) lseek(r->out_fd, 0, SEEK_CUR));
             NSLog(CFSTR("[%@] sending range %@"), r->url, range);
             CFHTTPMessageSetHeaderFieldValue(message, CFSTR("Range"), range);
             CFRelease(range);
         } else {
-            r->out_fd = _assert(open(basename((char *) r->output), O_WRONLY | O_CREAT | O_TRUNC, 0644));
+            r->out_fd = open(/*basename*/((char *) r->output), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            _assert(r->out_fd != -1);
         }
 
+        // creating the read stream should succeed, but there might be an error later
         r->read_stream = _assert(CFReadStreamCreateForHTTPRequest(NULL, message));
         CFRelease(message);
-        // creating the read stream should succeed, but there might be an error later
         r->got_headers = false;
 
         static CFStreamClientContext context;
@@ -255,76 +259,97 @@ static void set_progress(float progress_) {
 }
 
 static void run_install() {
+    NSLog(CFSTR("running install"));
     signal(SIGUSR1, SIG_IGN);
     set_progress(0.0);
     void *install = dlopen("/tmp/install.dylib", RTLD_LAZY);
     void (*do_install)(void (*set_progress)(float)) = dlsym(install, "do_install");
     do_install(set_progress);
-    notify_post("locutus.installed");
-    leave();
+    update_state("`", NULL);
+    exit(0);
 }
 
 static pid_t find_springboard() {
+    pid_t result = 0;
+    pid_t my_pid = getpid();
+
     static int name[] = {CTL_KERN, KERN_PROC, KERN_PROC_ALL};
     size_t length;
     _assert(!sysctl(&name[0], sizeof(name) / sizeof(*name), NULL, &length, NULL, 0));
     struct kinfo_proc *proc = malloc(length);
     _assert(!sysctl(&name[0], sizeof(name) / sizeof(*name), proc, &length, NULL, 0));
     for(size_t i = 0; i < length/sizeof(*proc); i++) {
-        if(!strncmp(proc[i].kp_proc.p_comm, "SpringBoard", sizeof(proc[i].kp_proc.p_comm))) {
-            pid_t result = proc[i].kp_proc.p_pid;
-            free(proc);
-            return result;
-        }
+        struct extern_proc *ep = &proc[i].kp_proc;
+        if(!strncmp(ep->p_comm, "SpringBoard", sizeof(ep->p_comm))) {
+            result = ep->p_pid;
+        }/* else if(!strncmp(ep->p_comm, "locutus", sizeof(ep->p_comm)) && ep->p_pid != my_pid) {
+            kill(ep->p_pid, SIGUSR1);
+        }*/
     }
-    _assert(false);
+    _assert(result);
+    return result;
 }
 
-static void init_state() {
-    notify_post("locutus.go-away");
-    int fd = open("/tmp/locutus.state", O_RDWR | O_CREAT, 0666);
-    _assert(fd >= 0);
-    _assert_zero(flock(fd, LOCK_EX));
-    if(0 == lseek(fd, 0, SEEK_END)) {
-        // we created it
-    } else {
-        char buf[10];
-        int pid;
-        if(pread(fd, buf, sizeof(buf), 0) != -1 && (pid = atoi(buf))) {
-            kill((pid_t) pid, SIGUSR1);
-            char whatever[PROC_PIDTBSDINFO_SIZE];
-            if(proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &whatever, sizeof(whatever))) {
-                // it stayed alive (and is not a zombie) - so it's installing and we should give up
-                exit(0);
-            }
+static void *read_state(void *sock_) {
+    int sock = (int) sock_;
+    while(1) {
+        char c;
+        int result = read(sock, &c, 1);
+        fprintf(stderr, "r=%d\n", result);
+        if(result == 1) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if(paused) {
+                    init_requests();
+                } else {
+                    pause_it(NULL);
+                }
+            });
+        } else {
+            exit(0);
         }
     }
-    flock(fd, LOCK_UN);
-    close(fd);
+}
+
+static void do_bind() {
+    struct sockaddr_in addr;
+
+    listen_sock = socket(PF_INET, SOCK_STREAM, 0);
+    _assert(listen_sock != -1);
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(1021);
+    addr.sin_addr.s_addr = htonl(0x7f000001);
+    int one = 1;
+    _assert_zero(setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)));
+    _assert_zero(bind(listen_sock, (void *) &addr, sizeof(addr)));
+    _assert_zero(listen(listen_sock, 1));
+}
+
+static void do_accept() {
+    struct sockaddr_in addr;
+    socklen_t addrlen = sizeof(addr);
+    int state_sock = accept(listen_sock, (void *) &addr, &addrlen);
+    _assert(state_sock != -1);
+
+    pthread_t thread;
+    _assert_zero(pthread_create(&thread, NULL, read_state, (void *) state_sock));
+
+    state_fp = _assert(fdopen(state_sock, "w"));
 }
 
 static void update_state(const char *state, CFStringRef err) {
-    int fd = open("/tmp/new.state", O_RDWR | O_CREAT, 0666);
-    _assert(fd >= 0);
-    _assert_zero(flock(fd, LOCK_EX));
-    _assert_zero(ftruncate(fd, 0));
-    FILE *fp = fdopen(fd, "w");
-    _assert(fp);
-
     char errs[128];
+    char *errp;
     if(err) {
         CFStringGetCString(err, errs, sizeof(errs), kCFStringEncodingUTF8);
         CFRelease(err);
+        errp = errs;
     } else {
-        strcpy(errs, "ok");
+        errp = "`";
     }
 
-    fprintf(fp, "%d\t%s\t%f\t%s\t\n", (int) getpid(), state, progress, errs);
-
-    fclose(fp);
-
-    _assert_zero(rename("/tmp/new.state", "/tmp/locutus.state"));
-    notify_post("locutus.updated-state");
+    fprintf(state_fp, "%s\t%f\t%s\n", state, progress, errp);
+    fflush(state_fp);
 }
 
 int main(int argc, char **argv) {
@@ -335,27 +360,9 @@ int main(int argc, char **argv) {
 
     NSLog(CFSTR("omg hax"));
     //return 0;
-    mkdir("/tmp/locutus-temp", 0755); // might fail
-    _assert_zero(chdir("/tmp/locutus-temp"));
+    //mkdir("/tmp/locutus-temp", 0755); // might fail
+    //_assert_zero(chdir("/tmp/locutus-temp"));
 
-    /*uint32_t one = 1;
-    _assert_zero(sysctlbyname("security.mac.vnode_enforce", NULL, NULL, &one, sizeof(one)));*/
-
-    init_state();
-
-    int ignored;
-    notify_register_dispatch("locutus.pause", &ignored, dispatch_get_main_queue(), ^(int token) {
-        if(paused) {
-            init_requests();
-        } else {
-            pause_it(NULL);
-        }
-    });
-    notify_register_dispatch("locutus.cancel", &ignored, dispatch_get_main_queue(), ^(int token) {
-        // maybe delete the temporary files?
-        leave();
-    });
-        
     // dump our load
     const char *name = tempnam("/tmp/", "locutus.dylib-");
     printf("name = %s\n", name);
@@ -373,8 +380,12 @@ int main(int argc, char **argv) {
 
     pid_t pid = find_springboard();
     printf("pid = %d\n", (int) pid);
+    
+    do_bind();
 
     inject(pid, name);
+
+    do_accept();
 
     NSLog(CFSTR("OK"));
 

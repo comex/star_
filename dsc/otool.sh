@@ -3,6 +3,7 @@
 set -e
 if [ "x$OTOOL" = x ]; then export OTOOL="otool -tvv"; fi
 if [ -e f/System ]; then umount f; fi
+mkdir "$2" || true
 test x"$2" != "x"
 ./dsc "$1" f
 while [ ! -e f/System ]; do :; done

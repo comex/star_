@@ -325,7 +325,11 @@ class reloc:
     def __repr__(self):
         return 'reloc(0x%x, 0x%x, 0x%x)' % (self.key, self.value, self.alignment)
 
-
+def reloc_value(x):
+    if isinstance(x, reloc):
+        return x.value
+    else:
+        return int(x)
 
 # for debugging!
 if False:

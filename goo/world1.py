@@ -133,3 +133,24 @@ def store_deref_plus_offset(deref, offset, value):
     load_r0_from(deref)
     add_r0_const(offset)
     store_to_r0(value)
+
+def cmp_r0_0_set_r0(zero, nonzero):
+    # cmp r0, #0; ite ne; mov r0, r4; mov r0, r5; pop {r4, r5, r7, pc}
+    set_fwd('R4', nonzero)
+    set_fwd('R5', zero)
+    set_fwd('PC', dmini.cur.find_basic('+ 00 28 14 bf 20 46 28 46 b0 bd'))
+    heapadd(fwd('R4'), fwd('R5'), fwd('R7'), fwd('PC'))
+
+def cmp_r0_0_branch():
+    zero, nonzero = pointed(''), pointed('')
+    # pop {r4, r7, pc}
+    # ldm r0, {r2, r3, sp, pc}
+    m_a = dmini.cur.find_basic('+ 90 bd')
+    cmp_r0_0_set_r0(ptrI(zero, m_a) - 8, ptrI(non_zero, m_a) - 8)
+    set_fwd('PC', dmini.cur.find_basic('- 0c a0 90 e8'))
+    clear_fwd()
+    return zero, nonzero
+
+def come_from(m):
+    clear_fwd()
+    heapadd(m, fwd('R4'), fwd('R7'), fwd('PC'))
