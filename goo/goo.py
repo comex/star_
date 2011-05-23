@@ -37,10 +37,6 @@ def heapdump(heap, names=None):
     sys.stdout.write('\n')
     sys.stdout.write('%08x end\n' % (4*i + 4))
 
-def pad(x, p):
-    l = len(x)
-    return x + '\0' * (-l & (p - 1))
-
 def ptr(str, null_terminate=False):
     global sheap
     if null_terminate: str += '\0'

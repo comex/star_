@@ -14,10 +14,9 @@ def load_r0_from(address):
     heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
 
 def store_r0_to(address):
-    set_fwd('PC', dmini.cur.find_multiple('+ 20 60 90 bd', '- 00 00 84 e5 90 80 bd e8'))
+    set_fwd('PC', dmini.cur.find_basic('+ 20 60 10 bd'))
     set_fwd('R4', address)
-    exhaust_fwd('R7')
-    heapadd(fwd('R4'), fwd('R7'), fwd('PC'))
+    heapadd(fwd('R4'), fwd('PC'))
 
 def store_val_to(val, to):
     set_fwd('PC', dmini.cur.find_multiple('+ 25 60 b0 bd', '- 00 50 84 e5 b0 80 bd e8'))

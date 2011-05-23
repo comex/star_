@@ -15,7 +15,6 @@
 #include <CFNetwork/CFNetwork.h>
 #include <libgen.h>
 #include <sys/stat.h>
-#include <libproc.h>
 #include <dlfcn.h>
 #include <pthread.h>
 #include <dispatch/dispatch.h>
@@ -392,6 +391,7 @@ int main(int argc, char **argv) {
     char machine[32], osversion[32];
     size_t size = 32;
     _assert_zero(sysctlbyname("hw.machine", machine, &size, NULL, 0));
+    if(!memcmp(machine, "iPad2,", 6)) machine[6] = 'x';
     size = 32;
     _assert_zero(sysctlbyname("kern.osversion", osversion, &size, NULL, 0));
     requests[0].url = CFStringCreateWithFormat(NULL, NULL, requests[0].url, machine, osversion);

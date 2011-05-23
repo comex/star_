@@ -163,7 +163,7 @@ static void extract(const char *fn, bool use_null) {
         while(*pathname == '.' || *pathname == '/') pathname++;
         if(use_null && (
 #define O(x) !memcmp(pathname, x, strlen(x))
-            O("Applications") ||
+            //O("Applications") ||
             //O("Library") ||
             //O("System") ||
             //O("bin") ||

@@ -42,7 +42,7 @@ linkedit = later_s(lambda addr: I(
     0xfeedface,
     12, # CPU_TYPE_ARM
     6, # CPU_SUBTYPE_ARM_V6,
-    2, # MH_EXECUTE
+    6 if data['dylib'] else 2, # MH_DYLIB / MH_EXECUTE
     ncmds,
     len(commands), # sizeofcmds
     ( # flags
@@ -205,13 +205,14 @@ segment('__STACK',
     PROT_READ | PROT_WRITE
 )
 
-command(5, I( # LC_UNIXTHREAD
-    1, # ARM_THREAD_STATE
-    17, # ARM_THREAD_STATE_COUNT,
-    0, 0, 0, 0, 0, 0, 0, 0, # R0-R7
-    0, 0, 0, 0, 0, data['init_sp'], 0, linkedit_address, # R8-R15
-    0, # CPSR
-))
+if not data['dylib']:
+    command(5, I( # LC_UNIXTHREAD
+        1, # ARM_THREAD_STATE
+        17, # ARM_THREAD_STATE_COUNT,
+        0, 0, 0, 0, 0, 0, 0, 0, # R0-R7
+        0, 0, 0, 0, 0, data['init_sp'], 0, linkedit_address, # R8-R15
+        0, # CPSR
+    ))
 
 macho = simplify_times(segments, 0, 4)
     

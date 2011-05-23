@@ -8,6 +8,9 @@ def getdebugname():
         if True and ('world' in fn or 'goo' in fn): continue
         return '%s:%d' % (fn, f.f_lineno)
 
+def pad(x, p):
+    l = len(x)
+    return x + '\0' * (-l & (p - 1))
 
 def simplify_times(heap, addr, times, must_be_simple=True):
     for i in xrange(times):
@@ -119,6 +122,7 @@ class troll_string(statue):
     def unpack(self):
         bits = []
         for bit in self.bits:
+            if isinstance(bit, pointed_): bit = bit.sub
             if isinstance(bit, I_):
                 bits.append(bit.sub)
             elif isinstance(bit, str):
@@ -156,6 +160,12 @@ class troll_string(statue):
 
     def __repr__(self):
         return '<troll_string (%r): %s>' % (self.length, self.bits)
+
+def join(strs):
+    t = troll_string('')
+    for s in strs:
+        t.append(s)
+    return t
 
 def len(x):
     return x.__len__()
@@ -243,6 +253,10 @@ class car(statue):
         return self.later(other, lambda s, o: o * s)
     def __and__(self, other):
         return self.later(other, lambda s, o: s & o)
+    def __div__(self, other):
+        return self.later(other, lambda s, o: s / o)
+    def __rdiv__(self, other):
+        return self.later(other, lambda s, o: o / s)
     def __neg__(self):
         return later(lambda addr: -self.simplify(addr))
 
