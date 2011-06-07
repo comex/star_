@@ -36,7 +36,7 @@ kern_return_t inject(pid_t pid, const char *path) {
     _assert_zero(mach_vm_allocate(task, &stack_address, stack_size, VM_FLAGS_ANYWHERE));
     mach_vm_address_t baton_address = stack_address + stack_size - baton_size;
 
-    printf("baton_address = %x\n", (int) baton_address);
+    fprintf(stderr, "baton_address = %x\n", (int) baton_address);
 
     strlcpy(baton_path, path, 64);
 
@@ -52,6 +52,7 @@ kern_return_t inject(pid_t pid, const char *path) {
     printf("%x+%x %d,%d\n", (int) addr, (int) size, info.protection, info.max_protection);
     abort();
 #endif
+    fprintf(stderr, "%x\n", *((uint32_t *) baton));
     
     _assert_zero(mach_vm_write(task, baton_address, (vm_offset_t) baton, baton_size));
     
@@ -59,7 +60,7 @@ kern_return_t inject(pid_t pid, const char *path) {
         struct arm_thread_state arm;
         natural_t nat;
     } state = { { .cpsr = 0x20 } };
-    state.arm.pc = baton_address;
+    state.arm.pc = baton_address + 8;
 
     thread_act_t thread;
     _assert_zero(thread_create_running(task, ARM_THREAD_STATE, &state.nat, ARM_THREAD_STATE_COUNT, &thread));

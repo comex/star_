@@ -2,6 +2,11 @@
 .thumb
 .globl _baton, _baton_end, _baton_path
 _baton:
+    nop
+    nop
+    nop
+    nop
+
     mov sp, pc
 
     adr r0, zero

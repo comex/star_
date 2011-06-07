@@ -79,10 +79,11 @@ class troll_string(statue):
             return later(lambda addr: surrogate.len())
         
     def __add__(self, other):
-        if len(self.bits) == 0: return other
+        if len(self.bits) == 0 and isinstance(other, (str, troll_string)): return other
         result = troll_string(self)
         result.append(other)
-        if len(result.bits) == 1: result = result.bits[0]
+        if len(result.bits) == 1 and isinstance(result.bits[0], str):
+            result = result.bits[0]
         return result
 
     def __radd__(self, other):
@@ -114,7 +115,7 @@ class troll_string(statue):
             r.append(new)
         self.length = r.length
         self.bits = r.bits
-        if len(self.bits) == 1:
+        if len(self.bits) == 1 and isinstance(self.bits[0], str):
             return self.bits[0]
         else:
             return self
@@ -208,15 +209,15 @@ class I_(statue):
         return '<I: %r>' % (self.sub,)
     
 def I(*args):
-    result = ''
+    result = troll_string('')
     for arg in args:
         assert arg is not None
         if hasattr(arg, '__len__'):
-            result += arg
+            result.append(arg)
         elif isinstance(arg, (int, long)):
-            result += struct.pack('I', arg)
+            result.append(struct.pack('I', arg))
         else:
-            result += troll_string(I_(arg))
+            result.append(I_(arg))
     return result
 
 class car(statue):
@@ -273,8 +274,10 @@ class pointed_(statue): # string-like
         self.sub = sub
         self.addr = None
     def simplify(self, addr):
-        #print 'pointed.simplify self=%r addr=%r' % (self, addr)
+        #print 'pointed.simplify addr=%r len=%d self=%r' % (addr, len(self), self)
         if addr is not None:
+            if self.addr is not None:
+                raise Exception('pointed was inserted at two different locations!')
             self.addr = addr
             return simplify(self.sub, addr)
         else:
@@ -290,15 +293,14 @@ def pointed(*args, **kwargs):
 class pointer(car): # int-like
     __slots__ = ['sub']
     def __init__(self, sub):
-        assert isinstance(sub.bits[0], pointed_)
-        self.sub = sub
+        self.sub = sub.bits[0]
+        assert isinstance(self.sub, pointed_)
     def val(self):
-        addr = self.sub.bits[0].addr
-        if addr is None: return None
-        return addr
+        return self.sub.addr
     def __repr__(self):
-        return '<pointer: ...>'
-        #return '<pointer: %r>' % self.sub
+        val = self.val()
+
+        return '<pointer value:%s>' % (hex(val) if val is not None else '?')
 
 reloc_handlers = {}
 
@@ -328,6 +330,18 @@ class reloc:
         else:
             raise Exception('reloc & %r, but not page aligned' % other)
 
+    def __cmp__(self, other):
+        if isinstance(other, reloc):
+            if self.key == other.key:
+                return cmp(self.value, other.value)
+            else:
+                raise Exception('comparing different relocs (%r / %r)' % (self, other))
+        else:
+            return -1
+
+    def __hash__(self):
+        return hash(self.key) + hash(self.value)
+
     def simplify(self, addr):
         if reloc_handlers.has_key(self.key):
             return reloc_handlers[self.key](self.value, addr)
@@ -337,7 +351,9 @@ class reloc:
             return reloc(self.key, simplify(self.value, addr), self.alignment)
 
     def __repr__(self):
-        return 'reloc(0x%x, 0x%x, 0x%x)' % (self.key, self.value, self.alignment)
+        return 'reloc(%s, 0x%x, 0x%x)' % ((hex if isinstance(self.key, int) else repr)(self.key), self.value, self.alignment)
+
+    __hex__ = __repr__
 
 def reloc_value(x):
     if isinstance(x, reloc):
@@ -347,23 +363,29 @@ def reloc_value(x):
 
 # for debugging!
 if False:
-    failures = set()
-    def simplify(x, addr):
+    failures = []
+    exception = None
+    def simplify(x, addr=None):
+        global exception
+        #print 'SIMPLIFY', x, 'with addr', addr
         if isinstance(x, (int, long, basestring)):
             return x
         else:
-            result = x.simplify(addr)
+            try:
+                result = x.simplify(addr)
+            except:
+                if exception is None: exception = x
+                raise
             if result is x and not isinstance(x, (troll_string, reloc)):
-                failures.add(x)
+                if x not in failures: failures.append(x)
             elif x in failures:
-                failures.remove(x)
+                if x in failures: failures.remove(x)
             return result
 
     def excepthook(typ, value, traceback):
         global failures
         sys.__excepthook__(typ, value, traceback)
         print 'The failures were:'
-        failures = list(failures)
         for f in failures:
             print f
             print '--'
@@ -384,3 +406,4 @@ if False:
     later_s_ = hook_init(later_s_)
     later = hook_init(later)
     pointed_ = hook_init(pointed_)
+    pointer = hook_init(pointer)

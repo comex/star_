@@ -64,9 +64,9 @@ static struct request {
         };
     };
 } requests[] = {
-    {CFSTR("http://a.qoid.us/starstuff_%s_%s.tar.xz"), "/tmp/starstuff.tar.xz", CFSTR("application/x-tar"), {}},
+    {CFSTR("http://a.qoid.us/saffron/starstuff_%s_%s.tar.xz"), "/tmp/starstuff.tar.xz", CFSTR("application/x-tar"), {}},
     {CFSTR("http://test.saurik.com/dhowett/Cydia-4.1b1-Srk.txz"), "/tmp/freeze.tar.xz", CFSTR("text/plain"), {}},
-    {CFSTR("http://a.qoid.us/install.dylib"), "/tmp/install.dylib", CFSTR("text/plain"), {}},
+    {CFSTR("http://a.qoid.us/saffron/install.dylib"), "/tmp/install.dylib", CFSTR("text/plain"), {}},
 }, *const requests_end = requests + sizeof(requests)/sizeof(*requests);
 
 static void did_download(size_t bytes) {
@@ -391,7 +391,6 @@ int main(int argc, char **argv) {
     char machine[32], osversion[32];
     size_t size = 32;
     _assert_zero(sysctlbyname("hw.machine", machine, &size, NULL, 0));
-    if(!memcmp(machine, "iPad2,", 6)) machine[6] = 'x';
     size = 32;
     _assert_zero(sysctlbyname("kern.osversion", osversion, &size, NULL, 0));
     requests[0].url = CFStringCreateWithFormat(NULL, NULL, requests[0].url, machine, osversion);

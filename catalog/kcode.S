@@ -10,6 +10,7 @@ start:
     # xxx offset
     ldr sp, [sp, #(856 + 0x38 - 0x98)]
     sub sp, #0x18
+
     ldr r6, [r4]
 
     adr r0, inspiring
@@ -23,7 +24,7 @@ start:
 pf_loop:
     ldm r5, {r0, r2}
     add r1, r5, #8
-    bl _memcpy
+    bl _memmove
     ldm r5, {r0, r1}
     mov r2, #0
     bl _flush_dcache
