@@ -990,7 +990,7 @@ union_faultin_copyup(struct vnode **vpp, vnode_t udvp, vnode_t lvp, struct compo
 	VATTR_SET(vap, va_mode, cmode);
 
 	cn.cn_flags |= (UNIONCREATED);
-	if ((error = vn_create(udvp, &uvp, &cn, vap, 0, context)) != 0) {
+	if ((error = vn_create(udvp, &uvp, &cn, vap, 0, 0, 0, context)) != 0) {
 		goto out;
 	}
 
@@ -1155,7 +1155,7 @@ union_mkshadow(um, dvp, cnp, vat, vpp)
 	VATTR_SET(&va, va_uid, vat->va_uid);
 	VATTR_SET(&va, va_gid, vat->va_gid);
 
-	error = vn_create(dvp, vpp, &cn, &va, 0, cnp->cn_context);
+	error = vn_create(dvp, vpp, &cn, &va, 0, 0, 0, cnp->cn_context);
 out:
 	if ((cn.cn_flags & HASBUF) == HASBUF) {
 		FREE_ZONE(cn.cn_pnbuf, cn.cn_pnlen, M_NAMEI);
@@ -1308,7 +1308,7 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	VATTR_SET(vap, va_type, VREG);
 	VATTR_SET(vap, va_mode, cmode);
 
-	if ((error = vn_create(un->un_dirvp, &vp, &cn, vap, 0, context)) != 0) {
+	if ((error = vn_create(un->un_dirvp, &vp, &cn, vap, 0, 0, 0, context)) != 0) {
 		goto out;
 	}
 

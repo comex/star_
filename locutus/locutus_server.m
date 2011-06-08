@@ -70,12 +70,12 @@ static inline NSString *_(NSString *key) {
 #else
 -(void)loadApplicationsAndIcons:(id)identifier reveal:(BOOL)reveal popIn:(BOOL)popIn;
 #endif
--(void)loadAllIcons;
 @end
 
 @interface SBIconModel {
 }
 +(id)sharedInstance;
+-(void)loadAllIcons;
 -(void)addIcon:(id)icon;
 //-(void)removeIcon:(id)icon;
 -(id)applicationIconForDisplayIdentifier:(id)displayIdentifier;
@@ -143,7 +143,7 @@ static void installed() {
         [icon remove];
         [icon_controller scrollToIconListContainingIcon:existing_icon animate:YES];
     } else {
-        [application_controller loadAllIcons];
+        [icon_model loadAllIcons];
         /*
 #if VERSION >= 0x040300
         [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO reloadAllIcons:YES];

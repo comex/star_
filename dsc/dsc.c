@@ -178,8 +178,9 @@ int main(int argc, char **argv) {
         for(i = 0; i < ch.mappingCount; i++) {
             struct shared_file_mapping_np sfm;
             assert(read(fd, &sfm, sizeof(sfm)) == sizeof(sfm));
-            printf("%llx-%llx (%llx) offset:%llx prot:%d/%d\n", sfm.sfm_address, sfm.sfm_address + sfm.sfm_size, sfm.sfm_size, sfm.sfm_file_offset, sfm.sfm_init_prot, sfm.sfm_max_prot);
+            printf("%llx-%llx (%llx) offset:%llx-%llx prot:%d/%d\n", sfm.sfm_address, sfm.sfm_address + sfm.sfm_size, sfm.sfm_size, sfm.sfm_file_offset, sfm.sfm_file_offset + sfm.sfm_size, sfm.sfm_init_prot, sfm.sfm_max_prot);
         }
+        printf("end of file: %llx\n", cache_size);
         lseek(fd, ch.imagesOffset, SEEK_SET);
         for(i = 0; i < ch.imagesCount; i++) {
             struct dyld_cache_image_info ii;
