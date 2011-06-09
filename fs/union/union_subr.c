@@ -905,134 +905,8 @@ union_copyup(struct union_node *un, int docopy, vfs_context_t context)
 int 
 union_faultin_copyup(struct vnode **vpp, vnode_t udvp, vnode_t lvp, struct componentname * cnp, vfs_context_t context)
 {
-	int error;
-	struct vnode *uvp;
-	struct vnode_attr vattr;
-	struct vnode_attr *vap;
-	mode_t  cmode = 0;
-	int fmode = FFLAGS(O_WRONLY|O_CREAT|O_TRUNC|O_EXCL);
-	struct proc * p = vfs_context_proc(context);
-	struct componentname cn;
-	
-
-	vap = &vattr;
-	VATTR_INIT(vap);
-	VATTR_WANTED(vap, va_flags);
-	if (vnode_getattr(lvp, vap, context) == 0 )
-		cmode = vattr.va_mode;
-		
-	*vpp = NULLVP;
-
-
-	if (cmode == (mode_t)0)
-		cmode = UN_FILEMODE & ~p->p_fd->fd_cmask;
-	else
-		cmode = cmode & ~p->p_fd->fd_cmask;
-
-
-	/*
-	 * Build a new componentname structure (for the same
-	 * reasons outlines in union_mkshadow()).
-	 * The difference here is that the file is owned by
-	 * the current user, rather than by the person who
-	 * did the mount, since the current user needs to be
-	 * able to write the file (that's why it is being
-	 * copied in the first place).
-	 */
-	bzero(&cn, sizeof(struct componentname));
-
-	cn.cn_namelen = cnp->cn_namelen;
-	cn.cn_pnbuf = (caddr_t) _MALLOC_ZONE(cn.cn_namelen+1,
-						M_NAMEI, M_WAITOK);
-	cn.cn_pnlen = cn.cn_namelen+1;
-	bcopy(cnp->cn_nameptr, cn.cn_pnbuf, cn.cn_namelen+1);
-	cn.cn_nameiop = CREATE;
-	cn.cn_flags = (HASBUF|SAVENAME|SAVESTART|ISLASTCN|UNIONCREATED);
-	cn.cn_context = context;
-	cn.cn_nameptr = cn.cn_pnbuf;
-	cn.cn_hash = 0;
-	cn.cn_consume = 0;
-
-	/*
-	 * Pass dvp unlocked and referenced on call to relookup().
-	 *
-	 * If an error occurs, dvp will be returned unlocked and dereferenced.
-	 */
-	if ((error = relookup(udvp, &uvp, &cn)) != 0) {
-		goto out;
-	}
-
-	/*
-	 * If no error occurs, dvp will be returned locked with the reference
-	 * left as before, and vpp will be returned referenced and locked.
-	 */
-	if (uvp) {
-		*vpp = uvp;
-		error = EEXIST;
-		goto out;
-	}
-
-	/*
-	 * Good - there was no race to create the file
-	 * so go ahead and create it.  The permissions
-	 * on the file will be 0666 modified by the
-	 * current user's umask.  Access to the file, while
-	 * it is unioned, will require access to the top *and*
-	 * bottom files.  Access when not unioned will simply
-	 * require access to the top-level file.
-	 *
-	 * TODO: confirm choice of access permissions.
-	 *       decide on authorisation behaviour
-	 */
-	
-	VATTR_INIT(vap);
-	VATTR_SET(vap, va_type, VREG);
-	VATTR_SET(vap, va_mode, cmode);
-
-	cn.cn_flags |= (UNIONCREATED);
-	if ((error = vn_create(udvp, &uvp, &cn, vap, 0, 0, 0, context)) != 0) {
-		goto out;
-	}
-
-	
-	if ((error = VNOP_OPEN(uvp, fmode, context)) != 0) {
-		vn_clearunionwait(uvp, 0);
-		vnode_recycle(uvp);
-		vnode_put(uvp);
-		goto out;
-	}
-
-	error = vnode_ref_ext(uvp, fmode);
-	if (error ) {
-		vn_clearunionwait(uvp, 0);
-		VNOP_CLOSE(uvp, fmode, context);
-		vnode_recycle(uvp);
-		vnode_put(uvp);
-		goto out;
-	}
-
-
-	/*
-	 * XX - should not ignore errors
-	 * from vnop_close
-	 */
-	error = VNOP_OPEN(lvp, FREAD, context);
-	if (error == 0) {
-		error = union_copyfile(lvp, uvp, context);
-		(void) VNOP_CLOSE(lvp, FREAD, context);
-	}
-
-	VNOP_CLOSE(uvp, fmode, context);
-	vnode_rele_ext(uvp, fmode, 0);
-	vn_clearunionwait(uvp, 0);
-
-	*vpp = uvp;
-out:
-	if ((cn.cn_flags & HASBUF) == HASBUF) {
-		FREE_ZONE(cn.cn_pnbuf, cn.cn_pnlen, M_NAMEI);
-		cn.cn_flags &= ~HASBUF;
-	}
-	return (error);
+	panic("union_faultin_copyup");
+	return 0;
 }
 
 
@@ -1121,6 +995,8 @@ union_mkshadow(um, dvp, cnp, vat, vpp)
     struct vnode_attr *vat;
 	struct vnode **vpp;
 {
+	return EPERM;
+#if 0
 	int error;
 	struct vnode_attr va;
 	struct componentname cn;
@@ -1162,6 +1038,7 @@ out:
 		cn.cn_flags &= ~HASBUF;
 	}
 	return (error);
+#endif
 }
 
 /*
@@ -1231,9 +1108,8 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	int fmode = FFLAGS(O_WRONLY|O_CREAT|O_TRUNC|O_EXCL);
 	int error;
 	struct proc * p = vfs_context_proc(context);
-	struct componentname cn;
+	struct nameidata nd;
 
-	bzero(&cn, sizeof(struct componentname));
 	*vpp = NULLVP;
 
 	/*if (cmode == (mode_t)0)
@@ -1254,20 +1130,18 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	 * able to write the file (that's why it is being
 	 * copied in the first place).
 	 */
-	cn.cn_namelen = strlen(un->un_path);
-	cn.cn_pnbuf = (caddr_t) _MALLOC_ZONE(cn.cn_namelen+1,
+
+	bzero(&nd, sizeof(nd));
+	NDINIT(&nd, CREATE, HASBUF|SAVENAME|SAVESTART|ISLASTCN|(UNNODE_FAULTIN(un)?UNIONCREATED:0), UIO_SYSSPACE, 0, context);
+	nd.ni_cnd.cn_namelen = strlen(un->un_path);
+	nd.ni_cnd.cn_pnbuf = (caddr_t) _MALLOC_ZONE(nd.ni_cnd.cn_namelen+1,
 						M_NAMEI, M_WAITOK);
-	cn.cn_pnlen = cn.cn_namelen+1;
-	bcopy(un->un_path, cn.cn_pnbuf, cn.cn_namelen+1);
-	cn.cn_nameiop = CREATE;
-	if (UNNODE_FAULTIN(un))
-		cn.cn_flags = (HASBUF|SAVENAME|SAVESTART|ISLASTCN|UNIONCREATED);
-	else
-		cn.cn_flags = (HASBUF|SAVENAME|SAVESTART|ISLASTCN);
-	cn.cn_context = context;
-	cn.cn_nameptr = cn.cn_pnbuf;
-	cn.cn_hash = un->un_hash;
-	cn.cn_consume = 0;
+	nd.ni_cnd.cn_pnlen = nd.ni_cnd.cn_namelen+1;
+	bcopy(un->un_path, nd.ni_cnd.cn_pnbuf, nd.ni_cnd.cn_namelen+1);
+	nd.ni_cnd.cn_nameptr = nd.ni_cnd.cn_pnbuf;
+	nd.ni_dirp = CAST_USER_ADDR_T(nd.ni_cnd.cn_pnbuf);
+	nd.ni_cnd.cn_hash = un->un_hash;
+	nd.ni_cnd.cn_consume = 0;
 
 	/*
 	 * Pass dvp unlocked and referenced on call to relookup().
@@ -1275,7 +1149,7 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	 * If an error occurs, dvp will be returned unlocked and dereferenced.
 	 */
 	vnode_get(un->un_dirvp);
-	if ((error = relookup(un->un_dirvp, &vp, &cn)) != 0) {
+	if ((error = relookup(un->un_dirvp, &vp, &nd.ni_cnd)) != 0) {
 		vnode_put(un->un_dirvp);
 		goto out;
 	}
@@ -1308,7 +1182,7 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	VATTR_SET(vap, va_type, VREG);
 	VATTR_SET(vap, va_mode, cmode);
 
-	if ((error = vn_create(un->un_dirvp, &vp, &cn, vap, 0, 0, 0, context)) != 0) {
+	if ((error = vn_create(un->un_dirvp, &vp, &nd, vap, 0, 0, 0, context)) != 0) {
 		goto out;
 	}
 
@@ -1325,9 +1199,9 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	error = 0;
 
 out:
-	if ((cn.cn_flags & HASBUF) == HASBUF) {
-		FREE_ZONE(cn.cn_pnbuf, cn.cn_pnlen, M_NAMEI);
-		cn.cn_flags &= ~HASBUF;
+	if ((nd.ni_cnd.cn_flags & HASBUF) == HASBUF) {
+		FREE_ZONE(nd.ni_cnd.cn_pnbuf, nd.ni_cnd.cn_pnlen, M_NAMEI);
+		nd.ni_cnd.cn_flags &= ~HASBUF;
 	}
 	return(error);
 }

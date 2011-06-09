@@ -214,7 +214,7 @@ if mode == 'untether':
 elif mode == 'dejavu':
     init('R4', 'R5', 'PC')
 
-kstuffp = ptr(kstuff)
+kstuffp = ptr(kstuff + '\0'*32)
 zerop = ptrI(0)
 AppleRGBOUT = ptr('AppleRGBOUT', True)
 connect = ptrI(0)
@@ -251,6 +251,7 @@ else:
         do_main_thing()
         new_heap, goo.heap = goo.heap, old_heap
         stderrp = dmini.cur.sym('___stderrp')
+		  assert not cases.has_key(stderrp)
         cases[stderrp] = new_heap
 
     old_fa = dmini.data.b_find_anywhere

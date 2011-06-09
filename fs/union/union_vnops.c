@@ -164,7 +164,7 @@ union_lookup(struct vnop_lookup_args *ap)
 	} *ap)
 */
 {
-	int error;
+	int error = 0;
 	int uerror = 0;
 	int  lerror = 0;
 	struct vnode *uppervp, *lowervp;
@@ -176,27 +176,11 @@ union_lookup(struct vnop_lookup_args *ap)
 	int lockparent = cnp->cn_flags & LOCKPARENT;
 	struct union_mount *um;
 	kauth_cred_t saved_cred;
-	int iswhiteout;
 	struct vnode_attr va;
 	int isfaultfs = 0;
-	int upperlookup = 0;
 	int retry_count = 0;
 
-#ifdef notyet
-	if (cnp->cn_namelen == 3 &&
-			cnp->cn_nameptr[2] == '.' &&
-			cnp->cn_nameptr[1] == '.' &&
-			cnp->cn_nameptr[0] == '.') {
-		dvp = *ap->a_vpp = LOWERVP(ap->a_dvp);
-		if (dvp == NULLVP)
-			return (ENOENT);
-		vnode_get(dvp);
-
-		return (0);
-	}
-#endif
-
-	
+	*ap->a_vpp = NULLVP;
 
 retry:
 	union_lock();
@@ -206,7 +190,6 @@ retry:
 	lowerdvp = dun->un_lowervp;
 	uppervp = NULLVP;
 	lowervp = NULLVP;
-	iswhiteout = 0;
 
 	union_unlock();
 
@@ -215,51 +198,43 @@ retry:
 
 	if (isfaultfs == 0)
 		cnp->cn_flags |= LOCKPARENT;
-
+	
 	/*
 	 * do the lookup in the upper level.
 	 * if that level comsumes additional pathnames,
 	 * then assume that something special is going
 	 * on and just return that vnode.
 	 */
-	if (upperdvp != NULLVP) {
-		if (lockparent != 0) 
-			cnp->cn_flags &= ~LOCKPARENT;
-		uerror = union_lookup1(um->um_uppervp, &upperdvp,
-					&uppervp, cnp);
-		upperlookup = 1;
-
-		if (cnp->cn_consume != 0) {
-			*ap->a_vpp = uppervp;
-			if (!lockparent)
-				cnp->cn_flags &= ~LOCKPARENT;
-			else
-				cnp->cn_flags |= LOCKPARENT;	
-			return (uerror);
-		}
-		if (uerror == ENOENT || uerror == EJUSTRETURN) {
-			if (cnp->cn_flags & ISWHITEOUT) {
-				iswhiteout = 1;
-			} else if (lowerdvp != NULLVP) {
-				VATTR_INIT(&va);
-				VATTR_WANTED(&va, va_flags);
-				lerror = vnode_getattr(upperdvp, &va, ap->a_context);
-				if (lerror == 0 && (va.va_flags & OPAQUE))
-					iswhiteout = 1;
-			}
-		}
-	} else {
-		uerror = ENOENT;
+	if (upperdvp == NULLVP || lowerdvp == NULLVP) {
+		error = EPWROFF;
+		goto out;
 	}
 
-	/*
-	 * faultingfs: If upper layer lookup is succesful
-	 * we will return that vp if it is regular file.
-	 * So so skip lower level lookup
-	 */
+	if (lockparent != 0) 
+		cnp->cn_flags &= ~LOCKPARENT;
 
-	if ((isfaultfs == 1) && (upperlookup == 1) && (uerror == 0) && ((vnode_isreg(uppervp) != 0)))
-		goto donelowerlookup;
+	uerror = union_lookup1(um->um_uppervp, &upperdvp,
+				&uppervp, cnp);
+
+	if (cnp->cn_consume != 0) {
+		vnode_get(*ap->a_vpp = uppervp);
+		error = uerror;
+		goto out;
+	}
+
+	if(uerror) {
+		if(uerror != ENOENT && uerror != EJUSTRETURN) {
+			error = uerror;
+			goto out;
+		}
+	} else {
+		if(!vnode_isdir(uppervp)) {
+			vnode_get(*ap->a_vpp = uppervp);
+			goto out;
+		}
+	}
+
+	// x: so the upper either does not exist or is a directory
 
 	/*
 	 * in a similar way to the upper layer, do the lookup
@@ -268,57 +243,30 @@ retry:
 	 * back from the upper layer and return the lower vnode
 	 * instead.
 	 */
-	if (lowerdvp != NULLVP && !iswhiteout) {
-		int nameiop;
 
-		/*
-		 * Only do a LOOKUP on the bottom node, since
-		 * we won't be making changes to it anyway.
-		 */
-		nameiop = cnp->cn_nameiop;
-		cnp->cn_nameiop = LOOKUP;
-		if (um->um_op == UNMNT_BELOW) {
-			/* XXX BOGUS */
-			saved_cred = cnp->cn_context->vc_ucred;
-			cnp->cn_context->vc_ucred = um->um_cred;
-			if (lockparent != 0) 
-				cnp->cn_flags &= ~LOCKPARENT;
-			lerror = union_lookup1(um->um_lowervp, &lowerdvp,
-					&lowervp, cnp);
-			cnp->cn_context->vc_ucred = saved_cred;
-		} else {
-			if (lockparent != 0) 
-				cnp->cn_flags &= ~LOCKPARENT;
-			lerror = union_lookup1(um->um_lowervp, &lowerdvp,
-					&lowervp, cnp);
-		}
-		cnp->cn_nameiop = nameiop;
+	int nameiop;
 
-		if (cnp->cn_consume != 0) {
-			if (uppervp != NULLVP) {
-			        vnode_put(uppervp);
-				uppervp = NULLVP;
-			}
-			*ap->a_vpp = lowervp;
-			if (!lockparent)
-				cnp->cn_flags &= ~LOCKPARENT;
-			else
-				cnp->cn_flags |= LOCKPARENT;	
-			return (lerror);
-		}
-	} else {
-		lerror = ENOENT;
-		if ((cnp->cn_flags & ISDOTDOT) && dun->un_pvp != NULLVP) {
-			lowervp = LOWERVP(dun->un_pvp);
-			if (lowervp != NULLVP) {
-				lerror = 0;
-			}
-		}
+	/*
+	 * Only do a LOOKUP on the bottom node, since
+	 * we won't be making changes to it anyway.
+	 */
+	nameiop = cnp->cn_nameiop;
+	cnp->cn_nameiop = LOOKUP;
+
+	if (lockparent) 
+		cnp->cn_flags &= ~LOCKPARENT;
+
+	lerror = union_lookup1(um->um_lowervp, &lowerdvp,
+			&lowervp, cnp);
+	cnp->cn_nameiop = nameiop;
+
+	if (cnp->cn_consume != 0) {
+		vnode_get(*ap->a_vpp = lowervp);
+		error = lerror;
+		goto out;
 	}
 
-donelowerlookup:
-
-	if (!lockparent)
+	if (!lockparent) // wat, the case is exactly reversed from above? how does that make any sense?
 		cnp->cn_flags &= ~LOCKPARENT;
 
 	/*
@@ -338,86 +286,31 @@ donelowerlookup:
 	 *	  an empty top layer and the existing bottom layer.
 	 *    b.  the bottom vnode is a directory, in which case
 	 *	  create a new directory in the top-level and
-	 *	  continue as in case 3.
+	 *	  continue as in case 3. (X: I'm getting rid of this case)
 	 *
 	 * 3. if the top layer succeeded then return a new union
 	 *    vnode referencing whatever the new top layer and
 	 *    whatever the bottom layer returned.
 	 */
 
-	*ap->a_vpp = NULLVP;
-
 	/* case 1. */
 	if ((uerror != 0) && (lerror != 0)) {
-			if (!lockparent)
-				cnp->cn_flags &= ~LOCKPARENT;
-			else
-				cnp->cn_flags |= LOCKPARENT;	
-		return (uerror);
+		error = uerror;
+		goto out;
 	}
 
 	/* case 2. */
 	if (uerror != 0 /* && (lerror == 0) */ ) {
-		if (lowervp->v_type == VDIR) { /* case 2b. */
-			/* No need to lock the union here */
-			/* if the vnode exists it returns it even if it marks error */
-
-			uppervp = NULLVP;
-
-			struct vnode_attr va;
-			VATTR_INIT(&va);
-			VATTR_WANTED(&va, va_uid);
-			VATTR_WANTED(&va, va_gid);
-			VATTR_WANTED(&va, va_mode);
-			uerror = vnode_getattr(lowervp, &va, ctx);
-
-			if(!uerror) {
-				uerror = union_mkshadow(um, upperdvp, cnp, &va, &uppervp);
-			}
-
-			if ((uerror == EEXIST)){
-				if (uppervp == NULLVP) {
-					retry_count++;
-					if (retry_count <= 2) {
-						if (lowervp != NULLVP) 
-							vnode_put(lowervp);
-						goto retry;
-					}
-				}
-				uerror = 0;
-			}
-			
-			if (uerror) {
-				if (uppervp != NULLVP) {
-					vnode_put(uppervp);
-				}
-				if (lowervp != NULLVP) {
-					vnode_put(lowervp);
-				}
-				if (!lockparent)
-					cnp->cn_flags &= ~LOCKPARENT;
-				else
-					cnp->cn_flags |= LOCKPARENT;	
-				return (uerror);
-			}
-		} else if ((lowervp->v_type == VREG) && (isfaultfs == 1)) {
-			error = union_faultin_copyup(&uppervp, upperdvp, lowervp, cnp, ctx);	
-			uerror = 0;
-		}
+		vnode_get(*ap->a_vpp = lowervp);
+		error = 0;
+		goto out;
 	}
-
-
-	/* if this is faulting filesystem and upper vp exisits skip allocation of union node */
-	if ((isfaultfs == 1) && (uerror == 0) && (uppervp != NULLVP) &&  ((vnode_isreg(uppervp) != 0)|| (vnode_islnk(uppervp) != 0))) {
-		vn_checkunionwait(uppervp);
-		*ap->a_vpp = uppervp;
-		if (lowervp != NULLVP)
-			vnode_put(lowervp);
-		if (!lockparent)
-			cnp->cn_flags &= ~LOCKPARENT;
-		else
-			cnp->cn_flags |= LOCKPARENT;	
-		return(0);
+	
+	/* I have no idea */
+	if (lerror != 0) {
+		vnode_get(*ap->a_vpp = uppervp);
+		error = 0;
+		goto out;
 	}
 
 	union_lock();
@@ -425,13 +318,11 @@ donelowerlookup:
 			      uppervp, lowervp, 1);
 	union_unlock();
 
-	if (error) {
-		if (uppervp != NULLVP)
-			vnode_put(uppervp);
-		if (lowervp != NULLVP)
-			vnode_put(lowervp);
-	}
-
+	out:
+	if (uppervp != NULLVP)
+		vnode_put(uppervp);
+	if (lowervp != NULLVP)
+		vnode_put(lowervp);
 	if (!lockparent)
 		cnp->cn_flags &= ~LOCKPARENT;
 	else
@@ -489,26 +380,7 @@ union_create(struct vnop_create_args *ap)
 
 static int
 union_whiteout(struct vnop_whiteout_args *ap)
-/*
-	struct vnop_whiteout_args {
-		struct vnode *a_dvp;
-		struct componentname *a_cnp;
-		int a_flags;
-		vfs_context_t a_context;
-	} *ap;
-*/
-{
-	struct union_node *un = VTOUNION(ap->a_dvp);
-	struct componentname *cnp = ap->a_cnp;
-	int error;
-
-	if (un->un_uppervp == NULLVP) {
-		return (ENOTSUP);
-	}
-
-	error =  (VNOP_WHITEOUT(un->un_uppervp, cnp, ap->a_flags, ap->a_context));
-	return(error);
-}
+{ return ENXIO; }
 
 /* mknod can do  fifos, chr, blk or whiteout entries */
 static int
@@ -555,66 +427,7 @@ union_mknod(struct vnop_mknod_args *ap)
 
 static int
 union_open(struct vnop_open_args *ap)
-/*
-	struct vnop_open_args {
-		struct vnodeop_desc *a_desc;
-		struct vnode *a_vp;
-		int a_mode;
-		vfs_context_t a_context;
-	} *ap;
-*/
-{
-	struct union_node *un = VTOUNION(ap->a_vp);
-	struct vnode *tvp;
-	int mode = ap->a_mode;
-	int error;
-
-	/*
-	 * If there is an existing upper vp then simply open that.
-	 */
-
-	tvp = un->un_uppervp;
-	if (tvp == NULLVP) {
-
-		/*
-		 * If the lower vnode is being opened for writing, then
-		 * copy the file contents to the upper vnode and open that,
-		 * otherwise can simply open the lower vnode.
-		 */
-		tvp = un->un_lowervp;
-		if ((ap->a_mode & FWRITE) && (tvp->v_type == VREG)) {
-			/* For above below mounts we need draining.. */
-			/* This path is not taken for faultin mode */
-			/*  LOCK the union node as well **/
-			union_lock();
-			un->un_flags |= UN_LOCKED;
-
-			error = union_copyup(un, (mode&O_TRUNC) == 0, ap->a_context);
-			un->un_flags &= ~UN_LOCKED;
-			if ((un->un_flags & UN_WANT) == UN_WANT) {
-				un->un_flags &=  ~UN_WANT;
-				wakeup(&un->un_flags);
-			}
-			union_unlock();
-			if (error == 0)
-				error = VNOP_OPEN(un->un_uppervp, mode, ap->a_context);
-			return (error);
-		}
-
-		/*
-		 * Just open the lower vnode
-		 */
-		un->un_openl++;
-
-		error = VNOP_OPEN(tvp, mode, ap->a_context);
-
-		return (error);
-	}
-
-	error = VNOP_OPEN(tvp, mode, ap->a_context);
-
-	return (error);
-}
+{ return ENXIO; }
 
 static int
 union_close(struct vnop_close_args *ap)
@@ -1147,6 +960,7 @@ union_rename(struct vnop_rename_args *ap)
 	} *ap;
 */
 {
+	// This is probably wrong in most cases
 	int error;
 
 	struct vnode *fdvp = ap->a_fdvp;
@@ -1154,69 +968,32 @@ union_rename(struct vnop_rename_args *ap)
 	struct vnode *tdvp = ap->a_tdvp;
 	struct vnode *tvp = ap->a_tvp;
 
+	struct union_node *dun = VTOUNION(fdvp);
+	struct union_node *un = VTOUNION(fvp);
 
-	if (fdvp->v_op == union_vnodeop_p) {	/* always true */
-		struct union_node *un = VTOUNION(fdvp);
-		if (un->un_uppervp == NULLVP) {
-			if (UNNODE_FAULTIN(un))
-				panic("faultfs rename: No uppervp");
-			/*
-			 * this should never happen in normal
-			 * operation but might if there was
-			 * a problem creating the top-level shadow
-			 * directory.
-			 */
-			error = EXDEV;
-			goto bad;
+	if(un->un_uppervp != NULLVP) {
+		if(dun->un_uppervp == NULLVP) panic("wat (upper)");
+		if(error = VNOP_RENAME(dun->un_uppervp, un->un_uppervp, ap->a_fcnp, tdvp, tvp, ap->a_tcnp, ap->a_context))  {
+			return error;
 		}
-
-		fdvp = un->un_uppervp;
 	}
-
-	if (fvp->v_op == union_vnodeop_p) {	/* always true */
-		struct union_node *un = VTOUNION(fvp);
-		if (un->un_uppervp == NULLVP) {
-			if (UNNODE_FAULTIN(un))
-				panic("faultfs rename: No uppervp");
-			/* XXX: should do a copyup */
-			error = EXDEV;
-			goto bad;
+		
+	
+	if(un->un_lowervp != NULLVP) {
+		if(dun->un_lowervp == NULLVP) panic("wat (lower)");
+		if(error = VNOP_RENAME(dun->un_lowervp, un->un_lowervp, ap->a_fcnp, tdvp, tvp, ap->a_tcnp, ap->a_context)) {
+			if(un->un_uppervp != NULLVP) {
+				printf("bad bad bad - the first rename succeeded but the second one failed; trying to rename it back\n");
+				int error2;
+				if(error2 = VNOP_RENAME(dun->un_uppervp, un->un_uppervp, ap->a_fcnp, tdvp, tvp, ap->a_fcnp, ap->a_context))  {
+					printf("that failed too: %d\n", error2);
+				}
+			}
+			return error;
 		}
-
-		if (un->un_lowervp != NULLVP)
-			ap->a_fcnp->cn_flags |= DOWHITEOUT;
-
-		fvp = un->un_uppervp;
 	}
 
-	if (tdvp->v_op == union_vnodeop_p) {
-		struct union_node *un = VTOUNION(tdvp);
-		if (un->un_uppervp == NULLVP) {
-			/*
-			 * this should never happen in normal
-			 * operation but might if there was
-			 * a problem creating the top-level shadow
-			 * directory.
-			 */
-			if (UNNODE_FAULTIN(un))
-				panic("faultfs rename: No uppervp");
-			error = EXDEV;
-			goto bad;
-		}
-
-		tdvp = un->un_uppervp;
-	}
-
-	if (tvp != NULLVP && tvp->v_op == union_vnodeop_p) {
-		struct union_node *un = VTOUNION(tvp);
-
-		tvp = un->un_uppervp;
-	}
-
-	return (VNOP_RENAME(fdvp, fvp, ap->a_fcnp, tdvp, tvp, ap->a_tcnp, ap->a_context));
-
-bad:
-	return (error);
+	return 0;
 }
 
 static int
@@ -1377,22 +1154,7 @@ union_readdir(struct vnop_readdir_args *ap)
 
 static int
 union_readlink(struct vnop_readlink_args *ap)
-/*
-	struct vnop_readlink_args {
-		struct vnode *a_vp;
-		struct uio *a_uio;
-		vfs_context_t a_context;
-	} *ap;
-*/
-{
-	int error;
-	struct vnode *vp = OTHERVP(ap->a_vp);
-
-	ap->a_vp = vp;
-	error = VCALL(vp, VOFFSET(vnop_readlink), ap);
-
-	return (error);
-}
+{ return ENXIO; }
 
 static int
 union_inactive(struct vnop_inactive_args *ap)
@@ -1556,132 +1318,22 @@ union_strategy(struct vnop_strategy_args *ap)
 /* Pagein */
 static int
 union_pagein(struct vnop_pagein_args *ap)
-/*
-	struct vnop_pagein_args {
-	   	struct vnode 	*a_vp,
-	   	upl_t		a_pl,
-		upl_offset_t	a_pl_offset,
-		off_t		a_f_offset,
-		size_t		a_size,
-		int		a_flags
-		vfs_context_t	a_context;
-	} *ap;
-*/
-{
-	int error;
-	struct vnode *vp = OTHERVP(ap->a_vp);
-
-	error = VNOP_PAGEIN(vp, ap->a_pl, ap->a_pl_offset, ap->a_f_offset,
-	                    ap->a_size, ap->a_flags, ap->a_context);
-
-	/*
-	 * XXX
-	 * perhaps the size of the underlying object has changed under
-	 * our feet.  take advantage of the offset information present
-	 * in the uio structure.
-	 */
-	if (error == 0) {
-		struct union_node *un = VTOUNION(ap->a_vp);
-		off_t cur = ap->a_f_offset + (off_t)ap->a_pl_offset;
-
-		if (vp == un->un_uppervp) {
-			if (cur > un->un_uppersz) {
-				union_lock();
-				union_newsize(ap->a_vp, cur, VNOVAL);
-				union_unlock();
-			}
-		} else {
-			if (cur > un->un_lowersz) {
-				union_lock();
-				union_newsize(ap->a_vp, VNOVAL, cur);
-				union_unlock();
-			}
-		}
-	}
-
-	return (error);
-}
+{ return ENXIO; }
 
 /* Pageout  */
 static int
 union_pageout(struct vnop_pageout_args *ap)
-/*
-	struct vnop_pageout_args {
-	   	struct vnode 	*a_vp,
-	   	upl_t		a_pl,
-		vm_offset_t	a_pl_offset,
-		off_t		a_f_offset,
-		size_t		a_size,
-		int		a_flags
-		vfs_context_t	a_context;
-	} *ap;
-*/
-{
-	int error;
-	struct vnode *vp;
-	struct union_node *un = VTOUNION(ap->a_vp);
-
-	vp = UPPERVP(ap->a_vp);
-	if (vp == NULLVP)
-		panic("union: missing upper layer in pageout");
-
-	error = VNOP_PAGEOUT(vp, ap->a_pl, ap->a_pl_offset, ap->a_f_offset,
-	                     ap->a_size, ap->a_flags, ap->a_context);
-
-	/*
-	 * the size of the underlying object may be changed by the
-	 * write.
-	 */
-	if (error == 0) {
-		off_t cur = ap->a_f_offset + (off_t)ap->a_pl_offset;
-
-		if (cur > un->un_uppersz) {
-			union_lock();
-			union_newsize(ap->a_vp, cur, VNOVAL);
-			union_unlock();
-		}
-	}
-
-	return (error);
-}
+{ return ENXIO; }
 
 /* Blktooff derives file offset for the given logical block number */
 static int
 union_blktooff(struct vnop_blktooff_args *ap)
-/*
-	struct vnop_blktooff_args {
-		struct vnode *a_vp;
-		daddr64_t a_lblkno;
-		off_t *a_offset;    
-	} *ap;
-*/
-{
-	int error;
-	struct vnode *vp = OTHERVP(ap->a_vp);
-
-	error = VNOP_BLKTOOFF(vp, ap->a_lblkno, ap->a_offset);
-
-	return(error);
-}
+{ return ENXIO; }
 
 /* offtoblk derives file offset for the given logical block number */
 static int
 union_offtoblk(struct vnop_offtoblk_args *ap)
-/*
-	struct vnop_offtoblk_args  {
-		struct vnode *a_vp;
-		off_t a_offset;    
-		daddr64_t *a_lblkno;
-	} *ap;
-*/
-{
-	int error;
-	struct vnode *vp = OTHERVP(ap->a_vp);
-
-	error = VNOP_OFFTOBLK(vp, ap->a_offset, ap->a_lblkno);
-
-	return(error);
-}
+{ return ENXIO; }
 
 #define VOPFUNC int (*)(void *)
 
@@ -1726,7 +1378,7 @@ struct vnodeopv_entry_desc union_vnodeop_entries[] = {
 #endif
 	{ &vnop_pagein_desc, (VOPFUNC)union_pagein },		/* Pagein */
 	{ &vnop_pageout_desc, (VOPFUNC)union_pageout },		/* Pageout */
-        { &vnop_copyfile_desc, (VOPFUNC)err_copyfile },		/* Copyfile */
+        { &vnop_copyfile_desc, (VOPFUNC)x_eopnotsupp },		/* Copyfile */
 	{ &vnop_blktooff_desc, (VOPFUNC)union_blktooff },	/* blktooff */
 	{ &vnop_offtoblk_desc, (VOPFUNC)union_offtoblk },	/* offtoblk */
 	{ &vnop_blockmap_desc, (VOPFUNC)union_blockmap },	/* blockmap */

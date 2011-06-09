@@ -75,15 +75,13 @@ def catalog():
     goto('catalog')
     run('../datautils0/universal/make_kernel_patchfile', BS+'/kern', tmp('patchfile'))
 
-def catalog_dejavu(outfile=None):
+def catalog_dejavu(extra_bs=[]):
     goto('catalog')
-    if outfile is None: outfile = tmp('catalog.txt')
     locutus()
     catalog()
     run(GCC, '-c', '-o', tmp('kcode_dejavu.o'), 'kcode.S', '-Oz', '-DDEJAVU')
-    cachefile = BS+'/cache'
-    extra = [cachefile.replace('iPad2,1', 'iPad2,2'), cachefile.replace('iPad2,1', 'iPad2,3')] if 'iPad2,1' in cachefile else []
-    run('python', 'catalog.py', 'dejavu', version, cachefile, BS+'/kern', tmp('patchfile'), tmp('kcode_dejavu.o'), outfile, *extra)
+    extra = [i+'/cache' for i in extra_bs]
+    run('python', 'catalog.py', 'dejavu', version, BS+'/cache', BS+'/kern', tmp('patchfile'), tmp('kcode_dejavu.o'), tmp('catalog.txt'), *extra)
 
 def catalog_untether():
     catalog()
@@ -180,6 +178,7 @@ def starstuff():
     run('sh', '-c', 'xz -c "%s" > "%s"' % (tmp('starstuff.tar'), xz))
 
 def stage():
+    armv6_devices = ['iPhone1,2', 'iPod1,1', 'iPod2,1']
     install() 
     goto('.')
     #shell('sh', '-c', 'rm -f pdf/*.pdf starstuff/*.xz')
@@ -191,7 +190,8 @@ def stage():
         for basetype in ['iPod', 'iPhone', 'iPad']:
             goto('bs')
             firmwares = glob.glob(basetype + '*_' + version)
-                
+            arch_firmwares = [filter(lambda a: a in armv6_devices == is_armv7, firmwares) for is_armv7 in [False, True]]
+
             for i, stage in enumerate([
                 ['iPhone3,1', 'iPhone3,3', 'iPod4,1', 'iPad2,1'],
                 ['iPhone2,1', 'iPod3,1', 'iPad1,1', 'iPhone1,2', 'iPod2,1'],
@@ -206,10 +206,10 @@ def stage():
                         set_firmware(firmware, True)
                         try:
                             starstuff()
-                            if device not in ['iPad2,2', 'iPad2,3']:
+                            if any(af[:1] == [firmware] for af in arch_firmwares):
                                 catalog_dejavu()
-                            goto('catalog')
-                            eligible.append(tmp('catalog.txt'))
+                                goto('catalog')
+                                eligible.append(tmp('catalog.txt'))
                             succeeded.append(firmware)
                         except Exception, e:
                             print '** Failed: %s' % str(e)
