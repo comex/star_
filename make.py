@@ -75,12 +75,11 @@ def catalog():
     goto('catalog')
     run('../datautils0/universal/make_kernel_patchfile', BS+'/kern', tmp('patchfile'))
 
-def catalog_dejavu(extra_bs=[]):
+def catalog_dejavu(extra_firmwares=[]):
     goto('catalog')
-    locutus()
     catalog()
     run(GCC, '-c', '-o', tmp('kcode_dejavu.o'), 'kcode.S', '-Oz', '-DDEJAVU')
-    extra = [i+'/cache' for i in extra_bs]
+    extra = ['%s/bs/%s/cache' % (ROOT, i) for i in extra_firmwares]
     run('python', 'catalog.py', 'dejavu', version, BS+'/cache', BS+'/kern', tmp('patchfile'), tmp('kcode_dejavu.o'), tmp('catalog.txt'), *extra)
 
 def catalog_untether():
@@ -144,9 +143,11 @@ def mroib():
     run(GCC, '-dynamiclib', '-o', 'mroib.dylib', 'power.c', 'timer.c', 'usb.c', 'mroib.c', 'clean.o', '-combine', '-fwhole-program', '-nostdinc', '-nodefaultlibs', '-lgcc', '-undefined', 'dynamic_lookup', '-I.', '-Iincludes', '-DCONFIG_IPHONE_4G')
 
 def dejavu(files=None):
+    locutus()
     goto('catalog')
-    if files is None: files = [tmp('catalog.txt')]
-    catalog_dejavu()
+    if files is None:
+        catalog_dejavu()
+        files = [tmp('catalog.txt')]
     goto('dejavu')
     run('python', 'gen_dejavu.raw.py', tmp('dejavu.raw'), tmp('../locutus/locutus'), *files)
     run('t1asm', tmp('dejavu.raw'), tmp('dejavu.pfb'))
@@ -178,6 +179,7 @@ def starstuff():
     run('sh', '-c', 'xz -c "%s" > "%s"' % (tmp('starstuff.tar'), xz))
 
 def stage():
+    all_devices = ['iPhone3,1', 'iPhone3,3', 'iPod4,1', 'iPad2,1', 'iPad2,2', 'iPad2,3', 'iPhone2,1', 'iPod3,1', 'iPad1,1', 'iPhone1,2', 'iPod2,1']
     armv6_devices = ['iPhone1,2', 'iPod1,1', 'iPod2,1']
     install() 
     goto('.')
@@ -190,33 +192,31 @@ def stage():
         for basetype in ['iPod', 'iPhone', 'iPad']:
             goto('bs')
             firmwares = glob.glob(basetype + '*_' + version)
-            arch_firmwares = [filter(lambda a: a in armv6_devices == is_armv7, firmwares) for is_armv7 in [False, True]]
+            arch_firmwares = [filter(lambda a: (a in armv6_devices) == is_armv7, firmwares) for is_armv7 in [False, True]]
 
-            for i, stage in enumerate([
-                ['iPhone3,1', 'iPhone3,3', 'iPod4,1', 'iPad2,1'],
-                ['iPhone2,1', 'iPod3,1', 'iPad1,1', 'iPhone1,2', 'iPod2,1'],
-            ]):
-                eligible = []
-                outpdf = '%s/pdf/%s_%s_%d.pdf' % (ROOT, basetype, version, i)
-                for firmware in firmwares:
-                    if '4.1' in firmware or '4.0' in firmware: continue # XXX
-                    device = firmware[:firmware.find('_')]
-                    if device in stage:
-                        print '** Building %s for %s' % (firmware, outpdf)
-                        set_firmware(firmware, True)
-                        try:
-                            starstuff()
-                            if any(af[:1] == [firmware] for af in arch_firmwares):
-                                catalog_dejavu()
+            eligible = []
+            outpdf = '%s/pdf/%s_%s.pdf' % (ROOT, basetype, version)
+            for firmware in firmwares:
+                if '4.1' in firmware or '4.0' in firmware: continue # XXX
+                device = firmware[:firmware.find('_')]
+                if device in all_devices:
+                    print '** Building %s for %s' % (firmware, outpdf)
+                    set_firmware(firmware, True)
+                    try:
+                        starstuff()
+                        for af in arch_firmwares:
+                            if af[:1] == [firmware]:
+                                catalog_dejavu(af[1:])
                                 goto('catalog')
                                 eligible.append(tmp('catalog.txt'))
-                            succeeded.append(firmware)
-                        except Exception, e:
-                            print '** Failed: %s' % str(e)
-                            failed.append(firmware)
-                if eligible == []: continue
-                pdf(eligible)
-                shutil.copy(tmp('out.pdf'), outpdf)
+                                break
+                        succeeded.append(firmware)
+                    except Exception, e:
+                        print '** Failed: %s' % str(e)
+                        failed.append(firmware)
+            if eligible == []: continue
+            pdf(eligible)
+            shutil.copy(tmp('out.pdf'), outpdf)
     print '** Done...'
     print 'succeeded:', succeeded
     print 'failed:', failed

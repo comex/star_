@@ -1378,7 +1378,7 @@ struct vnodeopv_entry_desc union_vnodeop_entries[] = {
 #endif
 	{ &vnop_pagein_desc, (VOPFUNC)union_pagein },		/* Pagein */
 	{ &vnop_pageout_desc, (VOPFUNC)union_pageout },		/* Pageout */
-        { &vnop_copyfile_desc, (VOPFUNC)x_eopnotsupp },		/* Copyfile */
+        { &vnop_copyfile_desc, (VOPFUNC)eopnotsupp },		/* Copyfile */
 	{ &vnop_blktooff_desc, (VOPFUNC)union_blktooff },	/* blktooff */
 	{ &vnop_offtoblk_desc, (VOPFUNC)union_offtoblk },	/* offtoblk */
 	{ &vnop_blockmap_desc, (VOPFUNC)union_blockmap },	/* blockmap */

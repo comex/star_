@@ -19,7 +19,7 @@ PROT_EXEC = 4
 mode, version, cachefile, kernfile, patchfile, kcode, outfile = sys.argv[1:8]
 four_dot_three = '4.3' in version
 cachefiles = [cachefile] + sys.argv[8:]
-ipad2 = len(cachefiles) > 1
+polyglot = len(cachefiles) > 1
 
 assert mode in ['dejavu', 'untether']
 patchfp = open(patchfile)
@@ -122,7 +122,7 @@ def set_cache(cachefile):
         add_lib(conn, 'libz', '/usr/lib/libz.dylib')
     add_lib(conn, 'iokit', '/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit')
     return conn
-dmini.cur = set_cache(cachefile)
+if not polyglot: dmini.cur = set_cache(cachefile)
 targets = [None]
 
 if four_dot_three:
@@ -234,12 +234,13 @@ if mode == 'dejavu':
     dest_len_p = ptrI(reloc(0xa, 0))
     locutus_str = ptr('/tmp/locutus', True)
 
-if not ipad2:
+if not polyglot:
     make_r7_avail()
     set_sp_to_sp()
     do_main_thing()
 else:
     cases = {}
+    idy = {}
 
     old_fwds = goo.fwds
 
@@ -251,8 +252,12 @@ else:
         do_main_thing()
         new_heap, goo.heap = goo.heap, old_heap
         stderrp = dmini.cur.sym('___stderrp')
-		  assert not cases.has_key(stderrp)
+        print cachefile, stderrp
+        if cases.has_key(stderrp):
+            print cases.keys()
+            raise Exception("Well, that's weird.  I'm %s but %s was taken by %s" % (cachefile, stderrp, idy[stderrp]))
         cases[stderrp] = new_heap
+        idy[stderrp] = cachefile
 
     old_fa = dmini.data.b_find_anywhere
     def new_fa(binary, pattern, align, flags):

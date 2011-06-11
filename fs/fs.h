@@ -1,4 +1,5 @@
 #define IS_64BIT_PROCESS(x) 0
+#include <sys/buf_internal.h>
 //extern void IOLog(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
 //#define printf(args...) IOLog(args)
 //#define printf(args...) (void) (args)
@@ -9,7 +10,7 @@ asm("$bl2__vnode_lookup");
 #define namei x_namei
 #define nameidone x_nameidone
 #define thread_funnel_set(...) 0
-	
+
 uio_t x_uio_createwithbuffer(int a_iovcount, off_t a_offset, int a_spacetype, int a_iodirection, void *a_buf_p, size_t a_buffer_size) asm("$bl2__uio_create");
 #define uio_createwithbuffer x_uio_createwithbuffer
 
@@ -30,17 +31,17 @@ static void x_lck_mtx_lock(lck_mtx_t *lck) {
 #define lck_mtx_lock x_lck_mtx_lock
 #endif
 
-int eopnotsupp() {
+inline int eopnotsupp() {
     return ENOTSUP;
 }
 #define vn_default_error eopnotsupp
 
-int nullop() {
+inline int nullop() {
     return 0;
 }
 
-static void buf_setvnode(buf_t bp, vnode_t vp) {
-        bp->b_vp = vp;
+inline void buf_setvnode(buf_t bp, vnode_t vp) {
+    bp->b_vp = vp;
 }
 
 #define bcopy(a, b, c) memcpy(b, a, c)
