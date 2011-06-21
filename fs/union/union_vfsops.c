@@ -577,7 +577,7 @@ struct vfs_fsentry fe = {
 vfstable_t ft;
 __attribute__((constructor))
 static void init() {
-	vfs_fsadd(&fe, &ft);
+	printf("vfs_fsadd: %d\n", vfs_fsadd(&fe, &ft));
 }
 
 __attribute__((destructor))

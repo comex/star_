@@ -58,7 +58,7 @@ def chext(f, ext):
 
 def install():
     goto('install')
-    compile_stuff(['install.m'], tmp('install.dylib'), gcc=GCC_ARMV6, cflags=['-I../headers', '-fblocks'], ldflags=['-framework', 'Foundation', '-framework', 'GraphicsServices', '-L.', '-ltar', '-llzma', '-dynamiclib'])
+    compile_stuff(['install.m'], tmp('install.dylib'), gcc=GCC_ARMV6, cflags=['-I../headers', '-fblocks'], ldflags=['-framework', 'Foundation', '-framework', 'GraphicsServices', '-framework', 'MobileCoreServices', '-L.', '-ltar', '-llzma', '-dynamiclib'])
 
 def locutus():
     goto('locutus')
@@ -167,23 +167,16 @@ def starstuff():
     untether()
     goto('starstuff')
     compile_stuff(['mount_nulls.c'], 'mount_nulls', ldid=False, gcc=GCC_ARMV6, use_tmp=False)
-    #run('../white/universal/white_loader', '-k', BS+'/kern', '-p', '../fs/union.dylib', 'union_prelink.dylib')
-    run('touch', tmp('union_prelink.dylib'))
-    shell('mkdir', '-p', tmp('root/boot'))
-    for a in ['Applications', 'bin', 'Library', 'private/etc', 'sbin', 'System', 'usr']:
-        shell('mkdir', '-p', tmp('root/private/var/null/'+a))
-    for a, b in [('mount_nulls', ROOT+'/starstuff/mount_nulls'), ('union_prelink.dylib', tmp('union_prelink.dylib')), ('untether', tmp('../catalog/untether')), ('white_loader', ROOT+'/white/white_loader')]:
-        shell('ln', '-nfs', b, tmp('root/boot/'+a))
-    run('gnutar', 'chvf', tmp('starstuff.tar'), '-C', tmp('root'), '.', '--owner', '0', '--group', 0, '--exclude', '.ignore')
-    xz = '%s/starstuff/starstuff_%s_%s.tar.xz' % (ROOT, device, build_num)
-    run('sh', '-c', 'xz -c "%s" > "%s"' % (tmp('starstuff.tar'), xz))
+    run('../white/universal/white_loader', '-k', BS+'/kern', '-p', '../fs/union.dylib', 'union_prelink.dylib')
+    #run('touch', tmp('union_prelink.dylib'))
+    package = 'saffron-jailbreak-%s-%s' % (device, build_num)
+    run('bash', 'build-archive.sh', tmp('.'), package, package.replace(',', '.').lower())
 
 def stage():
     all_devices = ['iPhone3,1', 'iPhone3,3', 'iPod4,1', 'iPad2,1', 'iPad2,2', 'iPad2,3', 'iPhone2,1', 'iPod3,1', 'iPad1,1', 'iPhone1,2', 'iPod2,1']
     armv6_devices = ['iPhone1,2', 'iPod1,1', 'iPod2,1']
     install() 
     goto('.')
-    #shell('sh', '-c', 'rm -f pdf/*.pdf starstuff/*.xz')
     goto('bs')
     available = set(i[i.find('_')+1:] for i in glob.glob('*_*'))
     succeeded = []

@@ -1,8 +1,5 @@
 #define IS_64BIT_PROCESS(x) 0
 #include <sys/buf_internal.h>
-//extern void IOLog(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
-//#define printf(args...) IOLog(args)
-//#define printf(args...) (void) (args)
 int x_namei(struct nameidata *ndp)
 asm("$bl1__vnode_lookup");
 void x_nameidone(struct nameidata *)
@@ -45,4 +42,8 @@ inline void buf_setvnode(buf_t bp, vnode_t vp) {
 }
 
 #define bcopy(a, b, c) memcpy(b, a, c)
+
+
+extern void IOLog(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
+#define printf(args...) ((void) (args))
 

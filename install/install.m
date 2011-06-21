@@ -1,4 +1,5 @@
-#define _log(fmt, args...) fprintf(stderr, fmt "\n", ##args)
+#define _log(fmt, args...) NSLog(@fmt, ##args)
+#import <Foundation/Foundation.h>
 #include <common/common.h>
 #include <libtar.h>
 #include <lzma.h>
@@ -19,13 +20,6 @@
 #include <sys/mount.h>
 #include <fts.h>
 #include <signal.h>
-#import <Foundation/Foundation.h>
-
-bool GSSystemHasCapability(NSString *capability);
-
-extern void do_copy(char *, char *, ssize_t (*)(int, const void *, size_t));
-extern void init();
-extern void finish();
 
 static size_t written_bytes;
 static void (*set_progress)(float);
@@ -83,16 +77,16 @@ static void remove_files(const char *path) {
     free(path_);
 }
 
-static int run(char **args) {
+static int run(char **argv, char **envp) {
     fprintf(stderr, "run:");
-    for(char **p = args; *p; p++) {
+    for(char **p = argv; *p; p++) {
         fprintf(stderr, " %s", *p);
     }
     fprintf(stderr, "\n");
 
     pid_t pid;
     int stat;
-    if(posix_spawn(&pid, args[0], NULL, NULL, args, NULL)) return 255;
+    if(posix_spawn(&pid, argv[0], NULL, NULL, argv, envp)) return 255;
     if(pid != waitpid(pid, &stat, 0)) return 254;
     if(!WIFEXITED(stat)) return 253;
     return WEXITSTATUS(stat);
@@ -163,13 +157,13 @@ static void extract(const char *fn, bool use_null) {
         while(*pathname == '.' || *pathname == '/') pathname++;
         if(use_null && (
 #define O(x) !memcmp(pathname, x, strlen(x))
-            //O("Applications") ||
-            //O("Library") ||
-            //O("System") ||
+            O("Applications") ||
+            O("Library") ||
+            O("System") ||
             //O("bin") ||
             //O("sbin") ||
-            //O("usr") ||
-            //O("private/etc") ||
+            O("usr") ||
+            O("private/etc") ||
             0
 #undef O
         )) {
@@ -189,7 +183,7 @@ static void extract(const char *fn, bool use_null) {
 
 static void remount() {
     _log("remount...");
-    _assert_zero(run((char *[]) {"/sbin/mount", "-u", "-o", "rw,suid,dev", "/", NULL}));
+    _assert_zero(run((char *[]) {"/sbin/mount", "-u", "-o", "rw,suid,dev", "/", NULL}, NULL));
 
     NSString *string = _assert([NSString stringWithContentsOfFile:@"/etc/fstab" encoding:NSUTF8StringEncoding error:NULL]);
     string = [string stringByReplacingOccurrencesOfString:@",nosuid,nodev" withString:@""];
@@ -200,7 +194,10 @@ static void remount() {
 // returns whether the plist existed
 static bool modify_plist(NSString *filename, void (^func)(id)) {
     NSData *data = [NSData dataWithContentsOfFile:filename];
-    if(!data) return false;
+    if(!data) {
+        _log("did not modify %@", filename);
+        return false;
+    }
     NSPropertyListFormat format;
     NSError *error;
     id plist = [NSPropertyListSerialization propertyListWithData:data options:NSPropertyListMutableContainersAndLeaves format:&format error:&error];
@@ -213,6 +210,7 @@ static bool modify_plist(NSString *filename, void (^func)(id)) {
 
     _assert([new_data writeToFile:filename atomically:YES]);
 
+    _log("modified %@", filename);
     return true;
 }
 
@@ -222,17 +220,15 @@ static void dok48() {
     _assert_zero(sysctlbyname("hw.model", model, &model_size, NULL, 0));
 
     NSString *filename = [NSString stringWithFormat:@"/System/Library/CoreServices/SpringBoard.app/%s.plist", model];
-    if(modify_plist(filename, ^(id plist) {
+    modify_plist(filename, ^(id plist) {
         [[plist objectForKey:@"capabilities"] setObject:[NSNumber numberWithBool:false] forKey:@"hide-non-default-apps"];
-    })) {
-        _log("%s.plist modified", model);
-    }
+    });
 }
 
 static void add_afc2() {
     _assert(modify_plist(@"/System/Library/Lockdown/Services.plist", ^(id services) {
         NSDictionary *args = [NSDictionary dictionaryWithObjectsAndKeys:
-                                [NSArray arrayWithObjects:@"/usr/lib/afcd",
+                                [NSArray arrayWithObjects:@"/usr/libexec/afcd",
                                                           @"--lockdown",
                                                           @"-d",
                                                           @"/",
@@ -245,13 +241,57 @@ static void add_afc2() {
 }
 
 static void finish_up() {
-    int ret = symlink("/boot/untether", "/usr/libexec/dirhelper");
-    if(errno != EEXIST) _assert_zero(ret);
-    TIME(_assert_zero(run((char *[]) {"/boot/mount_nulls", NULL})));
     for(NSData *pathname in to_load) {
         chdir("/");
-        run((char *[]) {"/bin/launchctl", "load", (char *) [pathname bytes], NULL});
+        run((char *[]) {"/bin/launchctl", "load", (char *) [pathname bytes], NULL}, NULL);
     }
+}
+
+@interface LSApplicationWorkspace {
+}
++(LSApplicationWorkspace *)defaultWorkspace;
+-(BOOL)registerApplication:(id)application;
+-(BOOL)unregisterApplication:(id)application;
+@end
+
+
+static void uicache() {
+    // I am not using uicache because I want loc_s to do the reloading
+
+    // probably not safe:
+    NSMutableDictionary *cache = [NSMutableDictionary dictionaryWithContentsOfFile:@"/var/mobile/Library/Caches/com.apple.mobile.installation.plist"];
+    if(cache) {
+        NSMutableDictionary *cydia = _assert([NSMutableDictionary dictionaryWithContentsOfFile:@"/Applications/Cydia.app/Info.plist"]);
+        [cydia setObject:@"/Applications/Cydia.app" forKey:@"Path"];
+        [cydia setObject:@"System" forKey:@"ApplicationType"];
+        id system = [cache objectForKey:@"System"];
+        if([system respondsToSelector:@selector(addObject:)])
+            [system addObject:cydia];
+        else
+            [system setObject:cydia forKey:@"com.saurik.Cydia"];
+        [cache writeToFile:@"/var/mobile/Library/Caches/com.apple.mobile.installation.plist" atomically:YES];
+    }
+
+    NSURL *url = [NSURL fileURLWithPath:@"/Applications/Cydia.app/Info.plist"];
+    LSApplicationWorkspace *workspace = [LSApplicationWorkspace defaultWorkspace];
+    [workspace unregisterApplication:url];
+    [workspace registerApplication:url];
+    
+    run((char *[]) {"/usr/bin/killall", "installd", NULL}, NULL); 
+}
+
+static void install_starstuff() {
+    _assert_zero(run((char *[]) {"/private/var/null/usr/bin/dpkg", "-i", "/tmp/saffron-jailbreak.deb", NULL}, (char *[]) {"DYLD_LIBRARY_PATH=/private/var/null/usr/lib", "PATH=/private/var/null/usr/bin:/private/var/null/usr/sbin:/usr/bin:/usr/sbin:/bin:/sbin", NULL}));
+}
+
+static void make_nulls() {
+    mkdir("/private/var/null", 0755);
+    mkdir("/private/var/null/Applications", 0755);
+    mkdir("/private/var/null/Library", 0755);
+    mkdir("/private/var/null/System", 0755);
+    mkdir("/private/var/null/usr", 0755);
+    mkdir("/private/var/null/private", 0755);
+    mkdir("/private/var/null/private/etc", 0755);
 }
 
 void do_install(void (*set_progress_)(float)) {
@@ -264,9 +304,11 @@ void do_install(void (*set_progress_)(float)) {
     TIME(remount());
     TIME(dok48());
     TIME(add_afc2());
-    TIME(extract("/tmp/starstuff.tar.xz", false));
+    TIME(make_nulls());
     TIME(extract("/tmp/freeze.tar.xz", true));
+    TIME(install_starstuff());
     TIME(finish_up());
+    TIME(uicache());
     TIME(sync());
     _log("final written_bytes = %zd", written_bytes);
 }

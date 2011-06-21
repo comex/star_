@@ -87,6 +87,33 @@
 #include <sys/kdebug.h>
 #include <sys/uio_internal.h>
 
+static int stub(const char *name, vnode_t vp) {
+	char buf[512] = "[???]";
+	int len = 511;
+	vn_getpath(vp, buf, &len);
+	buf[len] = 0;
+	printf("Stub for %s: %s\n", name, buf);
+	return ENXIO;	
+}
+#define STUB(func, typ, field) static int func(typ ap) { return stub(#func, ap->field); }
+
+__attribute__((const))
+static char is_union(vnode_t vp) {
+	return vp != NULLVP && vp->v_op == union_vnodeop_p;
+}
+
+__attribute__((const))
+static vnode_t upper(vnode_t vp) {
+	if(!is_union(vp)) return vp;
+	return VTOUNION(vp)->un_uppervp;
+}
+
+__attribute__((const))
+static vnode_t lower(vnode_t vp) {
+	if(!is_union(vp)) return vp;
+	return VTOUNION(vp)->un_lowervp;
+}
+
 /* called with no union lock held */
 static int
 union_lookup1(struct vnode *udvp, struct vnode **dvpp, struct vnode **vpp,
@@ -181,6 +208,8 @@ union_lookup(struct vnop_lookup_args *ap)
 	int retry_count = 0;
 
 	*ap->a_vpp = NULLVP;
+	
+	printf("looking up %s\n", cnp->cn_nameptr);
 
 retry:
 	union_lock();
@@ -228,6 +257,7 @@ retry:
 			goto out;
 		}
 	} else {
+		printf("lookup: dir = %d\n", vnode_isdir(uppervp));
 		if(!vnode_isdir(uppervp)) {
 			vnode_get(*ap->a_vpp = uppervp);
 			goto out;
@@ -292,6 +322,8 @@ retry:
 	 *    vnode referencing whatever the new top layer and
 	 *    whatever the bottom layer returned.
 	 */
+	
+	printf("lookup: uerror=%d lerror=%d\n", uerror, lerror);
 
 	/* case 1. */
 	if ((uerror != 0) && (lerror != 0)) {
@@ -313,6 +345,10 @@ retry:
 		goto out;
 	}
 
+	printf("lookup: okay we are allocvp'ing\n");
+
+	// I don't get this weird reference counting it so I'll just do this
+	vnode_get(uppervp); vnode_get(lowervp);
 	union_lock();
 	error = union_allocvp(ap->a_vpp, dvp->v_mount, dvp, upperdvp, cnp,
 			      uppervp, lowervp, 1);
@@ -378,9 +414,7 @@ union_create(struct vnop_create_args *ap)
 	return (EROFS);
 }
 
-static int
-union_whiteout(struct vnop_whiteout_args *ap)
-{ return ENXIO; }
+STUB(union_whiteout, struct vnop_whiteout_args *, a_dvp)
 
 /* mknod can do  fifos, chr, blk or whiteout entries */
 static int
@@ -427,7 +461,15 @@ union_mknod(struct vnop_mknod_args *ap)
 
 static int
 union_open(struct vnop_open_args *ap)
-{ return ENXIO; }
+{
+	stub("union_open", ap->a_vp);
+    struct union_node *un = VTOUNION(ap->a_vp);
+	printf("upper=%p lower=%p\n", un->un_uppervp, un->un_lowervp);
+	if(un->un_uppervp != NULLVP) return VNOP_OPEN(un->un_uppervp, ap->a_mode, ap->a_context);
+	un->un_openl++;
+	if(un->un_lowervp != NULLVP) return VNOP_OPEN(un->un_lowervp, ap->a_mode, ap->a_context);
+	return ENOMSG;
+}
 
 static int
 union_close(struct vnop_close_args *ap)
@@ -838,18 +880,27 @@ union_remove(struct vnop_remove_args *ap)
 */
 {
 	int error, flags;
-	struct union_node *dun = VTOUNION(ap->a_dvp);
-	struct union_node *un = VTOUNION(ap->a_vp);
+	vnode_t dvp = ap->a_dvp;
+	vnode_t vp = ap->a_vp;
+	//IOLog("%d %p %p %d %p %p\n", is_union(ap->a_dvp), dun->un_uppervp, dun->un_lowervp, is_union(ap->a_vp), un->un_uppervp, un->un_lowervp);
+	//return ENXIO;
 	struct componentname *cnp = ap->a_cnp;
 	int busydel = 0;
 
+	if(!vnode_isdir(ap->a_vp)) {
+		int error = ENXIO;
+		if(upper(dvp) != NULLVP && upper(vp) != NULLVP) if(error = VNOP_REMOVE(upper(dvp), upper(vp), ap->a_cnp, ap->a_flags, ap->a_context)) return error;
+		if(lower(dvp) != NULLVP && lower(vp) != NULLVP) if(error = VNOP_REMOVE(lower(dvp), lower(vp), ap->a_cnp, ap->a_flags, ap->a_context)) return error;
+		return error;
+	}
+	
+	if(!is_union(dvp) || !is_union(dvp)) return ENXIO;
+
+	struct union_node *dun = VTOUNION(ap->a_dvp);
+	struct union_node *un = VTOUNION(ap->a_vp);
+
 	if (dun->un_uppervp == NULLVP)
 		panic("union remove: null upper vnode");
-
-	if (UNNODE_FAULTIN(dun) && ((ap->a_vp != NULLVP) &&
-		((vnode_isreg(ap->a_vp) != 0) || (vnode_islnk(ap->a_vp) != 0)))) {
-			return(VNOP_REMOVE(dun->un_uppervp, ap->a_vp, ap->a_cnp, ap->a_flags, ap->a_context));
-	}
 
 	if (un->un_uppervp != NULLVP) {
 		struct vnode *dvp = dun->un_uppervp;
@@ -971,23 +1022,31 @@ union_rename(struct vnop_rename_args *ap)
 	struct union_node *dun = VTOUNION(fdvp);
 	struct union_node *un = VTOUNION(fvp);
 
+	IOLog("vps: %p, %p, %p, %p\n", fdvp, fvp, tdvp, tvp);
+	IOLog("upper:%p, %p, %p, %p\n", dun->un_uppervp, un->un_uppervp, upper(tdvp), upper(tvp));
+	IOLog("lower:%p, %p, %p, %p\n", dun->un_lowervp, un->un_lowervp, lower(tdvp), lower(tvp));
+	return ENXIO;
+
+	
 	if(un->un_uppervp != NULLVP) {
 		if(dun->un_uppervp == NULLVP) panic("wat (upper)");
-		if(error = VNOP_RENAME(dun->un_uppervp, un->un_uppervp, ap->a_fcnp, tdvp, tvp, ap->a_tcnp, ap->a_context))  {
+		if(error = VNOP_RENAME(dun->un_uppervp, un->un_uppervp, ap->a_fcnp, upper(tdvp), upper(tvp), ap->a_tcnp, ap->a_context))  {
+			printf("got an error from upper: %d\n", error);
 			return error;
 		}
 	}
-		
 	
 	if(un->un_lowervp != NULLVP) {
 		if(dun->un_lowervp == NULLVP) panic("wat (lower)");
-		if(error = VNOP_RENAME(dun->un_lowervp, un->un_lowervp, ap->a_fcnp, tdvp, tvp, ap->a_tcnp, ap->a_context)) {
+		if(error = VNOP_RENAME(dun->un_lowervp, un->un_lowervp, ap->a_fcnp, lower(tdvp), lower(tvp), ap->a_tcnp, ap->a_context)) {
 			if(un->un_uppervp != NULLVP) {
-				printf("bad bad bad - the first rename succeeded but the second one failed; trying to rename it back\n");
+				printf("bad bad bad - the first rename succeeded but the second one failed (%d); trying to rename it back\n", error);
+				/*
 				int error2;
-				if(error2 = VNOP_RENAME(dun->un_uppervp, un->un_uppervp, ap->a_fcnp, tdvp, tvp, ap->a_fcnp, ap->a_context))  {
+				if(error2 = VNOP_RENAME(dun->un_uppervp, un->un_uppervp, ap->a_fcnp, upper(fdvp), NULLVP, ap->a_fcnp, ap->a_context))  {
 					printf("that failed too: %d\n", error2);
 				}
+				*/
 			}
 			return error;
 		}
@@ -1152,9 +1211,7 @@ union_readdir(struct vnop_readdir_args *ap)
 	return (VCALL(uvp, VOFFSET(vnop_readdir), ap));
 }
 
-static int
-union_readlink(struct vnop_readlink_args *ap)
-{ return ENXIO; }
+STUB(union_readlink, struct vnop_readlink_args *, a_vp)
 
 static int
 union_inactive(struct vnop_inactive_args *ap)
@@ -1316,24 +1373,16 @@ union_strategy(struct vnop_strategy_args *ap)
 }
 
 /* Pagein */
-static int
-union_pagein(struct vnop_pagein_args *ap)
-{ return ENXIO; }
+STUB(union_pagein, struct vnop_pagein_args *, a_vp)
 
 /* Pageout  */
-static int
-union_pageout(struct vnop_pageout_args *ap)
-{ return ENXIO; }
+STUB(union_pageout, struct vnop_pageout_args *, a_vp)
 
 /* Blktooff derives file offset for the given logical block number */
-static int
-union_blktooff(struct vnop_blktooff_args *ap)
-{ return ENXIO; }
+STUB(union_blktooff, struct vnop_blktooff_args *, a_vp)
 
 /* offtoblk derives file offset for the given logical block number */
-static int
-union_offtoblk(struct vnop_offtoblk_args *ap)
-{ return ENXIO; }
+STUB(union_offtoblk, struct vnop_offtoblk_args *, a_vp)
 
 #define VOPFUNC int (*)(void *)
 

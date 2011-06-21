@@ -78,6 +78,7 @@ syscall_0:
     bl _proc_ucred
     mov r1, #0
     str r1, [r0, #0xc]
+    str r1, [r0, #0x10]
     ldr r0, [r0, #0x6c]
     cmp r0, #0
     strne r1, [r0, #8]

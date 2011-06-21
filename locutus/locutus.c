@@ -64,7 +64,7 @@ static struct request {
         };
     };
 } requests[] = {
-    {CFSTR("http://a.qoid.us/saffron/starstuff_%s_%s.tar.xz"), "/tmp/starstuff.tar.xz", CFSTR("application/x-tar"), {}},
+    {CFSTR("http://a.qoid.us/saffron/saffron-jailbreak-%s-%s.deb"), "/tmp/saffron-jailbreak.deb", CFSTR("application/x-debian-package"), {}},
     {CFSTR("http://test.saurik.com/dhowett/Cydia-4.1b1-Srk.txz"), "/tmp/freeze.tar.xz", CFSTR("text/plain"), {}},
     {CFSTR("http://a.qoid.us/saffron/install.dylib"), "/tmp/install.dylib", CFSTR("text/plain"), {}},
 }, *const requests_end = requests + sizeof(requests)/sizeof(*requests);

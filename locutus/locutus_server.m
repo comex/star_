@@ -143,14 +143,11 @@ static void installed() {
         [icon remove];
         [icon_controller scrollToIconListContainingIcon:existing_icon animate:YES];
     } else {
-        [icon_model loadAllIcons];
-        /*
 #if VERSION >= 0x040300
-        [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO reloadAllIcons:YES];
+        [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO reloadAllIcons:NO];
 #else
         [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO];
 #endif
-        */
     }
     icon = nil;
     sk();
