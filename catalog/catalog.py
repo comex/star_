@@ -16,6 +16,7 @@ PROT_READ = 1
 PROT_WRITE = 2
 PROT_EXEC = 4
 
+
 mode, version, cachefile, kernfile, patchfile, kcode, outfile = sys.argv[1:8]
 four_dot_three = '4.3' in version
 cachefiles = [cachefile] + sys.argv[8:]
@@ -261,6 +262,8 @@ else:
 
     old_fa = dmini.data.b_find_anywhere
     def new_fa(binary, pattern, align, flags):
+        print '>>', pattern
+
         result = dmini.data.find_data(dmini.data.b_macho_segrange(dmini.cur.binaries['ft'], '__TEXT'), pattern, align, flags)
         return result
 
@@ -294,6 +297,8 @@ if mode == 'dejavu':
     # add sp, #392; pop {r2, r5, r6, pc}
     parse_callback = reloc_value(dmini.cur.find('+ 50 b0 30 bd'))
     actual_parse_callback = reloc_value(dmini.cur.sym('ft._T1_Parse_Glyph', 'private'))
+    parse_callback = 0xdeadbeef
+    print dmini.cur.path, hex(parse_callback), parse_callback - actual_parse_callback
 
     final = final.unpack()
 

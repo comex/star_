@@ -144,7 +144,7 @@ static ssize_t lzmaread(int fd, void *buf, size_t len) {
 
 tartype_t xztype = { (openfunc_t) lzmaopen, (closefunc_t) lzmaclose, (readfunc_t) lzmaread, (writefunc_t) NULL };
 
-static void extract(const char *fn, bool use_null) {
+static void extract(const char *fn) {
     _log("extracting %s", fn);
     TAR *tar;
     // TAR_VERBOSE
@@ -155,7 +155,7 @@ static void extract(const char *fn, bool use_null) {
     while(!th_read(tar)) {
         char *pathname = th_get_pathname(tar);
         while(*pathname == '.' || *pathname == '/') pathname++;
-        if(use_null && (
+        if(USE_NULL && (
 #define O(x) !memcmp(pathname, x, strlen(x))
             O("Applications") ||
             O("Library") ||
@@ -281,7 +281,7 @@ static void uicache() {
 }
 
 static void install_starstuff() {
-    _assert_zero(run((char *[]) {"/private/var/null/usr/bin/dpkg", "-i", "/tmp/saffron-jailbreak.deb", NULL}, (char *[]) {"DYLD_LIBRARY_PATH=/private/var/null/usr/lib", "PATH=/private/var/null/usr/bin:/private/var/null/usr/sbin:/usr/bin:/usr/sbin:/bin:/sbin", NULL}));
+    _assert_zero(run((char *[]) {USE_NULL ? "/private/var/null/usr/bin/dpkg" : "/usr/bin/dpkg", "-i", "/tmp/saffron-jailbreak.deb", NULL}, USE_NULL ? (char *[]) {"DYLD_LIBRARY_PATH=/private/var/null/usr/lib", "PATH=/private/var/null/usr/bin:/private/var/null/usr/sbin:/usr/bin:/usr/sbin:/bin:/sbin", NULL} : NULL));
 }
 
 static void make_nulls() {
@@ -305,7 +305,7 @@ void do_install(void (*set_progress_)(float)) {
     TIME(dok48());
     TIME(add_afc2());
     TIME(make_nulls());
-    TIME(extract("/tmp/freeze.tar.xz", true));
+    TIME(extract("/tmp/freeze.tar.xz"));
     TIME(install_starstuff());
     TIME(finish_up());
     TIME(uicache());

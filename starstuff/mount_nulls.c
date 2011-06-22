@@ -14,6 +14,7 @@ struct union_args {
 #define A(x) args.target = "/private/var/null/" x; if(mount("unionfs", "/" x, 0, &args)) fprintf(stderr, "couldn't mount %s\n", "/" x);
 
 int main() {
+    if(!USE_NULL) return 0;
     char *argv[] = {"/boot/white_loader", "-l", "/boot/union_prelink.dylib", NULL};
     int stat;
     pid_t pid;

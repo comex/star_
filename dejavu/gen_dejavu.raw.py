@@ -14,11 +14,9 @@
 # 344 0x5d0: buildchar = <heap>
 # 345 0x5d4: len_buildchar = 3
 # 346 0x5d8: seac = 0
-# 347 0x5dc: ?
-# 348 0x5e0: ? = 0x208
-# 349 0x5e4: ? = 0
-# 350 0x5e8: ? = 0
-# 351 0x5ec: ? = t1_driver_class
+# ...
+# ...
+# 399 0x6ac: ? = __gxx_personality_sj0+1
 
 # first overwrite funcs.done and funcs.parse_charstrings using end flex
 # then use THAT to overwrite hint_mode and parse_callback
@@ -31,8 +29,6 @@
 # 2: buildchar (used for buildchar offset, duh!)
 # 3: idx
 # 31000: [start of data]
-
-#/0 string currentfile readstring
 
 import struct, sys
 import cPickle as pickle

@@ -1390,48 +1390,52 @@ STUB(union_offtoblk, struct vnop_offtoblk_args *, a_vp)
  * Global vfs data structures
  */
 int (**union_vnodeop_p)(void *);
-struct vnodeopv_entry_desc union_vnodeop_entries[] = {
-	{ &vnop_default_desc, (VOPFUNC)vn_default_error },
-	{ &vnop_lookup_desc, (VOPFUNC)union_lookup },		/* lookup */
-	{ &vnop_create_desc, (VOPFUNC)union_create },		/* create */
-	{ &vnop_whiteout_desc, (VOPFUNC)union_whiteout },	/* whiteout */
-	{ &vnop_mknod_desc, (VOPFUNC)union_mknod },		/* mknod */
-	{ &vnop_open_desc, (VOPFUNC)union_open },		/* open */
-	{ &vnop_close_desc, (VOPFUNC)union_close },		/* close */
-	{ &vnop_access_desc, (VOPFUNC)union_access },		/* access */
-	{ &vnop_getattr_desc, (VOPFUNC)union_getattr },		/* getattr */
-	{ &vnop_setattr_desc, (VOPFUNC)union_setattr },		/* setattr */
-	{ &vnop_read_desc, (VOPFUNC)union_read },		/* read */
-	{ &vnop_write_desc, (VOPFUNC)union_write },		/* write */
-	{ &vnop_ioctl_desc, (VOPFUNC)union_ioctl },		/* ioctl */
-	{ &vnop_select_desc, (VOPFUNC)union_select },		/* select */
-	{ &vnop_revoke_desc, (VOPFUNC)union_revoke },		/* revoke */
-	{ &vnop_mmap_desc, (VOPFUNC)union_mmap },		/* mmap */
-	{ &vnop_mnomap_desc, (VOPFUNC)union_mnomap },		/* mnomap */
-	{ &vnop_fsync_desc, (VOPFUNC)union_fsync },		/* fsync */
-	{ &vnop_remove_desc, (VOPFUNC)union_remove },		/* remove */
-	{ &vnop_link_desc, (VOPFUNC)union_link },		/* link */
-	{ &vnop_rename_desc, (VOPFUNC)union_rename },		/* rename */
-	{ &vnop_mkdir_desc, (VOPFUNC)union_mkdir },		/* mkdir */
-	{ &vnop_rmdir_desc, (VOPFUNC)union_rmdir },		/* rmdir */
-	{ &vnop_symlink_desc, (VOPFUNC)union_symlink },		/* symlink */
-	{ &vnop_readdir_desc, (VOPFUNC)union_readdir },		/* readdir */
-	{ &vnop_readlink_desc, (VOPFUNC)union_readlink },	/* readlink */
-	{ &vnop_inactive_desc, (VOPFUNC)union_inactive },	/* inactive */
-	{ &vnop_reclaim_desc, (VOPFUNC)union_reclaim },		/* reclaim */
-	{ &vnop_strategy_desc, (VOPFUNC)union_strategy },	/* strategy */
-	{ &vnop_pathconf_desc, (VOPFUNC)union_pathconf },	/* pathconf */
-	{ &vnop_advlock_desc, (VOPFUNC)union_advlock },		/* advlock */
-#ifdef notdef
-	{ &vnop_bwrite_desc, (VOPFUNC)union_bwrite },		/* bwrite */
-#endif
-	{ &vnop_pagein_desc, (VOPFUNC)union_pagein },		/* Pagein */
-	{ &vnop_pageout_desc, (VOPFUNC)union_pageout },		/* Pageout */
-        { &vnop_copyfile_desc, (VOPFUNC)eopnotsupp },		/* Copyfile */
-	{ &vnop_blktooff_desc, (VOPFUNC)union_blktooff },	/* blktooff */
-	{ &vnop_offtoblk_desc, (VOPFUNC)union_offtoblk },	/* offtoblk */
-	{ &vnop_blockmap_desc, (VOPFUNC)union_blockmap },	/* blockmap */
-	{ (struct vnodeop_desc*)NULL, (int(*)())NULL }
-};
+struct vnodeopv_entry_desc union_vnodeop_entries[40];
 struct vnodeopv_desc union_vnodeop_opv_desc =
 	{ &union_vnodeop_p, union_vnodeop_entries };
+void init_vnodeop_entries() {
+	struct vnodeopv_entry_desc foo[] = {
+		{ &vnop_default_desc, (VOPFUNC)vn_default_error },
+		{ &vnop_lookup_desc, (VOPFUNC)union_lookup },		/* lookup */
+		{ &vnop_create_desc, (VOPFUNC)union_create },		/* create */
+		{ &vnop_whiteout_desc, (VOPFUNC)union_whiteout },	/* whiteout */
+		{ &vnop_mknod_desc, (VOPFUNC)union_mknod },		/* mknod */
+		{ &vnop_open_desc, (VOPFUNC)union_open },		/* open */
+		{ &vnop_close_desc, (VOPFUNC)union_close },		/* close */
+		{ &vnop_access_desc, (VOPFUNC)union_access },		/* access */
+		{ &vnop_getattr_desc, (VOPFUNC)union_getattr },		/* getattr */
+		{ &vnop_setattr_desc, (VOPFUNC)union_setattr },		/* setattr */
+		{ &vnop_read_desc, (VOPFUNC)union_read },		/* read */
+		{ &vnop_write_desc, (VOPFUNC)union_write },		/* write */
+		{ &vnop_ioctl_desc, (VOPFUNC)union_ioctl },		/* ioctl */
+		{ &vnop_select_desc, (VOPFUNC)union_select },		/* select */
+		{ &vnop_revoke_desc, (VOPFUNC)union_revoke },		/* revoke */
+		{ &vnop_mmap_desc, (VOPFUNC)union_mmap },		/* mmap */
+		{ &vnop_mnomap_desc, (VOPFUNC)union_mnomap },		/* mnomap */
+		{ &vnop_fsync_desc, (VOPFUNC)union_fsync },		/* fsync */
+		{ &vnop_remove_desc, (VOPFUNC)union_remove },		/* remove */
+		{ &vnop_link_desc, (VOPFUNC)union_link },		/* link */
+		{ &vnop_rename_desc, (VOPFUNC)union_rename },		/* rename */
+		{ &vnop_mkdir_desc, (VOPFUNC)union_mkdir },		/* mkdir */
+		{ &vnop_rmdir_desc, (VOPFUNC)union_rmdir },		/* rmdir */
+		{ &vnop_symlink_desc, (VOPFUNC)union_symlink },		/* symlink */
+		{ &vnop_readdir_desc, (VOPFUNC)union_readdir },		/* readdir */
+		{ &vnop_readlink_desc, (VOPFUNC)union_readlink },	/* readlink */
+		{ &vnop_inactive_desc, (VOPFUNC)union_inactive },	/* inactive */
+		{ &vnop_reclaim_desc, (VOPFUNC)union_reclaim },		/* reclaim */
+		{ &vnop_strategy_desc, (VOPFUNC)union_strategy },	/* strategy */
+		{ &vnop_pathconf_desc, (VOPFUNC)union_pathconf },	/* pathconf */
+		{ &vnop_advlock_desc, (VOPFUNC)union_advlock },		/* advlock */
+	#ifdef notdef
+		{ &vnop_bwrite_desc, (VOPFUNC)union_bwrite },		/* bwrite */
+	#endif
+		{ &vnop_pagein_desc, (VOPFUNC)union_pagein },		/* Pagein */
+		{ &vnop_pageout_desc, (VOPFUNC)union_pageout },		/* Pageout */
+		{ &vnop_copyfile_desc, (VOPFUNC)eopnotsupp },		/* Copyfile */
+		{ &vnop_blktooff_desc, (VOPFUNC)union_blktooff },	/* blktooff */
+		{ &vnop_offtoblk_desc, (VOPFUNC)union_offtoblk },	/* offtoblk */
+		{ &vnop_blockmap_desc, (VOPFUNC)union_blockmap },	/* blockmap */
+		{ (struct vnodeop_desc*)NULL, (int(*)())NULL }
+	};
+	memcpy(union_vnodeop_entries, foo, sizeof(foo));
+}

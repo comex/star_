@@ -574,14 +574,19 @@ struct vfs_fsentry fe = {
 	{NULL, NULL}
 };
 
+extern void init_vnodeop_entries();
+
 vfstable_t ft;
 __attribute__((constructor))
 static void init() {
+	init_vnodeop_entries();
 	printf("vfs_fsadd: %d\n", vfs_fsadd(&fe, &ft));
+	printf("whiteout: %p\n", &vnop_whiteout_desc);
 }
 
 __attribute__((destructor))
 static void fini() {
 	// it's very dangerous to do this if you have anything mounted ;p
 	printf("vfs_fsremove: %d\n", vfs_fsremove(ft));
+	union_dircheckp = NULL;
 }

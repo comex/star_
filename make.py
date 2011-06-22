@@ -13,6 +13,8 @@ import sys, os, re, glob, traceback, shutil, tempfile
 
 ROOT = os.path.realpath(os.path.dirname(sys.argv[0]))
 
+use_null = False
+
 # configgy
 def set_firmware(firmware=None, lndir=False):
     global iversion, device, version, build_num, is_armv7, BUILD_ROOT, BS
@@ -58,7 +60,7 @@ def chext(f, ext):
 
 def install():
     goto('install')
-    compile_stuff(['install.m'], tmp('install.dylib'), gcc=GCC_ARMV6, cflags=['-I../headers', '-fblocks'], ldflags=['-framework', 'Foundation', '-framework', 'GraphicsServices', '-framework', 'MobileCoreServices', '-L.', '-ltar', '-llzma', '-dynamiclib'])
+    compile_stuff(['install.m'], tmp('install.dylib'), gcc=GCC_ARMV6, cflags=['-I../headers', '-fblocks', '-DUSE_NULL=%d' % use_null], ldflags=['-framework', 'Foundation', '-framework', 'GraphicsServices', '-framework', 'MobileCoreServices', '-L.', '-ltar', '-llzma', '-dynamiclib'])
 
 def locutus():
     goto('locutus')
@@ -166,50 +168,51 @@ def starstuff():
     white()
     untether()
     goto('starstuff')
-    compile_stuff(['mount_nulls.c'], 'mount_nulls', ldid=False, gcc=GCC_ARMV6, use_tmp=False)
-    run('../white/universal/white_loader', '-k', BS+'/kern', '-p', '../fs/union.dylib', 'union_prelink.dylib')
-    #run('touch', tmp('union_prelink.dylib'))
+    compile_stuff(['mount_nulls.c'], 'mount_nulls', ldid=False, gcc=GCC_ARMV6, use_tmp=False, cflags='-DUSE_NULL=%d' % use_null)
+    if use_null:
+        run('../white/universal/white_loader', '-k', BS+'/kern', '-p', '../fs/union.dylib', 'union_prelink.dylib')
+    else:
+        run('touch', tmp('union_prelink.dylib'))
     package = 'saffron-jailbreak-%s-%s' % (device, build_num)
     run('bash', 'build-archive.sh', tmp('.'), package, package.replace(',', '.').lower())
 
-def stage():
+def stage(string=None):
     all_devices = ['iPhone3,1', 'iPhone3,3', 'iPod4,1', 'iPad2,1', 'iPad2,2', 'iPad2,3', 'iPhone2,1', 'iPod3,1', 'iPad1,1', 'iPhone1,2', 'iPod2,1']
     armv6_devices = ['iPhone1,2', 'iPod1,1', 'iPod2,1']
     install() 
     goto('.')
     goto('bs')
-    available = set(i[i.find('_')+1:] for i in glob.glob('*_*'))
+    available = set(re.sub('[0-9],[0-9]', '', i) for i in glob.glob('*_*')) if string is None else [string]
     succeeded = []
     failed = []
-    for version in available:
-        for basetype in ['iPod', 'iPhone', 'iPad']:
-            goto('bs')
-            firmwares = glob.glob(basetype + '*_' + version)
-            arch_firmwares = [filter(lambda a: (a in armv6_devices) == is_armv7, firmwares) for is_armv7 in [False, True]]
+    for string in available:
+        basetype, version = string.split('_', 1)
+        goto('bs')
+        firmwares = glob.glob(basetype + '*_' + version)
+        arch_firmwares = [filter(lambda a: (a in armv6_devices) == is_armv7, firmwares) for is_armv7 in [False, True]]
 
-            eligible = []
-            outpdf = '%s/pdf/%s_%s.pdf' % (ROOT, basetype, version)
-            for firmware in firmwares:
-                if '4.1' in firmware or '4.0' in firmware: continue # XXX
-                device = firmware[:firmware.find('_')]
-                if device in all_devices:
-                    print '** Building %s for %s' % (firmware, outpdf)
-                    set_firmware(firmware, True)
-                    try:
-                        starstuff()
-                        for af in arch_firmwares:
-                            if af[:1] == [firmware]:
-                                catalog_dejavu(af[1:])
-                                goto('catalog')
-                                eligible.append(tmp('catalog.txt'))
-                                break
-                        succeeded.append(firmware)
-                    except Exception, e:
-                        print '** Failed: %s' % str(e)
-                        failed.append(firmware)
-            if eligible == []: continue
-            pdf(eligible)
-            shutil.copy(tmp('out.pdf'), outpdf)
+        eligible = []
+        outpdf = '%s/pdf/%s.pdf' % (ROOT, string)
+        for firmware in firmwares:
+            device = firmware[:firmware.find('_')]
+            if device in all_devices:
+                print '** Building %s for %s' % (firmware, outpdf)
+                set_firmware(firmware, True)
+                try:
+                    starstuff()
+                    for af in arch_firmwares:
+                        if af[:1] == [firmware]:
+                            catalog_dejavu(af[1:])
+                            goto('catalog')
+                            eligible.append(tmp('catalog.txt'))
+                            break
+                    succeeded.append(firmware)
+                except Exception, e:
+                    print '** Failed: %s' % str(e)
+                    failed.append(firmware)
+        if eligible == []: continue
+        pdf(eligible)
+        shutil.copy(tmp('out.pdf'), outpdf)
     print '** Done...'
     print 'succeeded:', succeeded
     print 'failed:', failed

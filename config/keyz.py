@@ -37,21 +37,30 @@ thingsICareAbout = {
     'devicetree': 'DeviceTree',
 }
 def importWiki(data, string):
-    # I don't know if these capitalizations mean anything, but "KernelCache" is used by the other plists and I need to normalize
+    # I don't know if these capitalizations mean anything, but "KernelCache" is used by the other plists and I need to pick one
     f = StringIO.StringIO(data.strip())
+    def readline():
+        while True:
+            line = f.readline()
+            if line == '': return line
+            line = line.lower().replace("'''", '').replace('[[', '').replace(']]', '').strip()
+            if line: return line
     while True:
-        line = f.readline().lower()
+        line = readline()
         if line == '': break
-        if 'root filesystem' in line:
-            line2 = f.readline()
-            print string + '.fs: ' + re.search('VFDecrypt( Key)?:\s*([a-zA-Z0-9]*)', line2).group(2)
+        if 'root filesystem' in line or 'main filesystem' in line:
+            line2 = readline()
+            print string + '.fs: ' + re.search('vfdecrypt( key)?:\s*([a-zA-Z0-9]*)', line2).group(2)
             continue
         for k, v in thingsICareAbout.items():
             if k in line:
-                ivline = f.readline()
-                if 'KBAG' in ivline: ivline = f.readline()
-                keyline = f.readline()
-                print string + '.' + v + ': ' + re.search('Key:\s*([a-zA-Z0-9]*)', keyline).group(1) + ' ' + re.search('IV:\s*([a-zA-Z0-9]*)', ivline).group(1)
+                ivline = readline()
+                if 'not encrypted' in ivline:
+                    print string + '.' + v + ': X'
+                    continue
+                if 'kbag' in ivline: ivline = readline()
+                keyline = readline()
+                print string + '.' + v + ': ' + re.search('k(ey)?:\s*([a-zA-Z0-9]*)', keyline).group(2) + ' ' + re.search('iv:\s*([a-zA-Z0-9]*)', ivline).group(1)
                 break
     print
 
@@ -72,5 +81,6 @@ def importMultilineGenpass(data, string):
         for k, v in thingsICareAbout.items():
             if k in line:
                 m = v
-{'wiki': importWiki, 'genpass': importGenpass, 'multiline_genpass': importMultilineGenpass}[sys.argv[1]](sys.stdin.read(), sys.argv[2])
+if __name__ == '__main__':            
+    {'wiki': importWiki, 'genpass': importGenpass, 'multiline_genpass': importMultilineGenpass}[sys.argv[1]](sys.stdin.read(), sys.argv[2])
 #importOldStuff()

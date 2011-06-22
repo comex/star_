@@ -138,8 +138,7 @@ union_init(__unused struct vfsconf *vfsp)
 		LIST_INIT(&unhead[i]);
 	bzero((caddr_t) unvplock, sizeof(unvplock));
 	/* add the hook for getdirentries */
-	extern void *sysctl__vfs_generic_children[];
-	sysctl__vfs_generic_children[2] = union_dircheck;
+	union_dircheckp = union_dircheck;
 	
 	return (0);
 }
