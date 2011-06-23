@@ -28,6 +28,7 @@
 #    later, parse_callback - expected
 # 2: buildchar (used for buildchar offset, duh!)
 # 3: idx
+# 4: personality - parse_callback
 # 31000: [start of data]
 
 import struct, sys
@@ -112,84 +113,22 @@ subrs[7] = '''  2 1 25 callothersubr
               return
               '''
 
-subrs['main'] = \
-       '''3 0 setcurrentpoint
-          3 callsubr           % prepare for the first run up
-          -347 42 callothersubr
-          callothersubr        % now at 344
-          hmoveto hmoveto hmoveto
-          setcurrentpoint      % hint_mode and parse_callback
-                               % now at 339; want to get to 257 so we capture top
-          hstem3 hstem3 hstem3 hstem3
-          hstem3 hstem3 hstem3 hstem3
-          hstem3 hstem3 hstem3 hstem3
-          hstem3 UNKNOWN_15 UNKNOWN_15 hmoveto
-                               % now x is blend, and y is parse_callback; come back down a little
-          hstem3 hstem3
-          3 callsubr           % start flex so we can get x and y
-          0 0 0 3 0 callothersubr 
+subrno = max(subrs.keys()) + 1
 
-          1 2 24 callothersubr % parse_callback -> bca[1]
-          0 2 24 callothersubr % top -> bca[0]
+le_chain = '0\n'
 
-          -101 42 callothersubr % back up to get buildchar
-          setcurrentpoint       % now at 343
+diffs_seen = set()
 
-          hstem3 hstem3 hstem3 hstem3
-          hstem3 hstem3 hstem3 hstem3
-          hstem3 hstem3 hstem3 hstem3
-          hstem3 hstem3 hstem3
-          
-          253 42 callothersubr
-          
-          3 callsubr           % flex again
-          0 0 0 3 0 callothersubr 
-              2 2 24 callothersubr % buildchar -> bca[2]
+for data in sorted(stuff, key=lambda d: d['personality'] - d['actual_parse_callback']):
+    diff = data['personality'] - data['actual_parse_callback']
+    if diff in diffs_seen:
+        raise Exception('duplicate')
+    diffs_seen.add(diff)
 
-            {twenty} 42 callothersubr  % go up to 20
-
-          31000 3 2 24 callothersubr % idx = 31000
-
-            1 1 25 callothersubr       % first
-              1 1 25 callothersubr     % second
-                2 div                  % / 2
-                2 2 22 callothersubr   % * 2
-                2 21 callothersubr     % x - ((x / 2) * 2)
-
-              2 2 20 callothersubr     % + 2, so it's 1 or 2
-
-            callsubr                   % call 1 or 2 to:
-                                       % - add data to BCA;
-                                       % - set y to an appropriate parse_callback
-                                       % be lazy - take first items from BCA and stick them at 20
-          31000 1 25 callothersubr
-          31001 1 25 callothersubr
-          31002 1 25 callothersubr
-          31003 1 25 callothersubr
-          31004 1 25 callothersubr
-          31005 1 25 callothersubr
-          31006 1 25 callothersubr
-
-          3 callsubr                   % start flex
-          {go_up_amount} 42 callothersubr
-
-          callothersubr
-          hstem3 hstem3 hstem3 hstem3
-          hstem3 hstem3 hstem3 hstem3
-          hstem3 hstem3 hstem3 hstem3
-          hstem3 hstem3 hstem3
-
-          0 0 0 64 64 seac % 64 = @
-          endchar          % unnecessary if it worked''' \
-          .format(twenty=-(0 - 1), go_up_amount = -(344 - 7 - 0))
-
-subrs[1] = 'return'
-subrs[2] = 'return'
-
-for data in stuff:
-    subrno = 1 if (data['actual_parse_callback'] & 1) else 2
     assert data['parse_callback'] > 32000
     assert data['actual_parse_callback'] > 32000
+
+    le_chain += str(subrno) + ' 1 1 25 callothersubr ' + xrepr_plus_small(diff, False, [4, 27]) + ' callothersubr\n'
     
     subr = '''1 1 25 callothersubr             % get parse_callback
               {actual_pc} 2 21 callothersubr   % subtract the real one
@@ -224,19 +163,100 @@ for data in stuff:
         subr += xrepr_plus_small(number, False, [4]) + ' callsubr '
     
     subr += 'return'
-    assert subrs[subrno] == 'return'
     subrs[subrno] = subr
+    
+    subrno += 1
+
+main = \
+       '''3 0 setcurrentpoint
+          3 callsubr           % prepare for the first run up
+          -347 42 callothersubr
+          callothersubr        % now at 344
+          hmoveto hmoveto hmoveto
+          setcurrentpoint      % hint_mode and parse_callback
+                               % now at 339; want to get to 257 so we capture top
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 UNKNOWN_15 UNKNOWN_15 hmoveto
+                               % now x is blend, and y is parse_callback; come back down a little
+          hstem3 hstem3
+          3 callsubr           % start flex so we can get x and y
+          0 0 0 3 0 callothersubr 
+
+              1 2 24 callothersubr % parse_callback -> bca[1]
+            0 2 24 callothersubr % top -> bca[0]
+
+          -101 42 callothersubr % back up to get buildchar
+          setcurrentpoint       % now at 343
+
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+            
+          3 callsubr           % flex again
+          0 0 0 3 0 callothersubr 
+              2 2 24 callothersubr % buildchar -> bca[2]
+
+          -150 42 callothersubr % back up to 398 get gxx_personality_sj0
+          setcurrentpoint
+          
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          
+          252 42 callothersubr  % this had better get us to 20 (or actually 0!) down when it does 31000 stuff
+          
+          31000 3 2 24 callothersubr % idx = 31000
+          
+          3 callsubr           % flex again
+          0 0 0 3 0 callothersubr  % personality
+              1 1 25 callothersubr % parse_callback
+                2 21 callothersubr % subtract
+              4 2 24 callothersubr % store to 4
+            hmoveto % ignore x
+
+          {le_chain}
+
+
+          callsubr                   % call the subr to:
+                                     % - add data to BCA;
+                                     % - set y to an appropriate parse_callback
+                                     % be lazy - take first items from BCA and stick them at 20
+          31000 1 25 callothersubr
+          31001 1 25 callothersubr
+          31002 1 25 callothersubr
+          31003 1 25 callothersubr
+          31004 1 25 callothersubr
+          31005 1 25 callothersubr
+          31006 1 25 callothersubr
+
+          3 callsubr                   % start flex
+          {go_up_amount} 42 callothersubr
+
+          callothersubr
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3 hstem3
+          hstem3 hstem3 hstem3
+
+          0 0 0 64 64 seac % 64 = @
+          endchar          % unnecessary if it worked''' \
+          .format(go_up_amount = -(344 - 7 - 0), le_chain=le_chain)
 
 num_bca = 3 << 16 
 
 template = open('dejavu.raw.template').read()
 subrtext = ''
 for num, subr in subrs.iteritems():
-    if num == 'main': continue
     subrtext += 'dup %d {\n\t%s\n\t} put\n' % (num, subr)
 template = template.replace('%BCA%', ' '.join(['0'] * num_bca))
-template = template.replace('%MAIN%', subrs['main'])
-template = template.replace('%NUMSUBRS%', '%d' % (len(subrs) - 1))
+template = template.replace('%MAIN%', main)
+template = template.replace('%NUMSUBRS%', str(max(subrs.keys()) + 1))
 template = template.replace('%SUBRS%', subrtext)
 template = template.replace('%TERMFUN%', '\x1b[2t\x1b[5t'*1000)
 

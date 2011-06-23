@@ -19,8 +19,6 @@ PROT_EXEC = 4
 
 mode, version, cachefile, kernfile, patchfile, kcode, outfile = sys.argv[1:8]
 four_dot_three = '4.3' in version
-cachefiles = [cachefile] + sys.argv[8:]
-polyglot = len(cachefiles) > 1
 
 assert mode in ['dejavu', 'untether']
 patchfp = open(patchfile)
@@ -121,10 +119,11 @@ def set_cache(cachefile):
     if mode == 'dejavu':
         add_lib(conn, 'ft', '/System/Library/Frameworks/CoreGraphics.framework/Resources/libCGFreetype.A.dylib')
         add_lib(conn, 'libz', '/usr/lib/libz.dylib')
+        add_lib(conn, 'c++', '/usr/lib/libstdc++.6.0.9.dylib')
     add_lib(conn, 'iokit', '/System/Library/Frameworks/IOKit.framework/Versions/A/IOKit')
     return conn
-if not polyglot: dmini.cur = set_cache(cachefile)
-targets = [None]
+
+dmini.cur = set_cache(cachefile)
 
 if four_dot_three:
     def wrap(self, num):
@@ -167,7 +166,7 @@ def do_main_thing():
 
     if mode == 'untether':
         # XXX is this necessary? it's from star
-        funcall('iokit._IOKitWaitQuiet', 0, 0)#ptrI(0, 0, 0))
+        pass #funcall('iokit._IOKitWaitQuiet', 0, 0)#ptrI(0, 0, 0))
 
     funcall('iokit._IOServiceMatching', AppleRGBOUT)
     store_r0_to(matchingp)
@@ -235,54 +234,9 @@ if mode == 'dejavu':
     dest_len_p = ptrI(reloc(0xa, 0))
     locutus_str = ptr('/tmp/locutus', True)
 
-if not polyglot:
-    make_r7_avail()
-    set_sp_to_sp()
-    do_main_thing()
-else:
-    cases = {}
-    idy = {}
-
-    old_fwds = goo.fwds
-
-    for cachefile in cachefiles:
-        print cachefile
-        dmini.cur = set_cache(cachefile)
-        old_heap, goo.heap = goo.heap, troll_string()
-        come_from_load_sp_r0('')
-        do_main_thing()
-        new_heap, goo.heap = goo.heap, old_heap
-        stderrp = dmini.cur.sym('___stderrp')
-        print cachefile, stderrp
-        if cases.has_key(stderrp):
-            print cases.keys()
-            raise Exception("Well, that's weird.  I'm %s but %s was taken by %s" % (cachefile, stderrp, idy[stderrp]))
-        cases[stderrp] = new_heap
-        idy[stderrp] = cachefile
-
-    old_fa = dmini.data.b_find_anywhere
-    def new_fa(binary, pattern, align, flags):
-        print '>>', pattern
-
-        result = dmini.data.find_data(dmini.data.b_macho_segrange(dmini.cur.binaries['ft'], '__TEXT'), pattern, align, flags)
-        return result
-
-    dmini.data.b_find_anywhere = new_fa
-    
-    goo.fwds = old_fwds
-    
-    make_r7_avail()
-    set_sp_to_sp()
-
-    make_avail()
-    switch_ptr = dmini.cur.sym('ft.___stderrp', 'imported')
-
-    crap = map_switch(switch_ptr, cases)
-    load_sp_r0()
-    heapadd(crap)
-    
-    dmini.data.b_find_anywhere = old_fa
-        
+make_r7_avail()
+set_sp_to_sp()
+do_main_thing()
         
 goo.sheap.append(weirdfile)
 
@@ -297,12 +251,12 @@ if mode == 'dejavu':
     # add sp, #392; pop {r2, r5, r6, pc}
     parse_callback = reloc_value(dmini.cur.find('+ 50 b0 30 bd'))
     actual_parse_callback = reloc_value(dmini.cur.sym('ft._T1_Parse_Glyph', 'private'))
-    parse_callback = 0xdeadbeef
-    print dmini.cur.path, hex(parse_callback), parse_callback - actual_parse_callback
+    personality = reloc_value(dmini.cur.sym('c++.___gxx_personality_sj0'))
+    #parse_callback = 0xdeadbeef
 
     final = final.unpack()
 
-    open(outfile, 'w').write(pickle.dumps({'parse_callback': parse_callback, 'actual_parse_callback': actual_parse_callback, 'final': final}))
+    open(outfile, 'w').write(pickle.dumps({'parse_callback': parse_callback, 'actual_parse_callback': actual_parse_callback, 'personality': personality, 'final': final}))
 else:
     # for two.py
     initializer = dmini.cur.find('+ 5f 13 77 47') # asrs r7, r3, #13; bx lr

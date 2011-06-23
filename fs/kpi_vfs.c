@@ -4267,3 +4267,15 @@ vn_checkunionwait(vnode_t vp)
         msleep((caddr_t)&vp->v_flag, &vp->v_lock, 0, 0, 0);
     vnode_unlock(vp);
 }
+
+void
+vfs_unbusy(mount_t mp)
+{
+    lck_rw_done(&mp->mnt_rwlock);
+}
+int         
+vnode_isdir(vnode_t vp)
+{           
+    return ((vp->v_type == VDIR)? 1 : 0);
+}   
+

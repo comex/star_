@@ -38,6 +38,11 @@ import sys
 import tempfile
 import time
 
+try:
+    WindowsError
+except:
+    class WindowsError(Exception): pass
+
 # so you can do "from fabricate import *" to simplify your build script
 __all__ = ['setup', 'run', 'run_multiple', 'autoclean', 'main', 'shell', 'fabricate_version',
            'memoize', 'outofdate', 

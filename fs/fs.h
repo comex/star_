@@ -164,5 +164,5 @@ extern struct vnodeop_desc *vfs_op_descs[];
 extern void *union_dircheckp asm("$ldr_$_T_4d_4b_1b_68_73_b1_0d_f5_92_60");
 
 extern void IOLog(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
-//#define printf(args...) ((void) (args))
+#define printf(args...) ((void) (args))
 

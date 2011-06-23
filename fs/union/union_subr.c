@@ -1057,6 +1057,7 @@ union_mkwhiteout(um, dvp, cnp, path)
 	struct componentname *cnp;
 	char *path;
 {
+	return ENOENT;
 	int error;
 	struct vnode *wvp;
 	struct componentname cn;
@@ -1265,6 +1266,7 @@ union_lowervp(vp)
 int
 union_dowhiteout(struct union_node *un, vfs_context_t ctx)
 {
+	return 0;
 	struct vnode_attr va;
 
 	if (UNNODE_FAULTIN(un))

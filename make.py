@@ -13,7 +13,7 @@ import sys, os, re, glob, traceback, shutil, tempfile
 
 ROOT = os.path.realpath(os.path.dirname(sys.argv[0]))
 
-use_null = False
+use_null = True
 
 # configgy
 def set_firmware(firmware=None, lndir=False):
@@ -30,26 +30,30 @@ def set_firmware(firmware=None, lndir=False):
         if not os.path.exists(BUILD_ROOT): os.mkdir(BUILD_ROOT)
     else:
         BUILD_ROOT = ROOT
-try:
-    set_firmware()
-except OSError:
-    pass
 
+
+    global GCC_FLAGS, SDK, BIN, GCC_BIN, GCC_BASE, GCC, GCC_UNIVERSAL, GCC_ARMV6, GCC_NATIVE, HEADERS
+    GCC_FLAGS = ['-std=gnu99', '-g3', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wall', '-Wextra', '-Wreturn-type', '-Wno-unused', '-Os']
+    SDK = '/var/sdk'
+    BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
+    GCC_BIN = BIN + '/gcc-4.2'
+    GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fblocks', '-mapcs-frame', '-fomit-frame-pointer', '-DVERSION=0x%x' % iversion]
+    GCC = [GCC_BASE, '-arch', ('armv7' if is_armv7 else 'armv6'), '-mthumb']
+    GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7', '-mthumb']
+    GCC_ARMV6 = [GCC_BASE, '-arch', 'armv6', '-mthumb']
+    GCC_NATIVE = ['gcc', '-arch', 'i386', '-arch', 'x86_64', GCC_FLAGS]
+    HEADERS = ROOT + '/headers'
+
+    if os.path.exists(BS+'/kern0') and not os.path.exists(BS+'/kern'):
+        make('datautils0', 'native')
+        goto('.')
+        run('datautils0/native/grapher', BS+'/kern0', '--matchB', glob.glob(re.sub('_[^_]*$', '_*/kern', re.sub('2,[0-9]', '1,1', BS)))[0], '--vt', '--manual', '_lck_mtx_unlock', 'pattern', '- 5a f0 7f f5 00 20 a0 e3 90 cf 1d ee', BS+'/kern')
+        assert os.path.exists(BS+'/kern')
 def tmp(x):
     x = os.path.join(os.getcwd(), x)
     if ROOT is not BUILD_ROOT: x = x.replace(ROOT, BUILD_ROOT) 
     return x
 
-GCC_FLAGS = ['-std=gnu99', '-g3', '-Werror', '-Wimplicit', '-Wuninitialized', '-Wall', '-Wextra', '-Wreturn-type', '-Wno-unused', '-Os']
-SDK = '/var/sdk'
-BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
-GCC_BIN = BIN + '/gcc-4.2'
-GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fblocks', '-mapcs-frame', '-fomit-frame-pointer', '-DVERSION=0x%x' % iversion]
-GCC = [GCC_BASE, '-arch', ('armv7' if is_armv7 else 'armv6'), '-mthumb']
-GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7', '-mthumb']
-GCC_ARMV6 = [GCC_BASE, '-arch', 'armv6', '-mthumb']
-GCC_NATIVE = ['gcc', '-arch', 'i386', '-arch', 'x86_64', GCC_FLAGS]
-HEADERS = ROOT + '/headers'
 
 def goto(dir):
     if ROOT is not BUILD_ROOT: shell('mkdir', '-p', os.path.join(BUILD_ROOT, dir))
@@ -77,12 +81,11 @@ def catalog():
     goto('catalog')
     run('../datautils0/universal/make_kernel_patchfile', BS+'/kern', tmp('patchfile'))
 
-def catalog_dejavu(extra_firmwares=[]):
+def catalog_dejavu():
     goto('catalog')
     catalog()
     run(GCC, '-c', '-o', tmp('kcode_dejavu.o'), 'kcode.S', '-Oz', '-DDEJAVU')
-    extra = ['%s/bs/%s/cache' % (ROOT, i) for i in extra_firmwares]
-    run('python', 'catalog.py', 'dejavu', version, BS+'/cache', BS+'/kern', tmp('patchfile'), tmp('kcode_dejavu.o'), tmp('catalog.txt'), *extra)
+    run('python', 'catalog.py', 'dejavu', version, BS+'/cache', BS+'/kern', tmp('patchfile'), tmp('kcode_dejavu.o'), tmp('catalog.txt'))
 
 def catalog_untether():
     catalog()
@@ -99,7 +102,8 @@ def pdf(files=None):
     goto('pdf')
     run('python', 'mkpdf.py', tmp('../dejavu/dejavu.pfb'), tmp('out.pdf'))
 
-def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=GCC, ldid=True, combine=False, use_tmp=True):
+def compile_stuff(files, output, ent='', cflags=[], ldflags=[], strip=True, gcc=None, ldid=True, combine=False, use_tmp=True):
+    if gcc is None: gcc = GCC
     objs = []
     output_ = (output + '_' if strip or ldid else output)
     if combine:
@@ -170,7 +174,7 @@ def starstuff():
     goto('starstuff')
     compile_stuff(['mount_nulls.c'], 'mount_nulls', ldid=False, gcc=GCC_ARMV6, use_tmp=False, cflags='-DUSE_NULL=%d' % use_null)
     if use_null:
-        run('../white/universal/white_loader', '-k', BS+'/kern', '-p', '../fs/union.dylib', 'union_prelink.dylib')
+        run('../white/universal/white_loader', '-k', BS+'/kern', '-p', tmp('../fs/union.dylib'), tmp('union_prelink.dylib'))
     else:
         run('touch', tmp('union_prelink.dylib'))
     package = 'saffron-jailbreak-%s-%s' % (device, build_num)
@@ -189,7 +193,6 @@ def stage(string=None):
         basetype, version = string.split('_', 1)
         goto('bs')
         firmwares = glob.glob(basetype + '*_' + version)
-        arch_firmwares = [filter(lambda a: (a in armv6_devices) == is_armv7, firmwares) for is_armv7 in [False, True]]
 
         eligible = []
         outpdf = '%s/pdf/%s.pdf' % (ROOT, string)
@@ -200,19 +203,21 @@ def stage(string=None):
                 set_firmware(firmware, True)
                 try:
                     starstuff()
-                    for af in arch_firmwares:
-                        if af[:1] == [firmware]:
-                            catalog_dejavu(af[1:])
-                            goto('catalog')
-                            eligible.append(tmp('catalog.txt'))
-                            break
+                    catalog_dejavu()
+                    goto('catalog')
+                    eligible.append(tmp('catalog.txt'))
                     succeeded.append(firmware)
                 except Exception, e:
                     print '** Failed: %s' % str(e)
                     failed.append(firmware)
         if eligible == []: continue
-        pdf(eligible)
-        shutil.copy(tmp('out.pdf'), outpdf)
+        try:
+            pdf(eligible)
+        except Exception, e:
+            print '** pdf(...) failed: %s' % string
+            failed.append(string)
+        else:
+            shutil.copy(tmp('out.pdf'), outpdf)
     print '** Done...'
     print 'succeeded:', succeeded
     print 'failed:', failed
@@ -228,5 +233,10 @@ def clean():
     for d in ['data', 'datautils0', 'white']:
         make(d, '', 'clean')
     autoclean()
+
+try:
+    set_firmware()
+except OSError:
+    pass
 
 main()

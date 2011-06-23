@@ -888,33 +888,48 @@ union_remove(struct vnop_remove_args *ap)
 	int busydel = 0;
 
 	if(!vnode_isdir(ap->a_vp)) {
-		int error = ENXIO;
-		if(upper(dvp) != NULLVP && upper(vp) != NULLVP) if(error = VNOP_REMOVE(upper(dvp), upper(vp), ap->a_cnp, ap->a_flags, ap->a_context)) return error;
-		if(lower(dvp) != NULLVP && lower(vp) != NULLVP) if(error = VNOP_REMOVE(lower(dvp), lower(vp), ap->a_cnp, ap->a_flags, ap->a_context)) return error;
-		return error;
+		int uerror = 0, lerror = 0;
+		char ok = 0;
+		if(upper(dvp) != NULLVP && upper(vp) != NULLVP) {
+			ok = 1;
+			uerror = VNOP_REMOVE(upper(dvp), upper(vp), ap->a_cnp, ap->a_flags, ap->a_context);
+		}
+		if(uerror && uerror != ENOENT) return uerror;
+		if(lower(dvp) != NULLVP && lower(vp) != NULLVP) {
+			ok = 1;
+			lerror = VNOP_REMOVE(lower(dvp), lower(vp), ap->a_cnp, ap->a_flags, ap->a_context);
+		}
+		if(!ok) {
+			return EROFS;
+		}
+		if(lerror == ENOENT) {
+			return uerror == ENOENT ? ENOENT : 0;
+		} else {
+			return lerror;
+		}
 	}
 	
-	if(!is_union(dvp) || !is_union(dvp)) return ENXIO;
+	if(!is_union(dvp) || !is_union(vp)) return ENXIO;
 
 	struct union_node *dun = VTOUNION(ap->a_dvp);
 	struct union_node *un = VTOUNION(ap->a_vp);
 
 	if (dun->un_uppervp == NULLVP)
 		panic("union remove: null upper vnode");
-
+	
 	if (un->un_uppervp != NULLVP) {
 		struct vnode *dvp = dun->un_uppervp;
 		struct vnode *vp = un->un_uppervp;
 
 		flags = ap->a_flags;
-		if (vnode_isinuse(ap->a_vp, 0))
-			busydel = 1;
+		/*if (vnode_isinuse(ap->a_vp, 0))
+			busydel = 1;*/
 		if ((flags & VNODE_REMOVE_NODELETEBUSY) && (busydel != 0)) {
 				return(EBUSY);
 		}
 		if (union_dowhiteout(un, cnp->cn_context))
 			cnp->cn_flags |= DOWHITEOUT;
-	
+
 		if (busydel != 0)  {
 			union_lock();
 			un->un_flags |= UN_DELETED;
@@ -1104,6 +1119,7 @@ union_rmdir(struct vnop_rmdir_args *ap)
 */
 {
 	int error;
+	if(!is_union(ap->a_dvp) || !is_union(ap->a_vp)) return ENXIO;
 	struct union_node *dun = VTOUNION(ap->a_dvp);
 	struct union_node *un = VTOUNION(ap->a_vp);
 	struct componentname *cnp = ap->a_cnp;
@@ -1117,7 +1133,7 @@ union_rmdir(struct vnop_rmdir_args *ap)
 		struct vnode *dvp = dun->un_uppervp;
 		struct vnode *vp = un->un_uppervp;
 
-		if (vnode_isinuse(ap->a_vp, 0)) {
+		/*if (vnode_isinuse(ap->a_vp, 0)) {
 			busydel = 1;
 			union_lock();
 			un->un_flags |= UN_DELETED;
@@ -1127,7 +1143,7 @@ union_rmdir(struct vnop_rmdir_args *ap)
 			}
 			union_unlock();
 			vnode_ref(vp);
-		}
+		}*/
 
 
 		if (union_dowhiteout(un, cnp->cn_context))
