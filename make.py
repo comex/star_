@@ -230,6 +230,7 @@ def lndir():
 
 def clean():
     goto('.')
+    shell('rm', '-f', 'pdf/*.pdf')
     for d in ['data', 'datautils0', 'white']:
         make(d, '', 'clean')
     autoclean()

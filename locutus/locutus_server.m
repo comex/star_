@@ -51,6 +51,7 @@ static inline NSString *_(NSString *key) {
 -(void)updateDisplayName;
 -(id)darkenedIconImage:(id)image alpha:(float)alpha;
 -(void)setShowsCloseBox:(BOOL)showsCloseBox;
+-(void)reloadIconImage;
 @end
 
 @interface SBIconController {
@@ -86,6 +87,12 @@ static inline NSString *_(NSString *key) {
 -(void)quitTopApplication:(void *)application;
 @end
 
+static void do_alert(NSString *title, NSString *message, NSString *cancel, NSString *retry) {
+    [alert_view dismissWithClickedButtonIndex:0 animated:YES]; // shouldn't happen!
+    alert_view = [[UIAlertView alloc] initWithTitle:title message:message delegate:icon cancelButtonTitle:cancel otherButtonTitles:retry, nil];
+    [alert_view show];
+}
+
 static void (^sk)() = ^{
     [alert_view dismissWithClickedButtonIndex:0 animated:YES];
     [icon remove];
@@ -114,10 +121,8 @@ static BOOL MyIcon_allowsUninstall(id self, SEL sel) {
 
 static void MyIcon_closeBoxTapped(id self, SEL sel) {
     // don't download behind the user's back
-    NSLog(@"%d", write(sock, "p", 1));
-
-    alert_view = [[UIAlertView alloc] initWithTitle:@"Remove Download" message:@"Are you sure you want to remove “Cydia”?" delegate:icon cancelButtonTitle:@"Remove" otherButtonTitles:@"Cancel", nil];
-    [alert_view show];
+    write(sock, "p", 1);
+    do_alert(_(@"UNINSTALL_DOWNLOAD_ICON_TITLE"), @"Are you sure you want to remove “Cydia”?", _(@"UNINSTALL_DOWNLOAD_ICON_CONFIRM"), _(@"UNINSTALL_DOWNLOAD_ICON_CANCEL"));
 }
 
 
@@ -148,6 +153,7 @@ static void installed() {
 #else
         [application_controller loadApplicationsAndIcons:@"com.saurik.Cydia" reveal:YES popIn:NO];
 #endif
+        [[icon_model applicationIconForDisplayIdentifier:@"com.saurik.Cydia"] reloadIconImage];
     }
     icon = nil;
     sk();
@@ -178,10 +184,7 @@ static void *read_state(void *fp_) {
             }
 
             if(s.errs[0] != '`') {
-                // don't keep going behind the alert
-                [alert_view dismissWithClickedButtonIndex:0 animated:YES]; // shouldn't happen!
-                alert_view = [[UIAlertView alloc] initWithTitle:@"There was a problem downloading the jailbreak files." message:[NSString stringWithCString:s.errs] delegate:icon cancelButtonTitle:@"Cancel" otherButtonTitles:@"Retry", nil];
-                [alert_view show];
+                do_alert(@"There was a problem downloading the jailbreak files.", [NSString stringWithUTF8String:s.errs], _(@"DATA_PLAN_FAILED_TRY_LATER"), _(@"DATA_PLAN_FAILED_TRY_AGAIN"));
             }
 
             NSString *display_key = [NSString stringWithCString:s.state encoding:NSUTF8StringEncoding];
@@ -253,11 +256,19 @@ static void init() {
         [icon_controller addNewIconToDesignatedLocation:icon animate:NO scrollToList:NO saveIconState:YES];
         [icon_controller setIconToReveal:icon];
         [icon release];
+
+        if(existing_icon) {
+            write(sock, "p", 1);
+            do_alert(@"Re-jailbreak?", @"Are you sure you want to install the bootstrap package even though a jailbreak is already installed?  It will cause Cydia to forget which packages you have installed.", _(@"UNINSTALL_DOWNLOAD_ICON_CANCEL"), @"Jailbreak");
+        }
         
-        NSString *icon_url = [[UIScreen mainScreen] scale] > 1.5 ? @"http://a.qoid.us/Cydia@2x.png" : @"http://a.qoid.us/Cydia.png";
+        bool _2x = [[UIScreen mainScreen] scale] > 1.5;
+        NSString *icon_url = _2x ? @"http://a.qoid.us/Cydia@2x.png" : @"http://a.qoid.us/Cydia.png";
         UIImage *icon_image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:icon_url]]];
         if(icon_image) {
-            [icon setDisplayedIconImage:[icon darkenedIconImage:icon_image alpha:0.5]];
+            icon_image = [icon darkenedIconImage:icon_image alpha:0.5];
+            if(_2x) icon_image = [UIImage imageWithCGImage:[icon_image CGImage] scale:2.0 orientation:UIImageOrientationUp];
+            [icon setDisplayedIconImage:icon_image];
         }
     });
     

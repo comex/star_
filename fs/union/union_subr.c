@@ -445,8 +445,10 @@ union_allocvp(struct vnode **vpp,
 	struct vnode_fsparam vfsp;
 	enum vtype vtype;
 
-	if (uppervp == NULLVP && lowervp == NULLVP)
-		panic("union: unidentifiable allocation");
+	if(uppervp == NULLVP && lowervp == NULLVP) {
+		IOLog("wtf union: unidentifiable allocation from %p\n", __builtin_return_address(0));
+		return EPWROFF;
+	}
 
 	/*
 	 * if both upper and lower vp are provided and are off different type
@@ -580,6 +582,12 @@ loop:
 						M_TEMP, M_WAITOK);
 				bcopy(cnp->cn_nameptr, un->un_path,
 						cnp->cn_namelen);
+
+				if(dvp == NULLVP) {
+					IOLog("wtf union: null dvp from %p\n", __builtin_return_address(0));
+					union_lock();
+					return EPWROFF;
+				}
 				vnode_get(dvp);
 				union_lock();
 				un->un_path[cnp->cn_namelen] = '\0';
@@ -691,6 +699,11 @@ loop:
 		un->un_path = _MALLOC(cnp->cn_namelen+1, M_TEMP, M_WAITOK);
 		bcopy(cnp->cn_nameptr, un->un_path, cnp->cn_namelen);
 		un->un_path[cnp->cn_namelen] = '\0';
+		if(dvp == NULLVP) {
+			IOLog("wtf union: null dvp from %p\n", __builtin_return_address(0));
+			union_lock();
+			return EPWROFF;
+		}
 		vnode_get(dvp);
 		un->un_dirvp = dvp;
 	} else {
@@ -708,7 +721,7 @@ loop:
 	un->un_vnode = *vpp;
 	if (un->un_vnode->v_type == VDIR) {
 		if (un->un_uppervp == NULLVP) {
-			panic("faulting fs and no upper vp for dir?");
+			//panic("faulting fs and no upper vp for dir?");
 		}
 
 	}
@@ -1234,6 +1247,18 @@ union_removed_upper(un)
 	struct union_node *un;
 {
 	union_newupper(un, NULLVP);
+	if (un->un_flags & UN_CACHED) {
+		un->un_flags &= ~UN_CACHED;
+		LIST_REMOVE(un, un_cache);
+	}
+
+}
+
+void
+union_removed_lower(un)
+	struct union_node *un;
+{
+	union_newlower(un, NULLVP);
 	if (un->un_flags & UN_CACHED) {
 		un->un_flags &= ~UN_CACHED;
 		LIST_REMOVE(un, un_cache);

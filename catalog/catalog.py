@@ -164,13 +164,41 @@ def do_main_thing():
     # The manpage says this returns EINVAL, but in fact the kernel handles it.
     funcall('_mlock', kstuffp, len(kstuff)); dbg_result()
 
-    if mode == 'untether':
-        # XXX is this necessary? it's from star
-        pass #funcall('iokit._IOKitWaitQuiet', 0, 0)#ptrI(0, 0, 0))
-
     funcall('iokit._IOServiceMatching', AppleRGBOUT)
     store_r0_to(matchingp)
-    funcall('iokit._IOServiceGetMatchingService', 0, matching)
+    if mode == 'dejavu':
+        funcall('iokit._IOKitWaitQuiet', 0, 0)
+        funcall('iokit._IOServiceGetMatchingService', 0, matching)
+    else:
+        # http://www.opensource.apple.com/source/IOKitUser/IOKitUser-502/FireWireTest.cpp?txt
+        #itp = ptrI(0) # XXX this is just for testing
+        portp = ptrI(0)
+        funcall('_mach_task_self')
+        funcall('_mach_port_allocate', None, 1, portp); dbg_result()
+        iteratorp = ptrI(0)
+
+        port_, portp_ = stackunkpair()
+        port_2, portp_2 = stackunkpair()
+        load_r0_from(portp)
+        store_r0_to(portp_)
+        store_r0_to(portp_2)
+
+        funcall('iokit._IOServiceAddNotification', 0, ptr('IOServiceMatched', True), matching, port_, 12345, iteratorp); dbg_result()
+        funcall('iokit._IOIteratorNext', iteratorp, load_r0=True)
+        #store_r0_to(itp)
+        zero, nonzero = cmp_r0_0_branch(alt=0 if four_dot_three else 1)
+        come_from(zero)
+        msg_size = 72
+        msg = ptr('\0'*msg_size)
+        funcall('_mach_msg', msg, 2, 0, msg_size, port_2, 0, 0); dbg_result()
+        #funcall('iokit._OSGetNotificationFromMessage', msg, 0, portp, portp, 0, 0); dbg_result()
+        funcall('iokit._IOIteratorNext', iteratorp, load_r0=True)
+        #store_r0_to(itp)
+        #dbg_result()
+        come_from(nonzero)
+        #dbg_result()
+        #load_r0_from(itp)
+
     funcall('iokit._IOServiceOpen', None, task_self, 0, connect); dbg_result()
 
     # XXX In Safari, I need to kill this

@@ -277,7 +277,7 @@ class pointed_(statue): # string-like
         #print 'pointed.simplify addr=%r len=%d self=%r' % (addr, len(self), self)
         if addr is not None:
             if self.addr is not None:
-                raise Exception('pointed was inserted at two different locations!')
+                raise Exception('pointed (%r) was inserted at two different locations!' % self)
             self.addr = addr
             return simplify(self.sub, addr)
         else:

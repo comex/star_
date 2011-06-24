@@ -206,6 +206,7 @@ extern int union_mkwhiteout(struct union_mount *, struct vnode *,
 extern int union_vn_create(struct vnode **, struct union_node *, mode_t  mode, vfs_context_t context);
 extern int union_cn_close(struct vnode *, int, vfs_context_t context);
 extern void union_removed_upper(struct union_node *un);
+extern void union_removed_lower(struct union_node *un);
 extern struct vnode *union_lowervp(struct vnode *);
 extern void union_newsize(struct vnode *, off_t, off_t);
 extern int union_init(struct vfsconf *);

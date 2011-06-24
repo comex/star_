@@ -4273,9 +4273,29 @@ vfs_unbusy(mount_t mp)
 {
     lck_rw_done(&mp->mnt_rwlock);
 }
+
 int         
 vnode_isdir(vnode_t vp)
 {           
     return ((vp->v_type == VDIR)? 1 : 0);
 }   
+
+int
+vfs_getattr(mount_t mp, struct vfs_attr *vfa, vfs_context_t ctx)
+{
+    int     error;
+
+    if ((error = VFS_GETATTR(mp, vfa, ctx)) != 0)
+        return(error);
+
+    /*
+     * If we have a filesystem create time, use it to default some others.
+     */
+    if (VFSATTR_IS_SUPPORTED(vfa, f_create_time)) {
+        if (VFSATTR_IS_ACTIVE(vfa, f_modify_time) && !VFSATTR_IS_SUPPORTED(vfa, f_modify_time))
+            VFSATTR_RETURN(vfa, f_modify_time, vfa->f_create_time);
+    }
+
+    return(0);
+}
 

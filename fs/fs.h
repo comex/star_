@@ -14,7 +14,8 @@ uio_t x_uio_createwithbuffer(int a_iovcount, off_t a_offset, int a_spacetype, in
 void x_vnode_reclaim_internal(struct vnode * vp, int locked, int reuse, int flags) asm("$bl3__vnode_recycle");
 #define vnode_reclaim_internal x_vnode_reclaim_internal
 
-errno_t x_vn_create(vnode_t, vnode_t *, struct nameidata *, struct vnode_attr *, int flags, int mode, int unk, vfs_context_t) asm("$strref_22_76_6e_6f_64_65_5f_63_72_65_61_74_65_3a_20_75_6e_6b_6e_6f_77_6e_20_76_74_79_70_65_20_25_64");
+errno_t x_vn_create(vnode_t, vnode_t *, struct nameidata *, struct vnode_attr *, int flags, int mode, int unk, vfs_context_t) 
+asm("$strref_22_76_6e_6f_64_65_5f_63_72_65_61_74_65_3a_20_75_6e_6b_6e_6f_77_6e_20_76_74_79_70_65_20_25_64");
 // '"vnode_create: unknown vtype %d'
 #define vn_create x_vn_create
 
@@ -161,8 +162,13 @@ extern struct vnodeop_desc *vfs_op_descs[];
 #endif
 #endif
 
-extern void *union_dircheckp asm("$ldr_$_T_4d_4b_1b_68_73_b1_0d_f5_92_60");
+extern void *union_dircheckp 
+#if VERSION >= 0x040300
+asm("$ldr_$_T_4d_4b_1b_68_73_b1_0d_f5_92_60");
+#else
+asm("$ldr_$_T_df_f8_fc_31_1b_68_6b_b1");
+#endif
 
 extern void IOLog(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
-#define printf(args...) ((void) (args))
+//#define printf(args...) ((void) (args))
 

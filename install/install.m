@@ -20,6 +20,7 @@
 #include <sys/mount.h>
 #include <fts.h>
 #include <signal.h>
+extern char ***_NSGetEnviron();
 
 static size_t written_bytes;
 static void (*set_progress)(float);
@@ -78,6 +79,7 @@ static void remove_files(const char *path) {
 }
 
 static int run(char **argv, char **envp) {
+    if(envp == NULL) envp = *_NSGetEnviron();
     fprintf(stderr, "run:");
     for(char **p = argv; *p; p++) {
         fprintf(stderr, " %s", *p);
@@ -281,7 +283,7 @@ static void uicache() {
 }
 
 static void install_starstuff() {
-    _assert_zero(run((char *[]) {USE_NULL ? "/private/var/null/usr/bin/dpkg" : "/usr/bin/dpkg", "-i", "/tmp/saffron-jailbreak.deb", NULL}, USE_NULL ? (char *[]) {"DYLD_LIBRARY_PATH=/private/var/null/usr/lib", "PATH=/private/var/null/usr/bin:/private/var/null/usr/sbin:/usr/bin:/usr/sbin:/bin:/sbin", NULL} : NULL));
+    _assert_zero(run((char *[]) {USE_NULL ? "/private/var/null/usr/bin/dpkg" : "/usr/bin/dpkg", "-i", "/tmp/saffron-jailbreak.deb", NULL}, (char *[]) {"DYLD_LIBRARY_PATH=/private/var/null/usr/lib", "PATH=/private/var/null/usr/bin:/private/var/null/usr/sbin:/usr/bin:/usr/sbin:/bin:/sbin", NULL}));
 }
 
 static void make_nulls() {

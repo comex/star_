@@ -13,7 +13,6 @@ def gadget(PC, a, b=[], **kwargs):
     heapadd(*b)
     heapadd(*[fwd(i, True) for i in a.split(', ')])
 
-
 #os.chdir(os.path.dirname(os.path.abspath(sys.argv[0])))
 
 keep_debugs = False

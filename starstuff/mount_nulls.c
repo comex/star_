@@ -3,7 +3,10 @@
 #include <spawn.h>
 #include <sys/param.h>
 #include <sys/mount.h>
+#include <sys/stat.h>
 #include <stdio.h>
+#include <errno.h>
+#include <string.h>
 
 #define UNMNT_ABOVE 0x0001      /* Target appears above mount point */
 struct union_args {
@@ -11,7 +14,31 @@ struct union_args {
     int     mntflags;   /* Options on the mount */
 };
 
-#define A(x) args.target = "/private/var/null/" x; if(mount("unionfs", "/" x, 0, &args)) fprintf(stderr, "couldn't mount %s\n", "/" x);
+dev_t root_dev;
+
+static void do_mount(char *to, char *from) {
+    struct stat st;
+    if(lstat(to, &st)) {
+        fprintf(stderr, "couldn't lstat %s\n", to);
+        return;
+    }
+    if((st.st_mode & S_IFMT) == S_IFLNK) {
+        fprintf(stderr, "not mounting %s because it is a symlink\n", from);
+        return;
+    }
+    if(st.st_dev != root_dev) {
+        fprintf(stderr, "not mounting %s because it is not on the same mount as root (already mounted I guess)\n", from);
+        return;
+    }
+    struct union_args args;
+    args.mntflags = UNMNT_ABOVE;
+    args.target = from;
+    fprintf(stderr, "mounting %s\n", from);
+    if(mount("unionfs", to, 0, &args)) {     
+        fprintf(stderr, "couldn't mount %s: %s\n", from, strerror(errno));
+    }
+
+}
 
 int main() {
     if(!USE_NULL) return 0;
@@ -19,16 +46,21 @@ int main() {
     int stat;
     pid_t pid;
     if(posix_spawn(&pid, argv[0], NULL, NULL, argv, NULL) || pid != waitpid(pid, &stat, 0) || !WIFEXITED(stat) || WEXITSTATUS(stat)) fprintf(stderr, "couldn't run white_loader\n");
-    struct union_args args;
-    args.mntflags = UNMNT_ABOVE;
+    struct stat st;
+    if(lstat("/", &st)) {
+        fprintf(stderr, "couldn't lstat /\n");
+        return 1;
+    }
+    root_dev = st.st_dev;
     
-    A("Applications")
-    A("Library")
-    A("System")
-    //A("bin")
-    //A("sbin")
-    A("usr")
-    A("private/etc")
+#define A(x) do_mount("/" x, "/private/var/null/" x)
+    A("Applications");
+    A("Library");
+    A("System");
+    //A("bin");
+    //A("sbin");
+    A("usr");
+    A("private/etc");
     
     return 0;
 }
