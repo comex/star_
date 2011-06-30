@@ -19,8 +19,6 @@ EOF
 # note that the below script may be running with stuff only in union mounts...
 cat >"$root"/DEBIAN/extrainst_ << EOF
 #!/bin/sh
-cd /
-find . -maxdepth 4 -xdev -type d -print0 | (cd /private/var/null; xargs -0 mkdir -p) 
 ln -ns /boot/untether /usr/libexec/dirhelper 2>/dev/null
 exec /boot/mount_nulls
 EOF

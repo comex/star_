@@ -82,6 +82,12 @@ static inline NSString *_(NSString *key) {
 -(id)applicationIconForDisplayIdentifier:(id)displayIdentifier;
 @end
 
+@interface SBPlatformController {
+}
++(id)sharedInstance;
+-(void)setValue:(id)value forCapability:(id)capability;
+@end
+
 @interface SpringBoard : UIApplication {
 }
 -(void)quitTopApplication:(void *)application;
@@ -122,7 +128,7 @@ static BOOL MyIcon_allowsUninstall(id self, SEL sel) {
 static void MyIcon_closeBoxTapped(id self, SEL sel) {
     // don't download behind the user's back
     write(sock, "p", 1);
-    do_alert(_(@"UNINSTALL_DOWNLOAD_ICON_TITLE"), @"Are you sure you want to remove “Cydia”?", _(@"UNINSTALL_DOWNLOAD_ICON_CONFIRM"), _(@"UNINSTALL_DOWNLOAD_ICON_CANCEL"));
+    do_alert(_(@"Remove Download"), @"Are you sure you want to remove “Cydia”?", (@"GAMECENTER_DELETE_STATS_DELETE"), _(@"UNINSTALL_ICON_CANCEL"));
 }
 
 
@@ -207,6 +213,8 @@ __attribute__((constructor))
 static void init() {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
     NSLog(@"i'm alive");
+
+    [[objc_getClass("SBPlatformController") sharedInstance] setValue:[NSNumber numberWithBool:NO] forCapability:@"hide-non-default-apps"];
     
     struct sockaddr_in addr;
     memset(&addr, 0, sizeof(addr));
@@ -259,7 +267,7 @@ static void init() {
 
         if(existing_icon) {
             write(sock, "p", 1);
-            do_alert(@"Re-jailbreak?", @"Are you sure you want to install the bootstrap package even though a jailbreak is already installed?  It will cause Cydia to forget which packages you have installed.", _(@"UNINSTALL_DOWNLOAD_ICON_CANCEL"), @"Jailbreak");
+            do_alert(@"Re-jailbreak?", @"Are you sure you want to install the bootstrap package even though a jailbreak is already installed?  It will cause Cydia to forget which packages you have installed.", _(@"UNINSTALL_ICON_CANCEL"), @"Jailbreak");
         }
         
         bool _2x = [[UIScreen mainScreen] scale] > 1.5;

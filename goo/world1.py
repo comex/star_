@@ -124,6 +124,7 @@ def cmp_r0_0_set_r0(zero, nonzero, alt=0):
         gadget(R4=(zero - nonzero) & 0xffffffff, R7=pointer(m) + 4, PC='+ 00 28 0c bf 20 46 00 20 a7 f1 04 0d 90 bd', b=[m], a='R4, R7, PC')
         add_r0_by(nonzero)
 
+# it modifies r0, r2, r3...
 def cmp_r0_0_branch(alt=0):
     zero, nonzero = pointed(''), pointed('')
     # ldm r0, {r2, r3, sp, pc}

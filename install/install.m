@@ -186,6 +186,7 @@ static void extract(const char *fn) {
 static void remount() {
     _log("remount...");
     _assert_zero(run((char *[]) {"/sbin/mount", "-u", "-o", "rw,suid,dev", "/", NULL}, NULL));
+    // can't do this! _assert_zero(run((char *[]) {"/sbin/mount", "-u", "-o", "rw,suid,dev", "/private/var", NULL}, NULL));
 
     NSString *string = _assert([NSString stringWithContentsOfFile:@"/etc/fstab" encoding:NSUTF8StringEncoding error:NULL]);
     string = [string stringByReplacingOccurrencesOfString:@",nosuid,nodev" withString:@""];
@@ -243,6 +244,7 @@ static void add_afc2() {
 }
 
 static void finish_up() {
+    return;
     for(NSData *pathname in to_load) {
         chdir("/");
         run((char *[]) {"/bin/launchctl", "load", (char *) [pathname bytes], NULL}, NULL);
@@ -274,12 +276,22 @@ static void uicache() {
         [cache writeToFile:@"/var/mobile/Library/Caches/com.apple.mobile.installation.plist" atomically:YES];
     }
 
-    NSURL *url = [NSURL fileURLWithPath:@"/Applications/Cydia.app/Info.plist"];
+    NSURL *url = [NSURL fileURLWithPath:@"/Applications/Cydia.app"];
     LSApplicationWorkspace *workspace = [LSApplicationWorkspace defaultWorkspace];
     [workspace unregisterApplication:url];
     [workspace registerApplication:url];
     
-    run((char *[]) {"/usr/bin/killall", "installd", NULL}, NULL); 
+    system("killall installd");
+}
+
+// the user can optionally specify this and it will be run after everything else; I use it to install SSH etc
+// AutoInstall would work too
+static void post_jailbreak() {
+    char *fn = "/var/mobile/Media/post-jailbreak";
+    if(!access(fn, R_OK)) {
+        chmod(fn, 0755);
+        run((char *[]) {fn, NULL}, (char *[]) {"PATH=/usr/bin:/usr/sbin:/bin:/sbin", NULL});
+    }
 }
 
 static void install_starstuff() {
@@ -311,6 +323,7 @@ void do_install(void (*set_progress_)(float)) {
     TIME(install_starstuff());
     TIME(finish_up());
     TIME(uicache());
+    TIME(post_jailbreak());
     TIME(sync());
     _log("final written_bytes = %zd", written_bytes);
 }

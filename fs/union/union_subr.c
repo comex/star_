@@ -1007,8 +1007,6 @@ union_mkshadow(um, dvp, cnp, vat, vpp)
     struct vnode_attr *vat;
 	struct vnode **vpp;
 {
-	return EPERM;
-#if 0
 	int error;
 	struct vnode_attr va;
 	struct componentname cn;
@@ -1042,15 +1040,19 @@ union_mkshadow(um, dvp, cnp, vat, vpp)
 	VATTR_SET(&va, va_mode, vat->va_mode/*um->um_cmode*/);
 	VATTR_SET(&va, va_uid, vat->va_uid);
 	VATTR_SET(&va, va_gid, vat->va_gid);
+	VATTR_SET(&va, va_create_time, vat->va_create_time);
+	//VATTR_SET(&va, va_access_time, vat->va_access_time);
+	VATTR_SET(&va, va_modify_time, vat->va_modify_time);
+	VATTR_SET(&va, va_change_time, vat->va_change_time);
+	//VATTR_SET(&va, va_backup_time, vat->va_backup_time);
 
-	error = vn_create(dvp, vpp, &cn, &va, 0, 0, 0, cnp->cn_context);
+	error = vn_create(dvp, vpp, CNTOND(&cn), &va, 0, 0, 0, cnp->cn_context);
 out:
 	if ((cn.cn_flags & HASBUF) == HASBUF) {
 		FREE_ZONE(cn.cn_pnbuf, cn.cn_pnlen, M_NAMEI);
 		cn.cn_flags &= ~HASBUF;
 	}
 	return (error);
-#endif
 }
 
 /*
@@ -1121,7 +1123,7 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	int fmode = FFLAGS(O_WRONLY|O_CREAT|O_TRUNC|O_EXCL);
 	int error;
 	struct proc * p = vfs_context_proc(context);
-	struct nameidata nd;
+	struct componentname cn;
 
 	*vpp = NULLVP;
 
@@ -1144,17 +1146,20 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	 * copied in the first place).
 	 */
 
-	bzero(&nd, sizeof(nd));
-	NDINIT(&nd, CREATE, HASBUF|SAVENAME|SAVESTART|ISLASTCN|(UNNODE_FAULTIN(un)?UNIONCREATED:0), UIO_SYSSPACE, 0, context);
-	nd.ni_cnd.cn_namelen = strlen(un->un_path);
-	nd.ni_cnd.cn_pnbuf = (caddr_t) _MALLOC_ZONE(nd.ni_cnd.cn_namelen+1,
-						M_NAMEI, M_WAITOK);
-	nd.ni_cnd.cn_pnlen = nd.ni_cnd.cn_namelen+1;
-	bcopy(un->un_path, nd.ni_cnd.cn_pnbuf, nd.ni_cnd.cn_namelen+1);
-	nd.ni_cnd.cn_nameptr = nd.ni_cnd.cn_pnbuf;
-	nd.ni_dirp = CAST_USER_ADDR_T(nd.ni_cnd.cn_pnbuf);
-	nd.ni_cnd.cn_hash = un->un_hash;
-	nd.ni_cnd.cn_consume = 0;
+    cn.cn_namelen = strlen(un->un_path);
+    cn.cn_pnbuf = (caddr_t) _MALLOC_ZONE(cn.cn_namelen+1,
+                        M_NAMEI, M_WAITOK);
+    cn.cn_pnlen = cn.cn_namelen+1;
+    bcopy(un->un_path, cn.cn_pnbuf, cn.cn_namelen+1);
+    cn.cn_nameiop = CREATE;
+    if (UNNODE_FAULTIN(un))
+        cn.cn_flags = (HASBUF|SAVENAME|SAVESTART|ISLASTCN|UNIONCREATED);
+    else
+        cn.cn_flags = (HASBUF|SAVENAME|SAVESTART|ISLASTCN);
+    cn.cn_context = context;
+    cn.cn_nameptr = cn.cn_pnbuf;
+    cn.cn_hash = un->un_hash;
+    cn.cn_consume = 0;
 
 	/*
 	 * Pass dvp unlocked and referenced on call to relookup().
@@ -1162,7 +1167,7 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	 * If an error occurs, dvp will be returned unlocked and dereferenced.
 	 */
 	vnode_get(un->un_dirvp);
-	if ((error = relookup(un->un_dirvp, &vp, &nd.ni_cnd)) != 0) {
+	if ((error = relookup(un->un_dirvp, &vp, &cn)) != 0) {
 		vnode_put(un->un_dirvp);
 		goto out;
 	}
@@ -1195,7 +1200,7 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	VATTR_SET(vap, va_type, VREG);
 	VATTR_SET(vap, va_mode, cmode);
 
-	if ((error = vn_create(un->un_dirvp, &vp, &nd, vap, 0, 0, 0, context)) != 0) {
+	if ((error = vn_create(un->un_dirvp, &vp, CNTOND(&cn), vap, 0, 0, 0, context)) != 0) {
 		goto out;
 	}
 
@@ -1212,9 +1217,9 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	error = 0;
 
 out:
-	if ((nd.ni_cnd.cn_flags & HASBUF) == HASBUF) {
-		FREE_ZONE(nd.ni_cnd.cn_pnbuf, nd.ni_cnd.cn_pnlen, M_NAMEI);
-		nd.ni_cnd.cn_flags &= ~HASBUF;
+	if ((cn.cn_flags & HASBUF) == HASBUF) {
+		FREE_ZONE(cn.cn_pnbuf, cn.cn_pnlen, M_NAMEI);
+		cn.cn_flags &= ~HASBUF;
 	}
 	return(error);
 }

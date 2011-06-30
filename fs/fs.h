@@ -1,3 +1,6 @@
+// whether to spam the syslog/dmesg with printfs
+#define DEBUG_PRINTF 0
+
 #define IS_64BIT_PROCESS(x) 0
 #include <sys/buf_internal.h>
 int x_namei(struct nameidata *ndp)
@@ -170,5 +173,8 @@ asm("$ldr_$_T_df_f8_fc_31_1b_68_6b_b1");
 #endif
 
 extern void IOLog(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
-//#define printf(args...) ((void) (args))
+#if !DEBUG_PRINTF
+#define printf(args...) ((void) (args))
+#endif
 
+#define CNTOND(x) ((struct nameidata *) ((char *) (x) - offsetof(struct nameidata, ni_cnd)))

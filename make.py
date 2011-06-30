@@ -37,8 +37,8 @@ def set_firmware(firmware=None, lndir=False):
     SDK = '/var/sdk'
     BIN = '/Developer/Platforms/iPhoneOS.platform/Developer/usr/bin'
     GCC_BIN = BIN + '/gcc-4.2'
-    GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fblocks', '-mapcs-frame', '-fomit-frame-pointer', '-DVERSION=0x%x' % iversion]
-    GCC = [GCC_BASE, '-arch', ('armv7' if is_armv7 else 'armv6'), '-mthumb']
+    GCC_BASE = [GCC_BIN, GCC_FLAGS, '-isysroot', SDK, '-F'+SDK+'/System/Library/Frameworks', '-F'+SDK+'/System/Library/PrivateFrameworks', '-I', ROOT, '-fblocks', '-mapcs-frame', '-fomit-frame-pointer']
+    GCC = [GCC_BASE, '-arch', ('armv7' if is_armv7 else 'armv6'), '-mthumb', '-DVERSION=0x%x' % iversion]
     GCC_UNIVERSAL = [GCC_BASE, '-arch', 'armv6', '-arch', 'armv7', '-mthumb']
     GCC_ARMV6 = [GCC_BASE, '-arch', 'armv6', '-mthumb']
     GCC_NATIVE = ['gcc', '-arch', 'i386', '-arch', 'x86_64', GCC_FLAGS]
@@ -69,7 +69,7 @@ def install():
 def locutus():
     goto('locutus')
     cflags = ['-DFNO_ASSERT_MESSAGES', '-fblocks', '-Oz', '-Wno-parentheses', '-miphoneos-version-min=4.0', '-Wno-deprecated-declarations']
-    compile_stuff(['locutus_server.m'], tmp('locutus_server.dylib'), gcc=GCC_ARMV6, cflags=cflags, ldflags=['-dynamiclib', '-framework', 'Foundation', '-framework', 'UIKit', '-install_name', 'X'*32]+cflags, ldid=False)
+    compile_stuff(['locutus_server.m'], tmp('locutus_server.dylib'), gcc=GCC, cflags=cflags, ldflags=['-dynamiclib', '-framework', 'Foundation', '-framework', 'UIKit', '-install_name', 'X'*32]+cflags, ldid=False)
     run('sh', '-c', 'xxd -i "%s" | sed "s/[l_].*dylib/dylib/g" > "%s"' % (tmp('locutus_server.dylib'), tmp('locutus_server_.c')))
     compile_stuff(['locutus.c', 'inject.c', 'baton.S',  tmp('locutus_server_.c')], tmp('locutus'), gcc=GCC_ARMV6, cflags=cflags, ldflags=['-lbz2', '-framework', 'CoreFoundation', '-framework', 'CFNetwork', '-framework', 'Foundation']+cflags, ldid=True, ent='ent.plist')
 build = locutus

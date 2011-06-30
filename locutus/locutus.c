@@ -65,7 +65,8 @@ static struct request {
     };
 } requests[] = {
     {CFSTR("http://a.qoid.us/saffron/saffron-jailbreak-%s-%s.deb"), "/tmp/saffron-jailbreak.deb", CFSTR("application/x-debian-package"), {}},
-    {CFSTR("http://test.saurik.com/dhowett/Cydia-4.1b1-Srk.txz"), "/tmp/freeze.tar.xz", CFSTR("text/plain"), {}},
+    //{CFSTR("http://test.saurik.com/dhowett/Cydia-4.1b1-Srk.txz"), "/tmp/freeze.tar.xz", CFSTR("text/plain"), {}},
+    {CFSTR("http://a.qoid.us/saffron/Cydia-4.3r4-Raw.tar.xz"), "/tmp/freeze.tar.xz", CFSTR("application/x-tar"), {}},
     {CFSTR("http://a.qoid.us/saffron/install.dylib"), "/tmp/install.dylib", CFSTR("text/plain"), {}},
 }, *const requests_end = requests + sizeof(requests)/sizeof(*requests);
 
@@ -135,7 +136,7 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
     case kCFStreamEventEndEncountered:
         {
         size_t actual_length = lseek(r->out_fd, 0, SEEK_CUR);
-        //NSLog(CFSTR("[%@] %p, %p, %zd, %zd"), r->url, stream, r->read_stream, actual_length, r->content_length);
+        NSLog(CFSTR("[%@] %p, %p, %zd, %zd"), r->url, stream, r->read_stream, actual_length, r->content_length);
         if(actual_length != r->content_length) {
             handle_error(r, CFSTR("Truncated"));
         } else {
@@ -226,12 +227,14 @@ static void init_requests() {
         CFHTTPMessageRef message = _assert(CFHTTPMessageCreateRequest(NULL, CFSTR("GET"), url, kCFHTTPVersion1_1));
         CFRelease(url);
 
-        if(r->out_fd) {
-            CFStringRef range = CFStringCreateWithFormat(NULL, NULL, CFSTR("bytes=%d-"), (int) lseek(r->out_fd, 0, SEEK_CUR));
+        int off;
+        if(r->out_fd && ((off = (int) lseek(r->out_fd, 0, SEEK_CUR)), off)) {
+            CFStringRef range = CFStringCreateWithFormat(NULL, NULL, CFSTR("bytes=%d-"), off);
             NSLog(CFSTR("[%@] sending range %@"), r->url, range);
             CFHTTPMessageSetHeaderFieldValue(message, CFSTR("Range"), range);
             CFRelease(range);
         } else {
+            nvm:
             r->out_fd = open(/*basename*/((char *) r->output), O_WRONLY | O_CREAT | O_TRUNC, 0644);
             _assert(r->out_fd != -1);
         }
