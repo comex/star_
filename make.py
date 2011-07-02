@@ -85,7 +85,7 @@ def catalog_dejavu():
     goto('catalog')
     catalog()
     run(GCC, '-c', '-o', tmp('kcode_dejavu.o'), 'kcode.S', '-Oz', '-DDEJAVU')
-    run('python', 'catalog.py', 'dejavu', version, BS+'/cache', BS+'/kern', tmp('patchfile'), tmp('kcode_dejavu.o'), tmp('catalog.txt'))
+    run('python', 'catalog.py', 'dejavu', device, version, BS+'/cache', BS+'/kern', tmp('patchfile'), tmp('kcode_dejavu.o'), tmp('catalog.txt'))
 
 def catalog_untether():
     catalog()

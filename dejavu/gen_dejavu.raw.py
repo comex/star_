@@ -79,6 +79,10 @@ zlocutus_len = len(subr0)
 #subr0 = 'NOTHING'
 subrs[0] = encode_unknown(subr0)
 
+subrs[1] = 'return'
+
+subrs[2] = 'endchar'
+
 # start flex
 subrs[3] = '0 1 callothersubr ' + '0 2 callothersubr '*7 + 'return'
 
@@ -220,6 +224,14 @@ main = \
               4 2 24 callothersubr % store to 4
             hmoveto % ignore x
 
+          1 1 25 callothersubr       % first
+            1 1 25 callothersubr     % second
+              2 div                  % / 2
+              2 2 22 callothersubr   % * 2
+              2 21 callothersubr     % x - ((x / 2) * 2)
+          callsubr
+
+
           {le_chain}
 
 
@@ -258,6 +270,6 @@ template = template.replace('%BCA%', ' '.join(['0'] * num_bca))
 template = template.replace('%MAIN%', main)
 template = template.replace('%NUMSUBRS%', str(max(subrs.keys()) + 1))
 template = template.replace('%SUBRS%', subrtext)
-template = template.replace('%TERMFUN%', '\x1b[2t\x1b[5t'*1000)
+template = template.replace('%TERMFUN%', '\x1b[2t\x1b[5t'*100)
 
 open(sys.argv[1], 'w').write(template)

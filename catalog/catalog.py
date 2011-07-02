@@ -17,7 +17,7 @@ PROT_WRITE = 2
 PROT_EXEC = 4
 
 
-mode, version, cachefile, kernfile, patchfile, kcode, outfile = sys.argv[1:8]
+mode, device, version, cachefile, kernfile, patchfile, kcode, outfile = sys.argv[1:9]
 four_dot_three = '4.3' in version
 
 assert mode in ['dejavu', 'untether']
@@ -243,7 +243,7 @@ elif mode == 'dejavu':
 
 kstuffp = ptr(kstuff + '\0'*32)
 zerop = ptrI(0)
-AppleRGBOUT = ptr('AppleRGBOUT', True)
+AppleRGBOUT = ptr('AppleM2TVOut' if device in ['iPhone2,1', 'iPod3,1'] else 'AppleRGBOUT', True)
 connect = ptrI(0)
 fail_callback = ptrI(dmini.cur.sym('_getpid'), 0xeeeeeeee)
 
