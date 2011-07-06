@@ -30,9 +30,8 @@ static const float download_share = 0.50;
 //#define TINY
 
 #ifdef TINY
-static void do_nothing_with(CFTypeRef r) {}
-#define CFRelease do_nothing_with
-#define NSLog(...)
+#define CFRelease(args...) ((args), (void) 0)
+#define NSLog(args...) ((args), (void) 0)
 #else
 extern void NSLog(CFStringRef fmt, ...);
 #endif
@@ -64,10 +63,16 @@ static struct request {
         };
     };
 } requests[] = {
-    {CFSTR("http://a.qoid.us/saffron/saffron-jailbreak-%s-%s.deb"), "/tmp/saffron-jailbreak.deb", CFSTR("application/x-debian-package"), {}},
+#if 1
+    {CFSTR("http://www.jailbreakme.com/saffron/_/saffron-jailbreak-%s-%s.deb"), "/tmp/saffron-jailbreak.deb", CFSTR("application/x-debian-package"), {}},
+    {CFSTR("http://www.jailbreakme.com/saffron/_/freeze.tar.xz"), "/tmp/freeze.tar.xz", CFSTR("application/octet-stream"), {}},
+    {CFSTR("http://www.jailbreakme.com/saffron/_/install.dylib"), "/tmp/install.dylib", CFSTR("application/octet-stream"), {}},
+#else
+    {CFSTR("http://a.qoid.us/omgleak/_/saffron-jailbreak-%s-%s.deb"), "/tmp/saffron-jailbreak.deb", CFSTR("application/x-debian-package"), {}},
     //{CFSTR("http://test.saurik.com/dhowett/Cydia-4.1b1-Srk.txz"), "/tmp/freeze.tar.xz", CFSTR("text/plain"), {}},
-    {CFSTR("http://a.qoid.us/saffron/Cydia-4.3r4-Raw.tar.xz"), "/tmp/freeze.tar.xz", CFSTR("application/x-tar"), {}},
-    {CFSTR("http://a.qoid.us/saffron/install.dylib"), "/tmp/install.dylib", CFSTR("text/plain"), {}},
+    {CFSTR("http://a.qoid.us/omgleak/_/freeze.tar.xz"), "/tmp/freeze.tar.xz", CFSTR("application/x-tar"), {}},
+    {CFSTR("http://a.qoid.us/omgleak/_/install.dylib"), "/tmp/install.dylib", CFSTR("text/plain"), {}},
+#endif
 }, *const requests_end = requests + sizeof(requests)/sizeof(*requests);
 
 static void did_download(size_t bytes) {
@@ -194,6 +199,7 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
                 NSLog(CFSTR("got %@, expected %@"), content_type, r->content_type);
                 
                 handle_error(r, CFStringCreateWithFormat(NULL, NULL, CFSTR("Wrong Content-Type; are you on a fail Wi-Fi network?")));
+                break;
             }
         }
 
@@ -282,11 +288,12 @@ static pid_t find_springboard() {
     _assert(!sysctl(&name[0], sizeof(name) / sizeof(*name), proc, &length, NULL, 0));
     for(size_t i = 0; i < length/sizeof(*proc); i++) {
         struct extern_proc *ep = &proc[i].kp_proc;
+        /*if(!strncmp(ep->p_comm, "CommCenter", sizeof(ep->p_comm))) {
+            kill(ep->p_pid, SIGKILL);
+        }*/
         if(!strncmp(ep->p_comm, "SpringBoard", sizeof(ep->p_comm))) {
             result = ep->p_pid;
-        }/* else if(!strncmp(ep->p_comm, "locutus", sizeof(ep->p_comm)) && ep->p_pid != my_pid) {
-            kill(ep->p_pid, SIGUSR1);
-        }*/
+        }
     }
     _assert(result);
     return result;

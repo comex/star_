@@ -2,7 +2,9 @@
 set -xe
 root="$1/root"
 mkdir -p "$root"/{DEBIAN,boot,private/var/null}
-cp -a "$1"/union_prelink.dylib "$root"/boot/union_prelink.dylib
+if [ "$4" = "1" ]; then
+    cp -a "$1"/union_prelink.dylib "$root"/boot/union_prelink.dylib
+fi
 cp -a "$1"/../catalog/untether "$root"/boot/untether
 cp -a ../white/white_loader "$root"/boot/white_loader
 cp -a mount_nulls "$root"/boot/mount_nulls

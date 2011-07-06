@@ -60,7 +60,10 @@ kern_return_t inject(pid_t pid, const char *path) {
         struct arm_thread_state arm;
         natural_t nat;
     } state = { { .cpsr = 0x20 } };
-    state.arm.pc = baton_address + 8;
+    state.arm.pc = baton_address;
+
+    vm_machine_attribute_val_t value = MATTR_VAL_CACHE_FLUSH; // ignored by the kernel
+    _assert_zero(vm_machine_attribute(task, baton_address, baton_size, MATTR_CACHE, &value));
 
     thread_act_t thread;
     _assert_zero(thread_create_running(task, ARM_THREAD_STATE, &state.nat, ARM_THREAD_STATE_COUNT, &thread));

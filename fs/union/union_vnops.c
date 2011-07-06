@@ -230,8 +230,16 @@ union_lookup(struct vnop_lookup_args *ap)
 	uppervp = NULLVP;
 	lowervp = NULLVP;
 	printf("in: %p RC=%d / %d\n", dun->un_uppervp, dun->un_uppervp ? dun->un_uppervp->v_iocount : -1, uppervp ? uppervp->v_iocount : -1);
+
+	char slash = cnp->cn_nameptr[cnp->cn_namelen] != 0;
 	
-	printf("looking up %s lp=%d wp=%d nameiop=%d upperdvp=%p lowerdvp=%p\n", cnp->cn_nameptr, old_flags & LOCKPARENT, old_flags & WANTPARENT, cnp->cn_nameiop, upperdvp, lowerdvp);
+	const char *nameiop = "?";
+	switch(cnp->cn_nameiop) {
+	#define A(x) case x: nameiop = #x; break;
+	A(LOOKUP) A(CREATE) A(DELETE) A(RENAME)
+	#undef A
+	}
+	printf("looking up %s(%d) lp=%d wp=%d nameiop=%s upperdvp=%p lowerdvp=%p slash=%d\n", cnp->cn_nameptr, (int) cnp->cn_namelen, old_flags & LOCKPARENT, old_flags & WANTPARENT, nameiop, upperdvp, lowerdvp, (int) slash);
 
 
 	union_unlock();
@@ -247,24 +255,16 @@ union_lookup(struct vnop_lookup_args *ap)
 	 * on and just return that vnode.
 	 */
 	if(um->um_uppervp != NULLVP && upperdvp != NULLVP) {
-		printf("lin: %p RC=%d\n", upperdvp, upperdvp ? upperdvp->v_iocount : -1);
 		uerror = union_lookup1(um->um_uppervp, &upperdvp,
 					&uppervp, cnp);
-		printf("lout: %p RC=%d\n", upperdvp, upperdvp ? upperdvp->v_iocount : -1);
 
-		if (cnp->cn_consume != 0) {
+		if(cnp->cn_consume != 0 || (!uerror && !vnode_isdir(uppervp))) {
 			vnode_get(*ap->a_vpp = uppervp);
 			error = uerror;
 			goto out;
 		}
 
-		if(!uerror && !vnode_isdir(uppervp)) {
-			vnode_get(*ap->a_vpp = uppervp);
-			error = uerror;
-			goto out;
-		}
-
-		if(uerror && uerror != ENOENT) {
+		if(uerror && uerror != ENOENT && uerror != EJUSTRETURN) {
 			error = uerror;
 			goto out;
 		}
@@ -284,13 +284,13 @@ union_lookup(struct vnop_lookup_args *ap)
 		lerror = union_lookup1(um->um_lowervp, &lowerdvp,
 				&lowervp, cnp);
 
-		if (cnp->cn_consume != 0 || (!lerror && !vnode_isdir(lowervp))) {
+		if(cnp->cn_consume != 0 || (!lerror && !vnode_isdir(lowervp))) {
 			vnode_get(*ap->a_vpp = lowervp);
 			error = lerror;
 			goto out;
 		}
 		
-		if(lerror && lerror != ENOENT) {
+		if(lerror && lerror != ENOENT && lerror != EJUSTRETURN) {
 			error = lerror;
 			goto out;
 		}
@@ -324,7 +324,11 @@ union_lookup(struct vnop_lookup_args *ap)
 
 	/* case 1. */
 	if ((uerror != 0) && (lerror != 0)) {
-		error = uerror;
+		if(lerror == EJUSTRETURN || uerror == EJUSTRETURN) {
+			error = EJUSTRETURN;
+		} else {
+			error = uerror == ENOENT ? lerror : uerror;
+		}
 		goto out;
 	}
 
@@ -377,18 +381,18 @@ union_lookup(struct vnop_lookup_args *ap)
 			
 	cnp->cn_flags = (cnp->cn_flags & ~(LOCKPARENT | WANTPARENT)) | old_flags;
 
-	if(*ap->a_vpp && cnp->cn_nameiop == DELETE) {
-		*CHUD(current_thread()) = !vnode_isdir(*ap->a_vpp);
+	if(cnp->cn_nameiop == DELETE) {
+		*CHUD(current_thread()) = *ap->a_vpp != NULLVP && !vnode_isdir(*ap->a_vpp);
 	}
 
 	// sigh
-	if(((error == EJUSTRETURN && cnp->cn_nameiop == RENAME) ?
+	if(!slash &&
+	   ((error == EJUSTRETURN && cnp->cn_nameiop == RENAME) ?
 		*CHUD(current_thread()) :
 		!((uppervp != NULLVP && vnode_isdir(uppervp)) || 
-		  (lowervp != NULLVP && vnode_isdir(lowervp)))) &&
+	  	  (lowervp != NULLVP && vnode_isdir(lowervp)))) &&
 		(cnp->cn_nameiop == CREATE ||
-		 cnp->cn_nameiop == RENAME ||
-		 0/*cnp->cn_nameiop == DELETE*/) &&
+		 cnp->cn_nameiop == RENAME) &&
 		(error == 0 ||
 		 error == EJUSTRETURN)) {
 		printf("mega hack %p %p %p\n", ap->a_vpp[1], upper(ap->a_vpp[1]), lower(ap->a_vpp[1]));
@@ -402,6 +406,11 @@ union_lookup(struct vnop_lookup_args *ap)
 				vnode_get(ap->a_vpp[1] = newvp);
 				vnode_put(ovp);
 				if(locked) vnode_lock(newvp);
+				if(cnp->cn_nameiop == RENAME && *ap->a_vpp != NULLVP && newvp->v_mount != (*ap->a_vpp)->v_mount) {
+					vnode_put(*ap->a_vpp);
+					*ap->a_vpp = NULLVP;
+					if(error == 0) error = EJUSTRETURN;
+				}
 			}
 		}
 	}
@@ -427,6 +436,8 @@ union_create(struct vnop_create_args *ap)
 	struct vnode *dvp = upper_or_lower(ap->a_dvp);
 	struct componentname *cnp = ap->a_cnp;
 
+	printf("union_create %p %s\n", dvp, cnp->cn_nameptr);
+
 	if (dvp != NULLVP) {
 		int error;
 		struct vnode *vp;
@@ -441,7 +452,7 @@ union_create(struct vnop_create_args *ap)
 			return (error);
 
 		/* if this is faulting filesystem and is a reg file, skip allocation of union node */
-		if (UNNODE_FAULTIN(un) && (vp != NULLVP) && ((vnode_isreg(vp) != 0)|| (vnode_islnk(vp) != 0))) {
+		if(vp != NULLVP && !vnode_isdir(vp)) {
 			*ap->a_vpp = vp;
 			return(0);
 		}

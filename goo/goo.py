@@ -28,13 +28,20 @@ class debug_marker(statue):
     def __repr__(self):
         return '<dbg:%s>' % self.name
 
-def heapadd(*stuff):
+def heapadds(heap, str, align=None, align_offset=0):
+    if align is not None: # max 16 in saffron
+        heap.append('\0' * (-(len(heap) - align_offset) & (align - 1)))
+    result = pointed(str)
+    heap.append(result)
+    return result
+
+def heapadd(*stuff, **kwargs):
     global heap
     #heap.dbginfo.append((len(heap), getdebugname())) # so we know where we came from
     heap.bits.append(debug_marker(getdebugname()))
     for a in stuff:
         assert not isinstance(a, (troll_string, str)) or len(a) % 4 == 0
-        heap.append(I(a))
+        heapadds(heap, I(a), **kwargs)
 
 def xrepr(a):
     if isinstance(a, (int, long)):
@@ -69,13 +76,11 @@ def heapdump(heap, names=None):
     sys.stdout.write('\n')
     sys.stdout.write('%08x end\n' % pos)
 
-def ptr(str, null_terminate=False, heap=None):
+def ptr(str, null_terminate=False, heap=None, align_offset=0, **kwargs):
     if heap is None: heap = sheap
     if null_terminate: str += '\0'
-    str = pad(str, 4)
-    result = pointed(str)
-    heap.append(result)
-    return pointer(result)
+    str = pad(str, 4, -align_offset & 3)
+    return pointer(heapadds(heap, str, align_offset=align_offset, **kwargs))
 
 def ptrI(*xs, **kwargs):
     return ptr(reduce(operator.add, map(I, xs)), **kwargs)
@@ -143,7 +148,7 @@ def init(*regs, **kwargs):
 def finalize(heapaddr=None, must_be_simple=True, should_heapdump=False):
     global heap, sheap, keep_debugs
     clear_fwd()
-    nheap = heap + sheap 
+    nheap = pad(heap, 16) + sheap 
     if should_heapdump:
         nheap = simplify_times(nheap, heapaddr, 4, False)
         heapdump(nheap)

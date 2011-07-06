@@ -1046,7 +1046,11 @@ union_mkshadow(um, dvp, cnp, vat, vpp)
 	VATTR_SET(&va, va_change_time, vat->va_change_time);
 	//VATTR_SET(&va, va_backup_time, vat->va_backup_time);
 
+#if VERSION >= 0x040300
 	error = vn_create(dvp, vpp, CNTOND(&cn), &va, 0, 0, 0, cnp->cn_context);
+#else
+	error = vn_create(dvp, vpp, &cn, &va, 0, cnp->cn_context);
+#endif
 out:
 	if ((cn.cn_flags & HASBUF) == HASBUF) {
 		FREE_ZONE(cn.cn_pnbuf, cn.cn_pnlen, M_NAMEI);
@@ -1200,7 +1204,11 @@ union_vn_create(struct vnode **vpp, struct union_node *un, mode_t cmode, vfs_con
 	VATTR_SET(vap, va_type, VREG);
 	VATTR_SET(vap, va_mode, cmode);
 
+#if VERSION >= 0x040300
 	if ((error = vn_create(un->un_dirvp, &vp, CNTOND(&cn), vap, 0, 0, 0, context)) != 0) {
+#else
+	if ((error = vn_create(un->un_dirvp, &vp, &cn, vap, 0, context)) != 0) {
+#endif
 		goto out;
 	}
 

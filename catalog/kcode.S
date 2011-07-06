@@ -8,13 +8,25 @@
 .arm
 start:
     # xxx offset
-    ldr sp, [sp, #(856 + 0x38 - 0x98)]
+    ldr sp, [sp, #(856 + 0x40 - 0xa0)]
     sub sp, #0x18
 
+#if 0
+    mov r5, sp; mov sp, #0x80000000; orr sp, #0x2000; mov pc, #-1
+#endif
+
+#if VERSION >= 0x040206 && VERSION < 0x040300
+    ldr r6, [sp, #(0x3c - 0x30 - 0x24)]
+#else
     ldr r6, [r4]
+#endif
 
     adr r0, inspiring
     bl _IOLog
+
+    #mov r0, #105
+    #mov r1, #9
+    #blx _proc_signal
 
     #mov r8, #0; b end
 
@@ -42,6 +54,14 @@ end:
     str r8, [r6, #c(0x238, 0x19c)]
     str r8, [r6, #c(0x2d4, 0x238)]
     # fix up linked lists
+#if 0 && (VERSION < 0x040300)
+    add r0, r6, #0x170
+    str r0, [r6, #0x170]
+    str r0, [r6, #0x174]
+    add r0, r6, #0x178
+    str r0, [r6, #0x178]
+    str r0, [r6, #0x17c]
+#endif
     add r0, r6, #c(0x218, 0x180)
     str r0, [r6, #c(0x21c, 0x184)]
     add r0, r6, #c(0x220, 0x188)
@@ -79,7 +99,7 @@ syscall_0:
     mov r1, #0
     str r1, [r0, #0xc]
     str r1, [r0, #0x10]
-    ldr r0, [r0, #0x6c]
+    ldr r0, [r0, #c(0x6c, 0x80)]
     cmp r0, #0
     strne r1, [r0, #8]
 #endif

@@ -19,8 +19,10 @@ use_null = True
 def set_firmware(firmware=None, lndir=False):
     global iversion, device, version, build_num, is_armv7, BUILD_ROOT, BS
     if firmware is None:
-        firmware = os.readlink(ROOT + '/config/cur').strip('/').split('/')[-1]
-    BS = ROOT + '/bs/' + firmware
+        BS = os.readlink(ROOT + '/config/cur')
+        firmware = BS.strip('/').split('/')[-1]
+    else:
+        BS = ROOT + '/bs/' + firmware
     device, version, build_num = re.match('(i[A-Z][a-z]+[0-9],[0-9x])_([0-9\.]+)_([A-Z0-9]+)', firmware).groups()
     is_armv7 = device not in ['iPhone1,1', 'iPhone1,2', 'iPod1,1', 'iPod2,1']
     bits = version.split('.') + [0, 0]
@@ -90,7 +92,7 @@ def catalog_dejavu():
 def catalog_untether():
     catalog()
     run(GCC, '-c', '-o', tmp('kcode_two.o'), 'kcode.S', '-Oz')
-    run('python', 'catalog.py', 'untether', version, BS+'/cache', BS+'/kern', tmp('patchfile'), tmp('kcode_two.o'), tmp('two.txt'))
+    run('python', 'catalog.py', 'untether', device, version, BS+'/cache', BS+'/kern', tmp('patchfile'), tmp('kcode_two.o'), tmp('two.txt'))
 
 def untether():
     catalog_untether()
@@ -172,13 +174,11 @@ def starstuff():
     white()
     untether()
     goto('starstuff')
-    compile_stuff(['mount_nulls.c'], 'mount_nulls', ldid=False, gcc=GCC_ARMV6, use_tmp=False, cflags='-DUSE_NULL=%d' % use_null)
+    compile_stuff(['mount_nulls.c'], 'mount_nulls', ldid=True, gcc=GCC_ARMV6, use_tmp=False, cflags='-DUSE_NULL=%d' % use_null)
     if use_null:
         run('../white/universal/white_loader', '-k', BS+'/kern', '-p', tmp('../fs/union.dylib'), tmp('union_prelink.dylib'))
-    else:
-        run('touch', tmp('union_prelink.dylib'))
     package = 'saffron-jailbreak-%s-%s' % (device, build_num)
-    run('bash', 'build-archive.sh', tmp('.'), package, package.replace(',', '.').lower())
+    run('bash', 'build-archive.sh', tmp('.'), package, package.replace(',', '.').lower(), '%d' % use_null)
 
 def stage(string=None):
     all_devices = ['iPhone3,1', 'iPhone3,3', 'iPod4,1', 'iPad2,1', 'iPad2,2', 'iPad2,3', 'iPhone2,1', 'iPod3,1', 'iPad1,1', 'iPhone1,2', 'iPod2,1']

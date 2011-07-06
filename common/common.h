@@ -38,9 +38,9 @@ static void _assert_zero_helper(const char name[], const char *arg, unsigned int
 #endif
 
 #ifdef PROFILING
-#define TIME(thing) do { uint64_t _ta = time_ms(); thing; uint64_t _tb = time_ms(); _logI("[%.4ld ms] %s", (long int) (_tb - _ta), #thing); } while(0)
+#define TIME(thing...) do { uint64_t _ta = time_ms(); thing; uint64_t _tb = time_ms(); _logI("[%.4ld ms] %s", (long int) (_tb - _ta), #thing); } while(0)
 #else
-#define TIME(thing) thing
+#define TIME(thing...) do { thing; } while(0)
 #endif
 
 static inline uint64_t time_ms() {

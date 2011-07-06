@@ -102,6 +102,7 @@ static void do_alert(NSString *title, NSString *message, NSString *cancel, NSStr
 static void (^sk)() = ^{
     [alert_view dismissWithClickedButtonIndex:0 animated:YES];
     [icon remove];
+    [icon release];
     icon = nil;
     [icon_controller setIconToReveal:nil];
     close(sock);
@@ -128,7 +129,7 @@ static BOOL MyIcon_allowsUninstall(id self, SEL sel) {
 static void MyIcon_closeBoxTapped(id self, SEL sel) {
     // don't download behind the user's back
     write(sock, "p", 1);
-    do_alert(_(@"Remove Download"), @"Are you sure you want to remove “Cydia”?", (@"GAMECENTER_DELETE_STATS_DELETE"), _(@"UNINSTALL_ICON_CANCEL"));
+    do_alert(_(@"Remove Download"), @"Are you sure you want to remove “Cydia”?", _(@"GAMECENTER_DELETE_STATS_DELETE"), _(@"UNINSTALL_ICON_CANCEL"));
 }
 
 
@@ -161,6 +162,7 @@ static void installed() {
 #endif
         [[icon_model applicationIconForDisplayIdentifier:@"com.saurik.Cydia"] reloadIconImage];
     }
+    [icon release];
     icon = nil;
     sk();
 }
@@ -209,6 +211,8 @@ static void *read_state(void *fp_) {
     }
 }
 
+static void do_nothing() { }
+
 __attribute__((constructor))
 static void init() {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
@@ -237,15 +241,19 @@ static void init() {
     icon_model = [objc_getClass("SBIconModel") sharedInstance];
     bundle_identifier = (existing_icon = [icon_model applicationIconForDisplayIdentifier:@"com.saurik.Cydia"]) ? @"com.saurik.Cydia.notreally" : @"com.saurik.Cydia";
 
+    Class SBDownloadingIcon = objc_getClass("SBDownloadingIcon");
+
     char name[32];
     sprintf(name, "MyIcon_%p", &init);
-    MyIcon = objc_allocateClassPair(objc_getClass("SBDownloadingIcon"), name, 0);
+    MyIcon = objc_allocateClassPair(SBDownloadingIcon, name, 0);
 #define OVERRIDE(x) class_replaceMethod(MyIcon, @selector(x), (IMP) MyIcon_##x, "")
     OVERRIDE(displayName);
     OVERRIDE(applicationBundleID);
     OVERRIDE(launch);
     OVERRIDE(allowsUninstall);
     OVERRIDE(closeBoxTapped);
+    IMP setDisplayedIconImage = class_getMethodImplementation(SBDownloadingIcon, @selector(setDisplayedIconImage:));
+    class_replaceMethod(MyIcon, @selector(setDisplayedIconImage:), (IMP) do_nothing, "");
     class_addMethod(MyIcon, @selector(alertView:clickedButtonAtIndex:), (IMP) MyIcon_alertView_clickedButtonAtIndex, "@:@l");
     objc_registerClassPair(MyIcon);
 
@@ -263,7 +271,6 @@ static void init() {
         [icon_model addIcon:icon];
         [icon_controller addNewIconToDesignatedLocation:icon animate:NO scrollToList:NO saveIconState:YES];
         [icon_controller setIconToReveal:icon];
-        [icon release];
 
         if(existing_icon) {
             write(sock, "p", 1);
@@ -271,12 +278,15 @@ static void init() {
         }
         
         bool _2x = [[UIScreen mainScreen] scale] > 1.5;
+        bool ipad = [[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad;
+        
         NSString *icon_url = _2x ? @"http://a.qoid.us/Cydia@2x.png" : @"http://a.qoid.us/Cydia.png";
+        if(ipad) icon_url = @"http://a.qoid.us/Cydia-72.png";
         UIImage *icon_image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:icon_url]]];
         if(icon_image) {
             icon_image = [icon darkenedIconImage:icon_image alpha:0.5];
             if(_2x) icon_image = [UIImage imageWithCGImage:[icon_image CGImage] scale:2.0 orientation:UIImageOrientationUp];
-            [icon setDisplayedIconImage:icon_image];
+            ((void (*)(id self, SEL sel, id image)) setDisplayedIconImage)(icon, nil, icon_image);
         }
     });
     

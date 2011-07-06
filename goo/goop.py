@@ -8,9 +8,9 @@ def getdebugname():
         if True and ('world' in fn or 'goo' in fn): continue
         return '%s:%d' % (fn, f.f_lineno)
 
-def pad(x, p):
+def pad(x, p, offset=0):
     l = len(x)
-    return x + '\0' * (-l & (p - 1))
+    return x + '\0' * (-(l - offset) & (p - 1))
 
 def simplify_times(heap, addr, times, must_be_simple=True):
     for i in xrange(times):
@@ -131,6 +131,8 @@ class troll_string(statue):
                 bits += struct.unpack('I'*(len(bit)/4), bit)
             elif len(bit) == 0:
                 pass
+            elif isinstance(bit, troll_string):
+                bits += bit.unpack()
             else:
                 raise ValueError('unpack: %r' % bit)
         return bits

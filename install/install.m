@@ -35,7 +35,7 @@ static void wrote_bytes(ssize_t bytes) {
 
         // xxx figure this out
         float total = 36938240.0f;
-        set_progress(written_bytes / total);
+        set_progress((written_bytes / total)/* * 0.95*/);
     }
 }
 
@@ -173,11 +173,11 @@ static void extract(const char *fn) {
         } else {
             chdir("/");
         }
-        tar_extract_file(tar, pathname);
-        if(strstr(pathname, "LaunchDaemons/") && strstr(pathname, ".plist")) {
-            _log("queueing ld %s", pathname);
-            [to_load addObject:[NSData dataWithBytes:pathname length:strlen(pathname)+1]];
+        if(!access(pathname, F_OK)) {
+            _log("skipping %s", pathname);
+            continue;
         }
+        tar_extract_file(tar, pathname);
     }
 
     tar_close(tar);
@@ -241,14 +241,6 @@ static void add_afc2() {
                                                                 nil];
         [services setValue:args forKey:@"com.apple.afc2"];
     }));
-}
-
-static void finish_up() {
-    return;
-    for(NSData *pathname in to_load) {
-        chdir("/");
-        run((char *[]) {"/bin/launchctl", "load", (char *) [pathname bytes], NULL}, NULL);
-    }
 }
 
 @interface LSApplicationWorkspace {
@@ -318,13 +310,15 @@ void do_install(void (*set_progress_)(float)) {
     TIME(remount());
     TIME(dok48());
     TIME(add_afc2());
-    TIME(make_nulls());
+    if(USE_NULL) {
+        make_nulls();
+    }
     TIME(extract("/tmp/freeze.tar.xz"));
     TIME(install_starstuff());
-    TIME(finish_up());
     TIME(uicache());
     TIME(post_jailbreak());
-    TIME(sync());
+    set_progress(1.00);
+    TIME(sync(), sync(), sync());
     _log("final written_bytes = %zd", written_bytes);
 }
 

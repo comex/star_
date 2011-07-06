@@ -124,7 +124,7 @@ le_chain = '0\n'
 diffs_seen = set()
 
 for data in sorted(stuff, key=lambda d: d['personality'] - d['actual_parse_callback']):
-    diff = data['personality'] - data['actual_parse_callback']
+    diff = data['personality'] - data['actual_parse_callback'] - 1
     if diff in diffs_seen:
         raise Exception('duplicate')
     diffs_seen.add(diff)
@@ -132,7 +132,7 @@ for data in sorted(stuff, key=lambda d: d['personality'] - d['actual_parse_callb
     assert data['parse_callback'] > 32000
     assert data['actual_parse_callback'] > 32000
 
-    le_chain += str(subrno) + ' 1 1 25 callothersubr ' + xrepr_plus_small(diff, False, [4, 27]) + ' callothersubr\n'
+    le_chain += str(subrno) + ' 4 1 25 callothersubr ' + xrepr_plus_small(diff, False, [4, 27]) + ' callothersubr\n'
     
     subr = '''1 1 25 callothersubr             % get parse_callback
               {actual_pc} 2 21 callothersubr   % subtract the real one
@@ -203,7 +203,7 @@ main = \
           0 0 0 3 0 callothersubr 
               2 2 24 callothersubr % buildchar -> bca[2]
 
-          -150 42 callothersubr % back up to 398 get gxx_personality_sj0
+          -152 42 callothersubr % back up to 398 get gxx_personality_sj0
           setcurrentpoint
           
           hstem3 hstem3 hstem3 hstem3
@@ -213,9 +213,19 @@ main = \
           hstem3 hstem3 hstem3 hstem3
           hstem3 hstem3 hstem3 hstem3
           
-          252 42 callothersubr  % this had better get us to 20 (or actually 0!) down when it does 31000 stuff
+          %252 42 callothersubr  % this had better get us to 20 (or actually 0!) down when it does 31000 stuff
+
+          0 12 callothersubr % actually, enforce that we're at 0
           
           31000 3 2 24 callothersubr % idx = 31000
+
+          1 1 25 callothersubr       % first
+            1 1 25 callothersubr     % second
+              2 div                  % / 2
+              2 2 22 callothersubr   % * 2
+              2 21 callothersubr     % x - ((x / 2) * 2)
+            2 2 20 callothersubr     % + 2, so it's 1 or 2
+            callsubr
           
           3 callsubr           % flex again
           0 0 0 3 0 callothersubr  % personality
@@ -223,14 +233,6 @@ main = \
                 2 21 callothersubr % subtract
               4 2 24 callothersubr % store to 4
             hmoveto % ignore x
-
-          1 1 25 callothersubr       % first
-            1 1 25 callothersubr     % second
-              2 div                  % / 2
-              2 2 22 callothersubr   % * 2
-              2 21 callothersubr     % x - ((x / 2) * 2)
-          callsubr
-
 
           {le_chain}
 

