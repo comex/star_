@@ -82,6 +82,8 @@
 #include <sys/malloc.h>
 #include <sys/filedesc.h>
 #include <sys/queue.h>
+#include <stdbool.h>
+#include <sys/mount_internal.h>
 #include "union.h"
 
 static	int union_itercallback(vnode_t, void *);
@@ -574,15 +576,18 @@ struct vfs_fsentry fe = {
 	descs,
 	15,
 	"unionfs",
-	VFS_TBLTHREADSAFE,
+	VFS_TBLTHREADSAFE | VFS_TBLNOTYPENUM,
 	{NULL, NULL}
 };
 
 extern void init_vnodeop_entries();
 
+extern bool splice();
+
 vfstable_t ft;
 __attribute__((constructor))
 static void init() {
+	if(splice()) return;
 	init_vnodeop_entries();
 	printf("vfs_fsadd: %d\n", vfs_fsadd(&fe, &ft));
 	printf("whiteout: %p\n", &vnop_whiteout_desc);
@@ -594,3 +599,4 @@ static void fini() {
 	printf("vfs_fsremove: %d\n", vfs_fsremove(ft));
 	union_dircheckp = NULL;
 }
+

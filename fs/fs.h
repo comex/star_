@@ -1,5 +1,6 @@
 // whether to spam the syslog/dmesg with printfs
 #define DEBUG_PRINTF 0
+#define LOCKSPAM 0
 
 #define IS_64BIT_PROCESS(x) 0
 #include <sys/buf_internal.h>
@@ -26,8 +27,7 @@ asm("$strref_22_76_6e_6f_64_65_5f_63_72_65_61_74_65_3a_20_75_6e_6b_6e_6f_77_6e_2
 // '"vnode_create: unknown vtype %d'
 #define vn_create x_vn_create
 
-#if 0
-
+#if LOCKSPAM
 static void x_lck_mtx_lock(lck_mtx_t *lck) {
     printf("About to lock %p\n", lck);
     lck_mtx_lock(lck);

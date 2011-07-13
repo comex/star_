@@ -13,10 +13,17 @@
 #ifndef _log
 #define _log(args...) fprintf(stderr, args)
 #endif
+#ifndef _fail
+#define _fail(name) exit(1)
+#endif
 
-#define _assert(expr, arg...) ((expr) ?: (_assert_helper(#expr, arg + 0), (typeof(expr)) 0))
+#define LINENO lineno1(__FILE__, __LINE__)
+#define lineno1(f, l) lineno2(f, l)
+#define lineno2(f, l) f ":" #l
+
+#define _assert(expr, arg...) ((expr) ?: (_assert_helper(#expr, LINENO, arg + 0), (typeof(expr)) 0))
 #define _assert_zero(expr, arg...) do { typeof(expr) _value = (expr); \
-                                        if(_value) _assert_zero_helper(#expr, arg + 0, (unsigned int) _value); \
+                                        if(_value) _assert_zero_helper(#expr, LINENO, arg + 0, (unsigned int) _value); \
                                       } while(0)
 #ifdef NO_ASSERT_MESSAGES
 #define _assert_helper(...) abort()
@@ -24,15 +31,15 @@
 #else
 
 __attribute__((noreturn))
-static void _assert_helper(const char name[], const char *arg) {
-    _log("assertion failed: %s%s%s%s (errno=%s)\n", name, arg ? "[" : "", arg ? arg : "", arg ? "]" : "", strerror(errno));
-    exit(1);
+static void _assert_helper(const char name[], const char lineno[], const char *arg) {
+    _log("assertion failed (%s): %s%s%s%s (errno=%s)\n", lineno, name, arg ? "[" : "", arg ? arg : "", arg ? "]" : "", strerror(errno));
+    _fail(name);
 }
 
 __attribute__((noreturn))
-static void _assert_zero_helper(const char name[], const char *arg, unsigned int value) {
-    _log("assertion failed: %s%s%s%s (value=0x%x, errno=%s)\n", name, arg ? "[" : "", arg ? arg : "", arg ? "]" : "", value, strerror(errno));
-    exit(1);
+static void _assert_zero_helper(const char name[], const char lineno[], const char *arg, unsigned int value) {
+    _log("assertion failed (%s): %s%s%s%s (value=0x%x, errno=%s)\n", lineno, name, arg ? "[" : "", arg ? arg : "", arg ? "]" : "", value, strerror(errno));
+    _fail(name);
 }
 
 #endif

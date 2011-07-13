@@ -10,6 +10,8 @@
 #include <dispatch/dispatch.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <sys/param.h>
+#include <sys/mount.h>
 
 static NSString *bundle_identifier;
 static id existing_icon;
@@ -26,6 +28,7 @@ static id icon_model;
 // Cancel Retry
 // quit   pause
 static UIAlertView *alert_view;
+static bool dont_hide_alert;
 static NSString *display_name, *old_display_key;
 static bool is_installing;
 static int sock;
@@ -100,7 +103,8 @@ static void do_alert(NSString *title, NSString *message, NSString *cancel, NSStr
 }
 
 static void (^sk)() = ^{
-    [alert_view dismissWithClickedButtonIndex:0 animated:YES];
+    if(!dont_hide_alert) [alert_view dismissWithClickedButtonIndex:0 animated:YES];
+    [alert_view setDelegate:nil];
     [icon remove];
     [icon release];
     icon = nil;
@@ -118,8 +122,7 @@ static NSString *MyIcon_applicationBundleID(id self, SEL sel) {
 }
 
 static void MyIcon_launch(id self, SEL sel) {
-    NSLog(@"%d", write(sock, "p", 1));
-	NSLog(@"%s", strerror(errno));  
+    write(sock, "p", 1);
 }
 
 static BOOL MyIcon_allowsUninstall(id self, SEL sel) {
@@ -170,14 +173,12 @@ static void installed() {
 static void *read_state(void *fp_) {
     FILE *fp = fp_;
     while(1) {
-        struct {
-            char state[128], errs[128];
-        } s;
         float progress;
-
+        // in a struct for block's benefit
+        struct { char state[128], errs[256]; } s;
         char buf[1024];
         if(!fgets(buf, sizeof(buf), fp) ||
-            sscanf(buf, "%128s\t%f\t%128[^;]", s.state, &progress, s.errs) != 3) {
+            sscanf(buf, "%128s\t%f\t%256[^\t]", s.state, &progress, s.errs) != 3) {
             dispatch_async(dispatch_get_main_queue(), (dispatch_block_t) sk);
             return NULL;
         }
@@ -192,7 +193,14 @@ static void *read_state(void *fp_) {
             }
 
             if(s.errs[0] != '`') {
-                do_alert(@"There was a problem downloading the jailbreak files.", [NSString stringWithUTF8String:s.errs], _(@"DATA_PLAN_FAILED_TRY_LATER"), _(@"DATA_PLAN_FAILED_TRY_AGAIN"));
+                NSString *err = [NSString stringWithUTF8String:s.errs];
+                if(!strcmp(s.state, "INSTALLING_ICON_LABEL")) {
+                    do_alert(@"There was a problem installing the jailbreak.", err, _(@"OK"), nil);
+                    dont_hide_alert = true;
+                    sk();
+                } else {
+                    do_alert(@"There was a problem downloading the jailbreak files.", err, _(@"DATA_PLAN_FAILED_TRY_LATER"), _(@"DATA_PLAN_FAILED_TRY_AGAIN"));
+                }
             }
 
             NSString *display_key = [NSString stringWithCString:s.state encoding:NSUTF8StringEncoding];
@@ -271,6 +279,14 @@ static void init() {
         [icon_model addIcon:icon];
         [icon_controller addNewIconToDesignatedLocation:icon animate:NO scrollToList:NO saveIconState:YES];
         [icon_controller setIconToReveal:icon];
+        
+        struct statfs sfs;
+        if(!statfs("/private/var", &sfs) && sfs.f_bavail < 20*1024*1024/sfs.f_bsize) {
+            do_alert(@"Can't jailbreak.", @"There is not enough free disk space.  Please delete some photos or videos.", _(@"OK"), nil);
+            dont_hide_alert = true;
+            sk();
+            return;
+        }
 
         if(existing_icon) {
             write(sock, "p", 1);

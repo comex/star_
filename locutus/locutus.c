@@ -18,14 +18,9 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <dispatch/dispatch.h>
+#include <zlib.h>
 
 static const float download_share = 0.50;
-
-// and SB freezing or hanging on black
-// blinking alertview of doom
-// if Cydia was not actually created *or locutus crashes*, don't sit on installing forever (so we should use a socket - that would also handle the locking issue)
-// but when it /doesn't/ crash, Cydia disappears
-// Safari is respawning and reloading it - I think this can be avoided by having JavaScript load the pdf
 
 //#define TINY
 
@@ -52,6 +47,7 @@ static struct request {
     CFStringRef url;
     const char *output;
     CFStringRef content_type;
+    uint32_t adler;
     union {
         struct {};
         struct {
@@ -60,18 +56,19 @@ static struct request {
             size_t content_length;
             bool finished;
             bool got_headers;
+            uLong actual_adler;
         };
     };
 } requests[] = {
 #if 1
-    {CFSTR("http://www.jailbreakme.com/saffron/_/saffron-jailbreak-%s-%s.deb"), "/tmp/saffron-jailbreak.deb", CFSTR("application/x-debian-package"), {}},
-    {CFSTR("http://www.jailbreakme.com/saffron/_/freeze.tar.xz"), "/tmp/freeze.tar.xz", CFSTR("application/octet-stream"), {}},
-    {CFSTR("http://www.jailbreakme.com/saffron/_/install.dylib"), "/tmp/install.dylib", CFSTR("application/octet-stream"), {}},
+    {CFSTR("http://www.jailbreakme.com/saffron/_/saffron-jailbreak-%s-%s-" PACKAGE_VERSION ".deb"), "/tmp/saffron-jailbreak.deb", CFSTR("application/x-debian-package"), 0, {}},
+    {CFSTR("http://www.jailbreakme.com/saffron/_/freeze.tar.xz"), "/tmp/freeze.tar.xz", CFSTR("application/octet-stream"), 0, {}},
+    {CFSTR("http://www.jailbreakme.com/saffron/_/install-" INSTALLER_VERSION ".dylib"), "/tmp/install.dylib", CFSTR("application/octet-stream"), INSTALL_ADLER, {}},
 #else
-    {CFSTR("http://a.qoid.us/omgleak/_/saffron-jailbreak-%s-%s.deb"), "/tmp/saffron-jailbreak.deb", CFSTR("application/x-debian-package"), {}},
+    {CFSTR("http://a.qoid.us/saffron/saffron-jailbreak-%s-%s-" PACKAGE_VERSION ".deb"), "/tmp/saffron-jailbreak.deb", CFSTR("application/x-debian-package"), 0, {}},
     //{CFSTR("http://test.saurik.com/dhowett/Cydia-4.1b1-Srk.txz"), "/tmp/freeze.tar.xz", CFSTR("text/plain"), {}},
-    {CFSTR("http://a.qoid.us/omgleak/_/freeze.tar.xz"), "/tmp/freeze.tar.xz", CFSTR("application/x-tar"), {}},
-    {CFSTR("http://a.qoid.us/omgleak/_/install.dylib"), "/tmp/install.dylib", CFSTR("text/plain"), {}},
+    {CFSTR("http://a.qoid.us/saffron/freeze.tar.xz"), "/tmp/freeze.tar.xz", CFSTR("application/x-tar"), 0, {}},
+    {CFSTR("http://a.qoid.us/saffron/install-" INSTALLER_VERSION ".dylib"), "/tmp/install.dylib", CFSTR("text/plain"), 0, {}},
 #endif
 }, *const requests_end = requests + sizeof(requests)/sizeof(*requests);
 
@@ -107,6 +104,8 @@ static void pause_it(CFStringRef err) {
 
 // handle an error or completion
 static void handle_error(struct request *r, CFStringRef err) {
+    downloaded_bytes -= lseek(r->out_fd, 0, SEEK_CUR);
+    NSLog(CFSTR("at the moment, we closed %s with %d"), r->output, (int) lseek(r->out_fd, 0, SEEK_CUR));
     close(r->out_fd);
     r->out_fd = 0;
     if(err) {
@@ -141,9 +140,12 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
     case kCFStreamEventEndEncountered:
         {
         size_t actual_length = lseek(r->out_fd, 0, SEEK_CUR);
-        NSLog(CFSTR("[%@] %p, %p, %zd, %zd"), r->url, stream, r->read_stream, actual_length, r->content_length);
+        //NSLog(CFSTR("[%@] %p, %p, %zd, %zd"), r->url, stream, r->read_stream, actual_length, r->content_length);
         if(actual_length != r->content_length) {
             handle_error(r, CFSTR("Truncated"));
+        } else if(r->adler && r->adler != (uint32_t) r->actual_adler) {
+            NSLog(CFSTR("[%@] Got adler32 %x but expected %x"), r->url, r->actual_adler, r->adler);
+            handle_error(r, CFSTR("Invalid checksum"));
         } else {
             handle_error(r, NULL);
         }
@@ -198,7 +200,7 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
             if(!content_type || kCFCompareEqualTo != CFStringCompare(content_type, r->content_type, kCFCompareCaseInsensitive)) {
                 NSLog(CFSTR("got %@, expected %@"), content_type, r->content_type);
                 
-                handle_error(r, CFStringCreateWithFormat(NULL, NULL, CFSTR("Wrong Content-Type; are you on a fail Wi-Fi network?")));
+                handle_error(r, CFStringCreateWithFormat(NULL, NULL, CFSTR("Wrong Content-Type- are you on a fail Wi-Fi network?")));
                 break;
             }
         }
@@ -206,8 +208,8 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
         // actually read
         size_t written = 0;
         while(CFReadStreamHasBytesAvailable(r->read_stream)) {
-            static char compressed[8192], uncompressed[16384];
-            CFIndex idx = CFReadStreamRead(r->read_stream, (void *) compressed, sizeof(compressed));
+            static char buf[8192];
+            CFIndex idx = CFReadStreamRead(r->read_stream, (void *) buf, sizeof(buf));
             if(idx == -1) {
                 handle_error(r, CFSTR("Huh?"));
                 goto end;
@@ -215,7 +217,9 @@ static void request_callback(CFReadStreamRef stream, CFStreamEventType event_typ
 
             written += (size_t) idx;
 
-            _assert((CFIndex) write(r->out_fd, compressed, idx) == idx);
+            r->actual_adler = adler32(r->actual_adler, (void *) buf, idx);
+
+            _assert((CFIndex) write(r->out_fd, buf, idx) == idx);
         }
         end:
         did_download(written);
@@ -239,10 +243,10 @@ static void init_requests() {
             NSLog(CFSTR("[%@] sending range %@"), r->url, range);
             CFHTTPMessageSetHeaderFieldValue(message, CFSTR("Range"), range);
             CFRelease(range);
-        } else {
-            nvm:
+        } else if(!r->out_fd) {
             r->out_fd = open(/*basename*/((char *) r->output), O_WRONLY | O_CREAT | O_TRUNC, 0644);
             _assert(r->out_fd != -1);
+            r->actual_adler = adler32(0L, Z_NULL, 0);
         }
 
         // creating the read stream should succeed, but there might be an error later
@@ -266,13 +270,18 @@ static void set_progress(float progress_) {
     update_state("INSTALLING_ICON_LABEL", NULL);
 }
 
+static void fatal(CFStringRef err) {
+    update_state("INSTALLING_ICON_LABEL", err);
+    exit(1);
+}
+
 static void run_install() {
     NSLog(CFSTR("running install"));
     signal(SIGUSR1, SIG_IGN);
     set_progress(0.0);
     void *install = dlopen("/tmp/install.dylib", RTLD_LAZY);
-    void (*do_install)(void (*set_progress)(float)) = dlsym(install, "do_install");
-    do_install(set_progress);
+    void (*do_install)(void *set_progress, void *fatal) = dlsym(install, "do_install");
+    do_install(set_progress, fatal);
     update_state("`", NULL);
     exit(0);
 }

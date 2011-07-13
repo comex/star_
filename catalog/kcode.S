@@ -102,6 +102,10 @@ syscall_0:
     ldr r0, [r0, #c(0x6c, 0x80)]
     cmp r0, #0
     strne r1, [r0, #8]
+    # I don't care about mobile staying alive, but I do care about the reference count dropping
+    #mov r0, #0
+    #mov r1, #1
+    #bl _chgproccnt
 #endif
     ldr r0, sysent
     ldr r1, [r0, #0xc4]

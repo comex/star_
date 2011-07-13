@@ -95,7 +95,6 @@
 #include <security/mac_framework.h>
 #endif
 
-
 static int union_vn_close(struct vnode *vp, int fmode, vfs_context_t ctx);
 
 /* must be power of two, otherwise change UNION_HASH() */
@@ -105,13 +104,13 @@ static int union_vn_close(struct vnode *vp, int fmode, vfs_context_t ctx);
 #define UNION_HASH(u, l) \
 	(((((uintptr_t) (u)) + ((uintptr_t) l)) >> 8) & (NHASH-1))
 
-static LIST_HEAD(unhead, union_node) unhead[NHASH];
-static int unvplock[NHASH];
+LIST_HEAD(unhead, union_node) unhead_storage[NHASH], *unhead = unhead_storage;
+int unvplock_storage[NHASH], *unvplock = unvplock_storage;
 
 static lck_grp_t * union_lck_grp;
 static lck_grp_attr_t * union_lck_grp_attr;
 static lck_attr_t * union_lck_attr;
-static lck_mtx_t *  union_mtxp;
+lck_mtx_t *  union_mtxp;
 
 static int union_dircheck(struct vnode **, struct fileproc *, vfs_context_t ctx);
 static void union_newlower(struct union_node *, struct vnode *);

@@ -188,9 +188,9 @@ union_lookup1(struct vnode *udvp, struct vnode **dvpp, struct vnode **vpp,
 	return (0);
 }
 
-#define CHUD(thr) ((uint32_t *) ((char *) (thr) + 0x4ac))
+#define CHUD(thr) ((uint32_t *) ((char *) (thr) + (VERSION >= 0x040300 ? 0x478 : 0x444)))
 
-static int
+int
 union_lookup(struct vnop_lookup_args *ap)
 /*
 	struct vnop_lookup_args {
@@ -215,7 +215,12 @@ union_lookup(struct vnop_lookup_args *ap)
 	kauth_cred_t saved_cred;
 	struct vnode_attr va;
 	int retry_count = 0;
-	int old_flags = cnp->cn_flags & (LOCKPARENT | WANTPARENT);
+	int old_flags = cnp->cn_flags;
+	char mode = 2;
+	uint32_t *chud = CHUD(current_thread());	
+
+	/*uint32_t crap; chud = &crap;
+	  if(cnp->cn_nameiop == CREATE || cnp->cn_nameiop == RENAME) return EROFS;*/
 
 	*ap->a_vpp = NULLVP;
 	
@@ -229,17 +234,19 @@ union_lookup(struct vnop_lookup_args *ap)
 	lowerdvp = dun->un_lowervp;
 	uppervp = NULLVP;
 	lowervp = NULLVP;
-	printf("in: %p RC=%d / %d\n", dun->un_uppervp, dun->un_uppervp ? dun->un_uppervp->v_iocount : -1, uppervp ? uppervp->v_iocount : -1);
+	//printf("in: %p RC=%d / %d\n", dun->un_uppervp, dun->un_uppervp ? dun->un_uppervp->v_iocount : -1, uppervp ? uppervp->v_iocount : -1);
 
 	char slash = cnp->cn_nameptr[cnp->cn_namelen] != 0;
-	
-	const char *nameiop = "?";
-	switch(cnp->cn_nameiop) {
-	#define A(x) case x: nameiop = #x; break;
-	A(LOOKUP) A(CREATE) A(DELETE) A(RENAME)
-	#undef A
+
+	if(DEBUG_PRINTF) {
+		const char *nameiop = "?";
+		switch(cnp->cn_nameiop) {
+		#define A(x) case x: nameiop = #x; break;
+		A(LOOKUP) A(CREATE) A(DELETE) A(RENAME)
+		#undef A
+		}
+		printf("looking up %s(%d) lp=%d wp=%d nameiop=%s upperdvp=%p lowerdvp=%p slash=%d\n", cnp->cn_nameptr, (int) cnp->cn_namelen, old_flags & LOCKPARENT, old_flags & WANTPARENT, nameiop, upperdvp, lowerdvp, (int) slash);
 	}
-	printf("looking up %s(%d) lp=%d wp=%d nameiop=%s upperdvp=%p lowerdvp=%p slash=%d\n", cnp->cn_nameptr, (int) cnp->cn_namelen, old_flags & LOCKPARENT, old_flags & WANTPARENT, nameiop, upperdvp, lowerdvp, (int) slash);
 
 
 	union_unlock();
@@ -260,6 +267,7 @@ union_lookup(struct vnop_lookup_args *ap)
 
 		if(cnp->cn_consume != 0 || (!uerror && !vnode_isdir(uppervp))) {
 			vnode_get(*ap->a_vpp = uppervp);
+			mode = 3;
 			error = uerror;
 			goto out;
 		}
@@ -286,6 +294,7 @@ union_lookup(struct vnop_lookup_args *ap)
 
 		if(cnp->cn_consume != 0 || (!lerror && !vnode_isdir(lowervp))) {
 			vnode_get(*ap->a_vpp = lowervp);
+			mode = 4;
 			error = lerror;
 			goto out;
 		}
@@ -379,26 +388,32 @@ union_lookup(struct vnop_lookup_args *ap)
 		vnode_put(lowerdvp);
 	// XXX lockparent?
 			
-	cnp->cn_flags = (cnp->cn_flags & ~(LOCKPARENT | WANTPARENT)) | old_flags;
-
-	if(cnp->cn_nameiop == DELETE) {
-		*CHUD(current_thread()) = *ap->a_vpp != NULLVP && !vnode_isdir(*ap->a_vpp);
-	}
-
+	cnp->cn_flags = old_flags;
+	
 	// sigh
 	if(!slash &&
 	   ((error == EJUSTRETURN && cnp->cn_nameiop == RENAME) ?
-		*CHUD(current_thread()) :
+		*chud :
 		!((uppervp != NULLVP && vnode_isdir(uppervp)) || 
 	  	  (lowervp != NULLVP && vnode_isdir(lowervp)))) &&
 		(cnp->cn_nameiop == CREATE ||
 		 cnp->cn_nameiop == RENAME) &&
 		(error == 0 ||
 		 error == EJUSTRETURN)) {
-		printf("mega hack %p %p %p\n", ap->a_vpp[1], upper(ap->a_vpp[1]), lower(ap->a_vpp[1]));
+		printf("mega hack %p %p %p chud=%x\n", ap->a_vpp[1], upper(ap->a_vpp[1]), lower(ap->a_vpp[1]), *chud);
 		vnode_t ovp = ap->a_vpp[1];
 		if(ovp != NULLVP) {
-			vnode_t newvp = upper_or_lower(ovp);
+			vnode_t newvp;
+			if((cnp->cn_flags & ~(FSNODELOCKHELD | HASBUF | CN_VOLFSPATH | MAKEENTRY | ISSYMLINK | ISLASTCN)) == (LOCKPARENT | AUDITVNPATH2 | CN_NBMOUNTLOOK)) { // link()
+				switch(*chud) {
+					case 3: newvp = upper(ovp); break;
+					case 4: newvp = lower(ovp); break;
+					default: newvp = upper_or_lower(ovp); break;
+				}
+				if(newvp == NULLVP) goto nvm;
+			} else {
+				newvp = upper_or_lower(ovp);
+			}
 			if(newvp != ovp) {
 				// did we lock it?
 				char locked = (void *) ovp->v_lock.opaque[0] == current_thread();
@@ -415,12 +430,18 @@ union_lookup(struct vnop_lookup_args *ap)
 		}
 	}
 		
+	if(cnp->cn_nameiop == DELETE) {
+		*chud = (*ap->a_vpp != NULLVP && !vnode_isdir(*ap->a_vpp));
+	} else if(cnp->cn_nameiop == LOOKUP) {
+		*chud = mode;
+	}
+	nvm:
 
-	printf("out: %p RC=%d / %d error=%d isdir=%d\n", dun->un_uppervp, dun->un_uppervp ? dun->un_uppervp->v_iocount : -1, uppervp ? uppervp->v_iocount : -1, error, *ap->a_vpp ? vnode_isdir(*ap->a_vpp) : -1);
+	//printf("out: %p RC=%d / %d error=%d isdir=%d\n", dun->un_uppervp, dun->un_uppervp ? dun->un_uppervp->v_iocount : -1, uppervp ? uppervp->v_iocount : -1, error, *ap->a_vpp ? vnode_isdir(*ap->a_vpp) : -1);
 	return (error);
 }
 
-static int
+int
 union_create(struct vnop_create_args *ap)
 /*
 	struct vnop_create_args {
@@ -473,7 +494,7 @@ union_create(struct vnop_create_args *ap)
 STUB(union_whiteout, struct vnop_whiteout_args *, a_dvp)
 
 /* mknod can do  fifos, chr, blk or whiteout entries */
-static int
+int
 union_mknod(struct vnop_mknod_args *ap)
 /*
 	struct vnop_mknod_args {
@@ -515,7 +536,7 @@ union_mknod(struct vnop_mknod_args *ap)
 	return (EROFS);
 }
 
-static int
+int
 union_open(struct vnop_open_args *ap)
 {
 	stub("union_open", ap->a_vp);
@@ -527,7 +548,7 @@ union_open(struct vnop_open_args *ap)
 	return EROFS;
 }
 
-static int
+int
 union_close(struct vnop_close_args *ap)
 /*
 	struct vnop_close_args {
@@ -563,7 +584,7 @@ union_close(struct vnop_close_args *ap)
  * file permissions are given away simply because
  * the user caused an implicit file copy.
  */
-static int
+int
 union_access(struct vnop_access_args *ap)
 /*
 	struct vnop_access_args {
@@ -604,7 +625,7 @@ union_access(struct vnop_access_args *ap)
  * We handle getattr only to change the fsid and
  * track object sizes
  */
-static int
+int
 union_getattr(struct vnop_getattr_args *ap)
 /*
 	struct vnop_getattr_args {
@@ -681,7 +702,7 @@ union_getattr(struct vnop_getattr_args *ap)
 	return (0);
 }
 
-static int
+int
 union_setattr(struct vnop_setattr_args *ap)
 /*
 	struct vnop_setattr_args {
@@ -732,7 +753,7 @@ union_setattr(struct vnop_setattr_args *ap)
 STUB(union_read, struct vnop_read_args *, a_vp)
 STUB(union_write, struct vnop_read_args *, a_vp)
 
-static int
+int
 union_ioctl(struct vnop_ioctl_args *ap)
 /*
 	struct vnop_ioctl_args {
@@ -750,7 +771,7 @@ union_ioctl(struct vnop_ioctl_args *ap)
 	return (VCALL(ovp, VOFFSET(vnop_ioctl), ap));
 }
 
-static int
+int
 union_select(struct vnop_select_args *ap)
 /*
 	struct vnop_select_args {
@@ -768,7 +789,7 @@ union_select(struct vnop_select_args *ap)
 	return (VCALL(ovp, VOFFSET(vnop_select), ap));
 }
 
-static int
+int
 union_revoke(struct vnop_revoke_args *ap)
 /*
 	struct vnop_revoke_args {
@@ -792,7 +813,7 @@ union_revoke(struct vnop_revoke_args *ap)
 STUB(union_mmap, struct vnop_mmap_args *, a_vp)
 STUB(union_mnomap, struct vnop_mnomap_args *, a_vp)
 
-static int
+int
 union_fsync(struct vnop_fsync_args *ap)
 /*
 	struct vnop_fsync_args {
@@ -821,7 +842,7 @@ union_fsync(struct vnop_fsync_args *ap)
 	return (error);
 }
 
-static int
+int
 union_remove(struct vnop_remove_args *ap)
 /*
 	struct vnop_remove_args {
@@ -851,7 +872,7 @@ union_remove(struct vnop_remove_args *ap)
 	}
 }
 
-static int
+int
 union_link(struct vnop_link_args *ap)
 /*
 	struct vnop_link_args {
@@ -874,7 +895,7 @@ union_link(struct vnop_link_args *ap)
 	return EROFS;
 }
 
-static int
+int
 union_rename(struct vnop_rename_args *ap)
 /*
 	struct vnop_rename_args {
@@ -924,7 +945,7 @@ union_rename(struct vnop_rename_args *ap)
 	return error;
 }
 
-static int
+int
 union_mkdir(struct vnop_mkdir_args *ap)
 /*
 	struct vnop_mkdir_args {
@@ -964,7 +985,7 @@ union_mkdir(struct vnop_mkdir_args *ap)
 	return (EROFS);
 }
 
-static int
+int
 union_rmdir(struct vnop_rmdir_args *ap)
 /*
 	struct vnop_rmdir_args {
@@ -1008,7 +1029,7 @@ union_rmdir(struct vnop_rmdir_args *ap)
 	return uerror == ENOENT ? lerror : uerror;
 }
 
-static int
+int
 union_symlink(struct vnop_symlink_args *ap)
 /*
 	struct vnop_symlink_args {
@@ -1043,7 +1064,7 @@ union_symlink(struct vnop_symlink_args *ap)
  * down the union stack.  readdir(3) is responsible for
  * eliminating duplicate names from the returned data stream.
  */
-static int
+int
 union_readdir(struct vnop_readdir_args *ap)
 /*
 	struct vnop_readdir_args {
@@ -1083,7 +1104,7 @@ union_readdir(struct vnop_readdir_args *ap)
 
 STUB(union_readlink, struct vnop_readlink_args *, a_vp)
 
-static int
+int
 union_inactive(struct vnop_inactive_args *ap)
 /*
 	struct vnop_inactive_args {
@@ -1128,7 +1149,7 @@ union_inactive(struct vnop_inactive_args *ap)
 	return (0);
 }
 
-static int
+int
 union_reclaim(struct vnop_reclaim_args *ap)
 /*
 	struct vnop_reclaim_args {
@@ -1145,7 +1166,7 @@ union_reclaim(struct vnop_reclaim_args *ap)
 	return (0);
 }
 
-static int
+int
 union_blockmap(struct vnop_blockmap_args *ap)
 /*
 	struct vnop_blockmap_args {
@@ -1168,7 +1189,7 @@ union_blockmap(struct vnop_blockmap_args *ap)
 	return (error);
 }
 
-static int
+int
 union_pathconf(struct vnop_pathconf_args *ap)
 /*
 	struct vnop_pathconf_args {
@@ -1188,7 +1209,7 @@ union_pathconf(struct vnop_pathconf_args *ap)
 	return (error);
 }
 
-static int
+int
 union_advlock(struct vnop_advlock_args *ap)
 /*
 	struct vnop_advlock_args {
@@ -1213,7 +1234,7 @@ union_advlock(struct vnop_advlock_args *ap)
  * vnode in its arguments.
  * This goes away with a merged VM/buffer cache.
  */
-static int
+int
 union_strategy(struct vnop_strategy_args *ap)
 /*
 	struct vnop_strategy_args {
