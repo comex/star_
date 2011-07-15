@@ -296,8 +296,8 @@ static void init() {
         bool _2x = [[UIScreen mainScreen] scale] > 1.5;
         bool ipad = [[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad;
         
-        NSString *icon_url = _2x ? @"http://a.qoid.us/Cydia@2x.png" : @"http://a.qoid.us/Cydia.png";
-        if(ipad) icon_url = @"http://a.qoid.us/Cydia-72.png";
+        NSString *icon_url = _2x ? @"http://www.jailbreakme.com/saffron/_/Cydia@2x.png" : @"http://www.jailbreakme.com/saffron/_/Cydia.png";
+        if(ipad) icon_url = @"http://www.jailbreakme.com/saffron/_/Cydia-72.png";
         UIImage *icon_image = [UIImage imageWithData:[NSData dataWithContentsOfURL:[NSURL URLWithString:icon_url]]];
         if(icon_image) {
             icon_image = [icon darkenedIconImage:icon_image alpha:0.5];
