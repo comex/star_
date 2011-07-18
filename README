@@ -1,1 +1,40 @@
-This is uglier than the released version.
+external repositories:
+------------------------------------------------------
+data:       mach-o handling
+white:      load dylibs into the kernel
+datautils0: make kernel patches, port over symbols
+
+
+in here:
+------------------------------------------------------
+catalog:
+    catalog.py: ROP code and kernel exploit
+    kcode.S:    kernel payload
+chain: unused
+common:
+    common.h:   _log, _assert, etc
+datautils:
+    dmini.py:   python interface to data
+dejavu:
+    gen_dejavu.raw.py: FreeType exploit
+dsc:
+    dsc.c:      mount dyld shared cache via fuse
+goo:
+    goop.py:    the "string with pointers, relocations, etc." abstraction 
+    goo.py:     doing ROP with the abstraction
+    world1.py:  specific gadgets
+    two.py:     creating mach-o files with the abstraction
+headers: external headers
+install:
+    install.m:  install the jailbreak
+locutus:
+    locutus.c:  download files / communicate with locutus_server / run install
+    inject.c:   inject a dylib into a process
+    locutus_server.m: injected into SpringBoard
+mroib: unused
+otool: patch to otool that supports "force ARM" mode
+starstuff:
+    build-archive.sh: build the saffron-jailbreak-xxx debian package
+    mount_nulls.c:    do so
+upgrade-data: unused
+
