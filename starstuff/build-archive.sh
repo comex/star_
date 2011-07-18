@@ -33,8 +33,8 @@ sync; sync
 exit 0
 EOF
 chmod 755 "$root"/DEBIAN/extrainst_
-deb="$root" "$2"-"$5".deb
-./fauxsu.sh dpkg-deb -b -z9 "$deb"
+deb="$2"-"$5".deb
+./fauxsu.sh dpkg-deb -b -z9 "$root" "$deb"
 tar xvf "$deb" data.tar.gz
 gunzip data.tar.gz
 mv data.tar "fix-$2-$5".tar
