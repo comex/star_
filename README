@@ -1,3 +1,11 @@
+First, clone this repo
+Then, run `git submodule update --init` to download the submodules
+
+To use, you must have /var/sdk symlinked to your current iPhone sdk.
+config/cur must be symlinked to the firmware you would like to generate a pdf for.
+
+running make.py will initiate the process.
+
 external repositories:
 ------------------------------------------------------
 data:       mach-o handling
