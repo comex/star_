@@ -1,3 +1,19 @@
+How to use:
+- git submodule init -u
+- ln -s /Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS4.3.sdk /var/sdk
+- add binaries to bs, e.g.
+    mkdir iPhone2,1_4.3.3_8J2
+    cp decrypted_kernel iPhone2,1_4.3.3_8J2/kern
+    cp dyld_shared_cache_armv7 iPhone2,1_4.3.3_8J2/cache
+    OR import an ipsw:
+    grab https://github.com/posixninja/xpwn.git
+    install "xpwntool", "hfsplus", and "dmg" to ~/xpwnbin/
+    in here: cd config; python ipsw.py whatever.ipsw
+
+- get t1utils and apply this patch: http://pastie.org/2251647
+- get http://github.com/comex/xnu-env and point fs/xnu to it
+- ./make.py pdf
+
 external repositories:
 ------------------------------------------------------
 data:       mach-o handling
